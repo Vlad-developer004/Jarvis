@@ -1,0 +1,65 @@
+{
+  "zoom_factor": 1.25,
+  "widget_vis": {
+    "cpu": true,
+    "storage": true,
+    "network": true,
+    "weather": true,
+    "ram": true,
+    "camera": false,
+    "sysinfo": true,
+    "gamemode": false,
+    "meetings_btn": true,
+    "videos_btn": true,
+    "sunrise": true,
+    "clock": true
+  },
+  "stt_engine": "gigaam",
+  "feature_profile": "full",
+  "onnx_threads": 2,
+  "volume": 1.0,
+  "max_saved_videos": 2,
+  "meetings": [],
+  "feature_modules": {
+    "photoshop_voice": false,
+    "inbox_digest": true,
+    "calendar_ics": false,
+    "network_profiles": false
+  },
+  "dep_sync_target": "full",
+  "last_location": {
+    "lat": 52.5200066,
+    "lon": 13.404954,
+    "city": "Berlin"
+  },
+  "mail_account": {
+    "email": "terehovvlad29@gmail.com",
+    "password": "xkcn pytk atew uvbm",
+    "imap_host": "imap.gmail.com",
+    "smtp_host": "smtp.gmail.com",
+    "imap_port": 993,
+    "smtp_port": 587,
+    "mailbox": "INBOX"
+  },
+  "briefing": {
+    "include_greeting": true,
+    "include_time": true,
+    "include_weather": true,
+    "include_battery": true,
+    "include_system_load": true,
+    "include_calendar": true,
+    "include_mail_unread": true,
+    "calendar_reminder_minutes": 15,
+    "calendar_reminders_enabled": true
+  },
+  "first_run_done": true,
+  "programming_file_extensions": [
+    "py",
+    "tsx",
+    "js",
+    "jsx",
+    "ts",
+    "css"
+  ],
+  "audio_input_device_index": 1
+}

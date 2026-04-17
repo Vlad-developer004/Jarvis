@@ -1,0 +1,4 @@
+-r requirements-base.txt
+-r requirements-vision-game.txt
+-r requirements-web-qa.txt
+-r requirements-system-optional.txt

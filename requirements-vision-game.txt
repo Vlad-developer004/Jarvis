@@ -1,0 +1,4 @@
+opencv-python==4.13.0.92
+scipy==1.15.3
+truck-telemetry==0.0.3
+pynvml==13.0.1

@@ -1,0 +1,17 @@
+{
+  "programming_file_extensions": [],
+  "feature_profile": "minimal",
+  "feature_modules": {},
+  "dep_sync_target": "base",
+  "briefing": {
+    "include_greeting": true,
+    "include_time": true,
+    "include_weather": true,
+    "include_battery": true,
+    "include_system_load": true,
+    "include_calendar": true,
+    "include_mail_unread": true,
+    "calendar_reminder_minutes": 15,
+    "calendar_reminders_enabled": true
+  }
+}

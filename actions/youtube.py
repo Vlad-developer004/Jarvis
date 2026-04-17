@@ -1,0 +1,391 @@
+import os
+import time
+import win32con
+import pygetwindow as gw
+from actions.windows import send_hardware_key, _ensure_en_layout, _restore_layout
+from core.system import force_foreground
+def _get_url_from_history(window_title: str = '') -> str | None:
+    import sqlite3, shutil, tempfile
+    from pathlib import Path
+    profiles = [
+        Path.home() / 'AppData/Local/BraveSoftware/Brave-Browser/User Data',
+        Path.home() / 'AppData/Local/Google/Chrome/User Data',
+        Path.home() / 'AppData/Local/Microsoft/Edge/User Data',
+    ]
+    best_url, best_time = None, 0
+    title_match_url = None
+    title_hint = window_title.replace(' - YouTube', '').replace(' - Brave', '').strip()
+    title_hint = title_hint[:20].lower() if title_hint else ''
+    for base in profiles:
+        if not base.exists():
+            continue
+        for hist_path in base.glob('*/History'):
+            tmp = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmpf:
+                    tmp = Path(tmpf.name)
+                shutil.copy2(hist_path, tmp)
+                with sqlite3.connect(tmp) as con:
+                    rows = con.execute(
+                        "SELECT url, title, last_visit_time FROM urls "
+                        "WHERE url LIKE '%youtube.com/watch%' "
+                        "ORDER BY last_visit_time DESC LIMIT 20"
+                    ).fetchall()
+                for url, title, ts in rows:
+                    if ts > best_time:
+                        best_url, best_time = url, ts
+                    if title_hint and title and title_hint in title.lower() and not title_match_url:
+                        title_match_url = url
+            except Exception:
+                pass
+            finally:
+                if tmp is not None:
+                    tmp.unlink(missing_ok=True)
+    result = title_match_url or best_url
+    print(f'[_get_url_from_history] title_hint={title_hint!r} match={title_match_url!r} best={best_url!r}', flush=True)
+    return result
+def _get_current_url() -> str | None:
+    import pyautogui
+    import pyperclip
+    import ctypes
+    import win32process
+    import psutil
+    BROWSER_PROCESSES = ['brave.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe', 'opera.exe']
+    user32 = ctypes.windll.user32
+    browser_win = None
+    for w in gw.getAllWindows():
+        if not w.visible or not w.title or w.width <= 0:
+            continue
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(w._hWnd)
+            pname = psutil.Process(pid).name().lower()
+            if pname in BROWSER_PROCESSES:
+                browser_win = w
+                break
+        except Exception:
+            continue
+    if not browser_win:
+        print('[_get_current_url] no browser found', flush=True)
+        return None
+    hwnd = browser_win._hWnd
+    old_clip = ''
+    try:
+        old_clip = pyperclip.paste()
+    except Exception:
+        pass
+    try:
+        import win32process
+        import win32api
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)
+        cur_tid = win32api.GetCurrentThreadId()
+        fg_hwnd = user32.GetForegroundWindow()
+        fg_tid, _ = win32process.GetWindowThreadProcessId(fg_hwnd)
+        if fg_tid != cur_tid:
+            user32.AttachThreadInput(fg_tid, cur_tid, True)
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+        if fg_tid != cur_tid:
+            user32.AttachThreadInput(fg_tid, cur_tid, False)
+        time.sleep(0.5)
+        actual_fg = user32.GetForegroundWindow()
+        print(f'[_get_current_url] hwnd={hwnd} actual_fg={actual_fg} match={actual_fg==hwnd}', flush=True)
+        mon_w = user32.GetSystemMetrics(0)
+        mon_h = user32.GetSystemMetrics(1)
+        is_fullscreen = (browser_win.width >= mon_w and browser_win.height >= mon_h)
+        VK_CONTROL = 0x11
+        VK_L = 0x4C
+        VK_C = 0x43
+        VK_D = 0x44
+        VK_ESCAPE = 0x1B
+        KEYEVENTF_KEYUP = 2
+        def _ctrl_key(vk):
+            user32.keybd_event(VK_CONTROL, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(vk, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+            time.sleep(0.05)
+            user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+        if is_fullscreen:
+            import win32gui as _wg
+            user32.keybd_event(0x7A, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(0x7A, 0, 2, 0)
+            for _ in range(30):
+                left, top, right, bottom = _wg.GetWindowRect(hwnd)
+                if top > 0:
+                    break
+                time.sleep(0.1)
+            print(f'[_get_current_url] after F11: left={left} top={top}', flush=True)
+            user32.SetForegroundWindow(hwnd)
+            user32.BringWindowToTop(hwnd)
+            time.sleep(0.3)
+            click_x = (left + right) // 2
+            click_y = top + 70
+            pyautogui.click(click_x, click_y)
+            time.sleep(0.4)
+        pyperclip.copy('')
+        time.sleep(0.2)
+        _ctrl_key(VK_L)
+        time.sleep(0.5)
+        _ctrl_key(VK_C)
+        time.sleep(0.3)
+        url = pyperclip.paste().strip()
+        print(f'[_get_current_url] ctrl+l got: {url!r}', flush=True)
+        if not url.startswith('http'):
+            pyperclip.copy('')
+            VK_MENU = 0x12
+            user32.keybd_event(VK_MENU, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(VK_D, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(VK_D, 0, KEYEVENTF_KEYUP, 0)
+            time.sleep(0.05)
+            user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+            time.sleep(0.5)
+            _ctrl_key(VK_C)
+            time.sleep(0.3)
+            url = pyperclip.paste().strip()
+            print(f'[_get_current_url] alt+d got: {url!r}', flush=True)
+        user32.keybd_event(VK_ESCAPE, 0, 0, 0)
+        time.sleep(0.05)
+        user32.keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0)
+        time.sleep(0.1)
+        if is_fullscreen:
+            user32.keybd_event(0x7A, 0, 0, 0)
+            time.sleep(0.05)
+            user32.keybd_event(0x7A, 0, 2, 0)
+            time.sleep(0.3)
+        print(f'[_get_current_url] got: {url!r}', flush=True)
+        if url.startswith('http'):
+            return url
+    except Exception as e:
+        print(f'[_get_current_url] error: {e}', flush=True)
+    finally:
+        try:
+            if old_clip:
+                pyperclip.copy(old_clip)
+        except Exception:
+            pass
+    return None
+def _open_youtube_url(url: str):
+    import subprocess
+    from pathlib import Path
+    brave_paths = [
+        Path(r'C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe'),
+        Path(r'C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe'),
+        Path.home() / r'AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe',
+    ]
+    brave_exe = next((str(p) for p in brave_paths if p.exists()), None)
+    if brave_exe:
+        subprocess.Popen([brave_exe, '--new-tab', url])
+    else:
+        import webbrowser
+        webbrowser.open(url)
+    return True
+def open_youtube_channel(channel_name: str):
+    import webbrowser
+    import yt_dlp
+    opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'noplaylist': True}
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f'ytsearch:{channel_name}', download=False)
+            if info and info.get('entries'):
+                entry = info['entries'][0]
+                channel_url = entry.get('channel_url') or entry.get('uploader_url')
+                if channel_url:
+                    _open_youtube_url(channel_url)
+                    return (True, 'OK')
+    except Exception as e:
+        pass
+    _open_youtube_url(f'https://www.youtube.com/results?search_query={channel_name}&sp=EgIQAg%253D%253D')
+    return (True, 'OK')
+def download_youtube_video():
+    import pyperclip
+    import yt_dlp
+    url = _get_current_url()
+    if not url or ('youtube.com' not in url and 'youtu.be' not in url):
+        url = pyperclip.paste() or ''
+        if 'youtube.com' not in url and 'youtu.be' not in url:
+            return (False, 'Не удалось найти ссылку на видео')
+    import re as _re
+    url = _re.sub(r'[&?]list=[^&]*', '', url)
+    url = _re.sub(r'[&?]start_radio=[^&]*', '', url)
+    url = _re.sub(r'[&?]index=[^&]*', '', url)
+    save_path = os.path.join(os.path.expanduser('~'), 'Downloads')
+    opts = {
+        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
+        'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+        return (True, 'OK')
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        msg = str(e)
+        if 'HTTP Error 403' in msg:
+            return (False, 'Доступ запрещён, видео защищено')
+        if 'HTTP Error 429' in msg:
+            return (False, 'YouTube заблокировал запрос, попробуй позже')
+        if 'not a valid URL' in msg:
+            return (False, 'Не удалось получить ссылку на видео')
+        return (False, 'Ошибка скачивания')
+def control_youtube(action: str, amount: int=5):
+    import pyautogui
+    wins = [w for w in gw.getWindowsWithTitle('YouTube') if w.visible]
+    if not wins:
+        browser_keywords = ['brave', 'chrome', 'edge', 'opera', 'yandex']
+        wins = [w for w in gw.getAllWindows() if w.visible and any(k in w.title.lower() for k in browser_keywords)]
+    if not wins:
+        return False
+    hwnd = wins[0]._hWnd
+    import win32gui
+    if win32gui.IsIconic(hwnd):
+        win32gui.ShowWindow(hwnd, 9)
+    force_foreground(hwnd)
+    time.sleep(0.2)
+    if action == 'fullscreen':
+        hkl = _ensure_en_layout()
+        send_hardware_key(70)
+        _restore_layout(hkl)
+    elif action == 'play_pause':
+        send_hardware_key(32)
+    elif action == 'forward':
+        for _ in range(max(1, amount // 5)):
+            send_hardware_key(win32con.VK_RIGHT)
+            time.sleep(0.01)
+    elif action == 'backward':
+        for _ in range(max(1, amount // 5)):
+            send_hardware_key(win32con.VK_LEFT)
+            time.sleep(0.01)
+    elif action == 'next_video':
+        from actions.windows import send_hotkey_hardware
+        hkl = _ensure_en_layout()
+        send_hotkey_hardware(0x10, 0x4E)
+        _restore_layout(hkl)
+    elif action == 'prev_video':
+        from actions.windows import send_hotkey_hardware
+        hkl = _ensure_en_layout()
+        send_hotkey_hardware(0x10, 0x50)
+        _restore_layout(hkl)
+    elif action == 'close':
+        pyautogui.hotkey('ctrl', 'w')
+    return True
+def save_current_video():
+    from config_pack.config import MAX_SAVED_VIDEOS
+    import ctypes as _ctypes
+    import win32process as _w32p
+    import psutil as _psutil
+    _BROWSER_PROCS = {'brave.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe'}
+    _user32 = _ctypes.windll.user32
+    _mon_w = _user32.GetSystemMetrics(0)
+    _mon_h = _user32.GetSystemMetrics(1)
+    _browser_title = ''
+    _is_fs = False
+    _is_pwa = False
+    for _w in gw.getAllWindows():
+        if not _w.visible or not _w.title or _w.width <= 0:
+            continue
+        try:
+            _, _pid = _w32p.GetWindowThreadProcessId(_w._hWnd)
+            _pname = _psutil.Process(_pid).name().lower()
+            if _pname not in _BROWSER_PROCS:
+                continue
+            _title_lower = _w.title.lower()
+            _is_pwa_win = ('youtube' not in _title_lower and
+                           'brave' not in _title_lower and
+                           'chrome' not in _title_lower and
+                           _w.width < _mon_w)
+            _is_fs_win = (_w.width >= _mon_w and _w.height >= _mon_h)
+            if _is_fs_win or _is_pwa_win:
+                _browser_title = _w.title
+                _is_fs = _is_fs_win
+                _is_pwa = _is_pwa_win
+                break
+            if not _browser_title:
+                _browser_title = _w.title
+        except Exception:
+            pass
+    if _is_fs or _is_pwa:
+        url = _get_url_from_history(_browser_title)
+    else:
+        url = _get_current_url()
+        if not url:
+            url = _get_url_from_history(_browser_title)
+    print(f'[save_current_video] url={url!r}', flush=True)
+    if not url or ('youtube.com' not in url and 'youtu.be' not in url):
+        return False
+    import re as _re2
+    url = _re2.sub(r'[&?](list|index|start_radio|rv|pp)=[^&]*', '', url).rstrip('?&')
+    save_path = os.path.join(os.path.expanduser('~'), 'Jarvis_YT_Saved.txt')
+    lines = []
+    if os.path.exists(save_path):
+        with open(save_path, 'r', encoding='utf-8') as f:
+            lines = [l for l in f.read().splitlines() if l.strip()]
+    for line in lines:
+        if ' - ' in line and line.split(' - ', 1)[1].strip() == url:
+            return True
+    lines.append(f'{time.strftime("%Y-%m-%d %H:%M:%S")} - {url}')
+    try:
+        from config_pack.config import _read_max_saved_videos
+        _limit = _read_max_saved_videos()
+    except Exception:
+        _limit = MAX_SAVED_VIDEOS
+    lines = lines[-_limit:]
+    with open(save_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
+    return True
+def open_last_watched_video() -> bool:
+    import webbrowser, sqlite3, shutil, tempfile, glob
+    from pathlib import Path
+    profiles = [Path.home() / 'AppData/Local/BraveSoftware/Brave-Browser/User Data', Path.home() / 'AppData/Local/Google/Chrome/User Data', Path.home() / 'AppData/Local/Microsoft/Edge/User Data']
+    candidates: list[Path] = []
+    for base in profiles:
+        candidates += base.glob('*/History') if base.exists() else []
+    best_url: str | None = None
+    best_time: int = 0
+    for hist_path in candidates:
+        tmp = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmpf:
+                tmp = Path(tmpf.name)
+            shutil.copy2(hist_path, tmp)
+            with sqlite3.connect(tmp) as con:
+                row = con.execute("SELECT url, last_visit_time FROM urls WHERE url LIKE '%youtube.com/watch%' ORDER BY last_visit_time DESC LIMIT 1").fetchone()
+            if row and row[1] > best_time:
+                best_url, best_time = (row[0], row[1])
+        except Exception:
+            pass
+        finally:
+            if tmp is not None:
+                tmp.unlink(missing_ok=True)
+    if best_url:
+        _open_youtube_url(best_url)
+        return True
+    _open_youtube_url('https://www.youtube.com/feed/history')
+    return True
+def open_saved_video(index: int = -1):
+    save_path = os.path.join(os.path.expanduser('~'), 'Jarvis_YT_Saved.txt')
+    print(f'[open_saved_video] index={index}, path={save_path}', flush=True)
+    if not os.path.exists(save_path):
+        return False
+    with open(save_path, 'r', encoding='utf-8') as f:
+        lines = [l.strip() for l in f.read().splitlines() if l.strip() and ' - ' in l]
+    if not lines:
+        return False
+    if index <= 0:
+        index = 1
+    idx = len(lines) - index
+    if idx < 0 or idx >= len(lines):
+        return False
+    line = lines[idx]
+    url = line.split(' - ', 1)[1].strip()
+    _open_youtube_url(url)
+    return True
