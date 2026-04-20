@@ -6,8 +6,13 @@ import subprocess
 from rapidfuzz import fuzz
 from core.system import get_active_explorer_path
 USER_HOME = os.path.expanduser('~')
-SYSTEM_FOLDERS = {'загрузки': os.path.join(USER_HOME, 'Downloads'), 'downloads': os.path.join(USER_HOME, 'Downloads'), 'скачанное': os.path.join(USER_HOME, 'Downloads'), 'видео': os.path.join(USER_HOME, 'Videos'), 'videos': os.path.join(USER_HOME, 'Videos'), 'фото': os.path.join(USER_HOME, 'Pictures'), 'фотографии': os.path.join(USER_HOME, 'Pictures'), 'картинки': os.path.join(USER_HOME, 'Pictures'), 'изображения': os.path.join(USER_HOME, 'Pictures'), 'pictures': os.path.join(USER_HOME, 'Pictures'), 'музыка': os.path.join(USER_HOME, 'Music'), 'music': os.path.join(USER_HOME, 'Music'), 'документы': os.path.join(USER_HOME, 'Documents'), 'documents': os.path.join(USER_HOME, 'Documents'), 'рабочий стол': os.path.join(USER_HOME, 'Desktop'), 'desktop': os.path.join(USER_HOME, 'Desktop'), 'корзина': 'shell:RecycleBinFolder', 'корзину': 'shell:RecycleBinFolder', 'назад': '..', 'наверх': '..'}
+SYSTEM_FOLDERS = {'загрузки': os.path.join(USER_HOME, 'Downloads'), 'downloads': os.path.join(USER_HOME, 'Downloads'), 'скачанное': os.path.join(USER_HOME, 'Downloads'), 'видео': os.path.join(USER_HOME, 'Videos'), 'videos': os.path.join(USER_HOME, 'Videos'), 'фото': os.path.join(USER_HOME, 'Pictures'), 'фотографии': os.path.join(USER_HOME, 'Pictures'), 'картинки': os.path.join(USER_HOME, 'Pictures'), 'изображения': os.path.join(USER_HOME, 'Pictures'), 'pictures': os.path.join(USER_HOME, 'Pictures'), 'музыка': os.path.join(USER_HOME, 'Music'), 'music': os.path.join(USER_HOME, 'Music'), 'документы': os.path.join(USER_HOME, 'Documents'), 'documents': os.path.join(USER_HOME, 'Documents'), 'рабочий стол': os.path.join(USER_HOME, 'Desktop'), 'desktop': os.path.join(USER_HOME, 'Desktop'), 'корзина': 'shell:RecycleBinFolder', 'корзину': 'shell:RecycleBinFolder', 'назад': '..', 'наверх': '..', '..': '..', 'выйди': '..', 'выше': '..'}
 def open_in_explorer(path: str) -> bool:
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+    except Exception:
+        pass
     try:
         hwnd_fg = win32gui.GetForegroundWindow()
         shell = win32com.client.Dispatch('Shell.Application')
@@ -20,6 +25,12 @@ def open_in_explorer(path: str) -> bool:
                 continue
     except Exception:
         pass
+    finally:
+        try:
+            import pythoncom
+            pythoncom.CoUninitialize()
+        except Exception:
+            pass
     try:
         subprocess.Popen(['explorer', path])
         return True

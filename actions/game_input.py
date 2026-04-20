@@ -21,21 +21,28 @@ _last_cast: dict[str, float] = {}
 def get_binding(name: str, default: str = '') -> str:
     return _bindings.get(name, default)
 def cruise_set_speed(target_kmh: int, current_kmh: float) -> tuple[bool, int]:
+    from actions.ets2_telemetry import get_cruise_active
+    active = get_cruise_active()
+    
+    if active is False:
+        press_robust(get_binding('cruise', 'c'))
+        time.sleep(0.1)
+
     current_snapped = round(current_kmh / 5.0) * 5.0
     target_snapped  = round(target_kmh  / 5.0) * 5.0
     diff    = int(target_snapped - current_snapped)
     presses = abs(diff) // 5
+
     if presses == 0:
         return (True, int(target_snapped))
+
     key_name = 'cruise_up' if diff > 0 else 'cruise_down'
     key = get_binding(key_name, 'add' if diff > 0 else 'subtract')
     try:
-        import pydirectinput as _pdi
-        _pdi.PAUSE = 0
         for i in range(presses):
-            _pdi.press(key)
+            press_robust(key)
             if presses > 1:
-                time.sleep(0.07)
+                time.sleep(0.04)
         return (True, int(target_snapped))
     except Exception:
         return (False, int(target_snapped))
@@ -58,7 +65,7 @@ def set_gear(target: int, current: int) -> tuple[bool, int]:
     key = up_key if target > current else down_key
     try:
         for _ in range(steps):
-            _input.press(key)
+            press_robust(key)
             time.sleep(0.06)
         return (True, target)
     except Exception:
@@ -209,7 +216,7 @@ def match_command(text: str, threshold: float=0.75) -> tuple[dict, float] | None
         return (best_entry, best_score)
     return None
 def _switch_panel(target: int):
-    _input.press(f'f{target}')
+    press_robust(f'f{target}', duration=0.1)
     time.sleep(0.05)
 def _execute_sequence(steps: list[dict]):
     for step in steps:
@@ -221,7 +228,7 @@ def _execute_sequence(steps: list[dict]):
                 time.sleep(step['hold'])
                 _input.keyUp(step['key'])
             else:
-                _input.press(step['key'])
+                press_robust(step['key'])
             time.sleep(0.05)
         elif 'keys' in step:
             ks = step['keys']
@@ -296,7 +303,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
             if target == 0:
                 max_tries = 3
                 while _get_w_on() is True and max_tries > 0:
-                    _input.press(key or 'p')
+                    press_robust(key or 'p')
                     time.sleep(0.15)
                     max_tries -= 1
                 _wiper_state = 0
@@ -305,7 +312,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
                 wiper_key = key or 'p'
                 for i in range(presses):
                     if i > 0: time.sleep(0.12)
-                    _input.press(wiper_key)
+                    press_robust(wiper_key)
                 _wiper_state = target
         if lights_target:
             if wiper_target is not None:
@@ -319,7 +326,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
             if lights_target == 'low_on':
                 if get_lights_low() is not True:
                     for _ in range(4):
-                        _input.press('l')
+                        press_robust('l')
                         time.sleep(0.14)
                         if get_lights_low() is True:
                             break
@@ -328,27 +335,27 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
                 if lights_target_raw == 'low_adaptive' and _is_lights_recommended():
                     time.sleep(0.18)
                     if get_lights_low() is True and get_lights_high() is not True:
-                        _input.press('k')
+                        press_robust('k')
             elif lights_target == 'parking_on':
                 if not p_on:
-                    _input.press('l')
+                    press_robust('l')
                 elif l_on:
-                    _input.press('l')
+                    press_robust('l')
                     time.sleep(0.1)
-                    _input.press('l')
+                    press_robust('l')
             elif lights_target == 'off':
                 if l_on:
-                    _input.press('l')
+                    press_robust('l')
                 elif p_on:
-                    _input.press('l')
+                    press_robust('l')
                     time.sleep(0.1)
-                    _input.press('l')
+                    press_robust('l')
             elif lights_target == 'high_on':
                 if not h_on:
-                    _input.press('k')
+                    press_robust('k')
             elif lights_target == 'high_off':
                 if h_on:
-                    _input.press('k')
+                    press_robust('k')
         if response:
             threading.Thread(target=_speak_response, args=(response,), daemon=True).start()
         if not (key or keys or mouse or sequence):
@@ -379,7 +386,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
                 time.sleep(0.05)
             _input.keyUp(keys[0])
         else:
-            _input.press(key)
+            press_robust(key)
         return (True, name)
     except Exception as e:
         return (False, '')
@@ -417,7 +424,7 @@ def execute_by_name(name: str) -> bool:
                 time.sleep(0.05)
             _input.keyUp(keys[0])
         else:
-            _input.press(key)
+            press_robust(key)
         return True
     except Exception as e:
         return False

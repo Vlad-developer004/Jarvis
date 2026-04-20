@@ -19,6 +19,14 @@ _FOLDER_QUERY_ALIASES: dict[str, str] = {
     'десктоп': 'desktop',
     'десктопе': 'desktop',
 }
+_PHONETIC_ALIASES = {
+    'аусбил': 'ausbil',
+    'аутбил': 'ausbil',
+    'аутбри': 'ausbil',
+    'сбилд': 'ausbil',
+    'аусбиль': 'ausbil',
+    'аутбиль': 'ausbil',
+}
 def _fold(s: str) -> str:
     return (s or '').strip().casefold()
 _CYR_TO_LAT = {
@@ -45,7 +53,7 @@ def _translit_lat_to_cyr_simple(s: str) -> str:
 def normalize_folder_voice_query(name: str) -> str:
     s = _fold((name or '').strip())
     return _FOLDER_QUERY_ALIASES.get(s, (name or '').strip())
-def _name_variants(s: str) -> list[str]:
+def get_name_variants(s: str) -> list[str]:
     s0 = _fold(s)
     if not s0:
         return []
@@ -53,18 +61,55 @@ def _name_variants(s: str) -> list[str]:
     v.add(_translit_cyr_to_lat(s0))
     v.add(_translit_lat_to_cyr_simple(s0))
     v.add(s0.replace('дж', 'j').replace('ж', 'zh'))
+    
+    # Common English-Russian technical homophones
+    if s0 == 'спич': v.add('speech')
+    if s0 == 'speech': v.add('спич')
+
+    # Phonetic normalization for Slavic 'i' variations
+    # 1. Normalize 'slavic' letters (i/y variants) to Russian 'и'
+    s_norm = s0.replace('і', 'и').replace('ы', 'и')
+    if s_norm != s0:
+        v.add(s_norm)
+        v.add(_translit_cyr_to_lat(s_norm))
+        
+    # 2. Try the reverse (normalizing towards 'i' lattice for Ukrainian/English)
+    s_norm_i = s0.replace('и', 'і').replace('ы', 'і')
+    if s_norm_i != s0:
+        v.add(s_norm_i)
+        v.add(_translit_cyr_to_lat(s_norm_i))
+
+    # 3. Explicit coverage for 'и' -> 'i' (English-style phonetic)
+    s_norm_en = s0.replace('и', 'i').replace('ы', 'i').replace('і', 'i')
+    if s_norm_en != s0:
+        v.add(s_norm_en)
+
+    # Cross-language phonetic normalization
+    for k, p in _PHONETIC_ALIASES.items():
+        if k in s0:
+            v.add(s0.replace(k, p))
+            v.add(_translit_cyr_to_lat(s0.replace(k, p)))
+
     alias = _fold(normalize_folder_voice_query(s))
     if alias and alias != s0:
         v.add(_fold(alias))
         v.add(_translit_cyr_to_lat(_fold(alias)))
     return [x for x in v if x]
-def _folder_match_score(q: str, e: str) -> int:
-    return max(
+def calculate_match_score(q: str, e: str) -> int:
+    score = max(
         fuzz.token_set_ratio(q, e),
         fuzz.partial_ratio(q, e),
         fuzz.ratio(q, e),
         int(fuzz.WRatio(q, e)),
     )
+    # Penalize substring length mismatches
+    q_len = len(q)
+    e_len = len(e)
+    if q_len > 0 and e_len > 0:
+        ratio = min(q_len, e_len) / max(q_len, e_len)
+        if ratio < 0.8:
+            score = int(score * (ratio ** 0.5))
+    return int(score)
 def folder_search_roots_and_depth(base_ctx: str) -> tuple[list[str], int]:
     try:
         base = Path(base_ctx).resolve()
@@ -73,8 +118,13 @@ def folder_search_roots_and_depth(base_ctx: str) -> tuple[list[str], int]:
     if base.is_file():
         base = base.parent
     if not base.exists():
-        base = Path(USER_HOME) / "Desktop"
-    return ([str(base)], 24)
+        from core.system.windows import get_known_folder_path
+        dk = get_known_folder_path('desktop')
+        if dk:
+            base = Path(dk)
+        else:
+            base = Path(USER_HOME) / "Desktop"
+    return ([str(base)], 5)
 def _depth_limited_walk(root: str, max_depth: int):
     root = os.path.abspath(root)
     base_depth = root.rstrip(os.sep).count(os.sep)
@@ -83,11 +133,13 @@ def _depth_limited_walk(root: str, max_depth: int):
         if depth >= max_depth:
             dirs[:] = []
         else:
-            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d.lower() not in (
+                'dist', 'build', 'node_modules', 'venv', '.venv', '__pycache__', 'out', 'bin', 'obj'
+            )]
         yield cur, dirs
 def _find_folder_anywhere(start_dirs: list[str], name: str, max_depth: int = 4) -> Path | None:
     name = normalize_folder_voice_query(name)
-    query_vars = _name_variants(name)
+    query_vars = get_name_variants(name)
     if not query_vars:
         return None
     best: tuple[int, str] | None = None
@@ -98,23 +150,23 @@ def _find_folder_anywhere(start_dirs: list[str], name: str, max_depth: int = 4) 
             for entry in Path(root).iterdir():
                 if not entry.is_dir():
                     continue
-                ev = _name_variants(entry.name)
+                ev = get_name_variants(entry.name)
                 if any(q == e for q in query_vars for e in ev):
                     return entry
         except Exception:
             pass
         for cur, dirs in _depth_limited_walk(root, max_depth=max_depth):
             for d in dirs:
-                dv = _name_variants(d)
+                dv = get_name_variants(d)
                 score = 0
                 for q in query_vars:
                     for e in dv:
-                        s = _folder_match_score(q, e)
+                        s = calculate_match_score(q, e)
                         if s > score:
                             score = s
-                if score >= 88:
+                if score >= 90:
                     return Path(cur) / d
-                if score >= 74:
+                if score >= 85:
                     full = str(Path(cur) / d)
                     if best is None or score > best[0]:
                         best = (score, full)
@@ -206,7 +258,7 @@ def _find_subdir_ci_or_fuzzy(base_dir: str, name: str, fuzzy_threshold: int=80) 
     name = normalize_folder_voice_query((name or "").strip())
     if not name:
         return None
-    query_vars = _name_variants(name)
+    query_vars = get_name_variants(name)
     if not query_vars:
         return None
     base = Path(base_dir)
@@ -214,18 +266,16 @@ def _find_subdir_ci_or_fuzzy(base_dir: str, name: str, fuzzy_threshold: int=80) 
     for entry in _list_subdirs(base):
         if entry.name.casefold() == name.casefold():
             return entry
-        ev = _name_variants(entry.name)
+        ev = get_name_variants(entry.name)
         if any(q == e for q in query_vars for e in ev):
             return entry
         score = 0
         for q in query_vars:
             for e in ev:
-                s = _folder_match_score(q, e)
+                s = calculate_match_score(q, e)
                 if s > score:
                     score = s
-        if score >= 72 and (best is None or score > best[0]):
-            best = (score, entry)
-    if best is not None and best[0] >= fuzzy_threshold:
+    if best is not None and best[0] >= 82:
         return best[1]
     names = [p.name for p in _list_subdirs(base)]
     if not names:
@@ -272,7 +322,23 @@ def resolve_folder_for_hint(folder_hint: str | None, base_ctx: str) -> tuple[Pat
             return (sub.resolve(), None)
     except Exception:
         pass
+    # Strictly forward search unless permitted in settings
+    try:
+        import json, os
+        settings_path = os.path.join('data', 'jarvis_settings.json')
+        if os.path.exists(settings_path):
+            with open(settings_path, encoding='utf-8') as f:
+                allow_parent = json.load(f).get('allow_parent_search', False)
+        else:
+            allow_parent = False
+    except Exception:
+        allow_parent = False
+        
     roots, max_dep = folder_search_roots_and_depth(str(base_ctx))
+    if not allow_parent:
+        # Filter roots to only include the base itself for searching deeper
+        roots = [str(base)] 
+
     found = _find_folder_anywhere(roots, hint, max_depth=max_dep)
     if found is not None and found.is_dir():
         return (found.resolve(), None)

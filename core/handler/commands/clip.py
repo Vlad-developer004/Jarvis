@@ -6,7 +6,20 @@ def handle_clip(handler, cmd, text_lower, amount):
     if cmd == 'clip_copy':
         if clipboard_copy(): handler.play_response()
     elif cmd == 'clip_paste':
-        if clipboard_paste(): handler.play_response()
+        query = text_lower
+        for kw in ['вставь это', 'вставь', 'вставить', 'ставь']:
+            if query.startswith(kw):
+                query = query[len(kw):].strip()
+                break
+        if query and query not in ('это', ''):
+            from actions.system_parts.files_paste import find_and_paste_file
+            ok, res = find_and_paste_file(target_filename=query)
+            if ok:
+                handler.play_response()
+            else:
+                handler.speak(res)
+        else:
+            if clipboard_paste(): handler.play_response()
     elif cmd == 'clip_cut':
         if clipboard_cut(): handler.play_response()
     elif cmd == 'clip_history':

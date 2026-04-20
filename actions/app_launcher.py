@@ -175,7 +175,7 @@ APPS = {
         ]
     }
 }
-SYSTEM_WHITELIST = ['program manager', 'settings', 'параметры', 'jarvis', 'explorer', 'проводник', 'taskbar', 'панель задач', 'windows input', 'text input', 'nvidia', 'realtek', 'discord', 'brave', 'youtube']
+SYSTEM_WHITELIST = ['program manager', 'settings', 'параметры', 'jarvis', 'j.a.r.v.i.s.', 'hud', 'explorer', 'проводник', 'taskbar', 'панель задач', 'windows input', 'text input', 'nvidia', 'realtek', 'discord', 'brave', 'youtube']
 def _focus_and_maximize(title_keywords: list[str], timeout: float=3.0):
     end = time.time() + timeout
     while time.time() < end:

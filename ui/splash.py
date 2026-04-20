@@ -26,7 +26,7 @@ class SplashScreen:
         self._arc_canvas = tk.Canvas(inner, bg=_BG, width=80, height=80, highlightthickness=0)
         self._arc_canvas.pack(pady=(20, 0))
         tk.Label(inner, text='J.A.R.V.I.S.', bg=_BG, fg=_CYAN, font=(_FONT, 22, 'bold')).pack(pady=(4, 0))
-        tk.Label(inner, text='СИСТЕМА ИНИЦИАЛИЗАЦИИ v1.4', bg=_BG, fg=_DIM, font=(_FONT, 8)).pack()
+        tk.Label(inner, text='СИСТЕМА ИНИЦИАЛИЗАЦИИ v1.5', bg=_BG, fg=_DIM, font=(_FONT, 8)).pack()
         tk.Frame(inner, bg=_CYAN, height=1).pack(fill='x', padx=30, pady=8)
         self._msg_var = tk.StringVar(value='Запуск...')
         tk.Label(inner, textvariable=self._msg_var, bg=_BG, fg=_TEXT, font=(_FONT, 9)).pack()

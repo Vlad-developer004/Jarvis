@@ -16,8 +16,8 @@ def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
     _set_dark_title_bar(dlg)
     dlg.after(100, lambda: _set_dark_title_bar(dlg))
     sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
-    W, H = hud._px(540), hud._px(180)
-    dlg.geometry(f'{W}x{H}+{(sw - W) // 2}+{(sh - H) // 2}')
+    W, H = 540, 180
+    dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw - int(W*hud.zoom_factor)) // 2}+{(sh - int(H*hud.zoom_factor)) // 2}')
     dlg.resizable(False, False)
     tk.Frame(dlg, bg=_RED if danger else _CYAN, height=2).pack(fill='x', side='top')
     body = tk.Frame(dlg, bg=_BG)
@@ -33,21 +33,23 @@ def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
         dlg.destroy()
         ok_cb()
     ctk.CTkButton(
-        btn_row, text='ПОДТВЕРДИТЬ', width=hud._px(160), height=hud._px(40),
-        font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
+        btn_row, text='ПОДТВЕРДИТЬ', width=160, height=40,
+        font=(hud._F, _sf(10), 'bold'),
         fg_color=_blend(_RED if danger else _CYAN, 0.25),
         hover_color=_blend(_RED if danger else _CYAN, 0.45),
         text_color=_RED if danger else _CYAN,
         command=_ok
     ).pack(side='left', padx=10)
     ctk.CTkButton(
-        btn_row, text='ОТМЕНА', width=hud._px(120), height=hud._px(40),
-        font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
+        btn_row, text='ОТМЕНА', width=120, height=40,
+        font=(hud._F, _sf(10), 'bold'),
         fg_color=_blend(_WHITE, 0.08),
         command=dlg.destroy
     ).pack(side='left', padx=10)
 def _sf(n, zoom=1.0):
-    return max(8, int((n + 6) * zoom))
+    # Cap the scaling curve for extremely high zoom levels to prevent layout explosion
+    effective_zoom = zoom if zoom <= 1.8 else 1.8 + (zoom - 1.8) * 0.4
+    return max(8, int((n + 6) * effective_zoom))
 def _bind_text_clipboard(win: tk.Toplevel, txt) -> None:
     inner = getattr(txt, '_textbox', txt)
     def _paste(_evt=None):
@@ -102,9 +104,9 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
     except Exception:
         pass
     sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
-    W = int(min(hud._px(720), sw * 0.85))
-    H = int(min(hud._px(620), sh * 0.85))
-    dlg.geometry(f'{W}x{H}+{(sw - W) // 2}+{(sh - H) // 2}')
+    W = int(min(720, sw * 0.85 / hud.zoom_factor))
+    H = int(min(620, sh * 0.85 / hud.zoom_factor))
+    dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw - int(W*hud.zoom_factor)) // 2}+{(sh - int(H*hud.zoom_factor)) // 2}')
     dlg.minsize(520, 440)
     _card_bg = '#080b14'
     _field_border = _blend(_CYAN, 0.35)
@@ -127,8 +129,8 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
         ).grid(row=row, column=0, sticky='e', padx=(0, 8), pady=4)
         ent = ctk.CTkEntry(
             parent,
-            height=hud._px(44),
-            font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
+            height=44,
+            font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_CYAN, 0.08),
             border_color=_field_border,
             border_width=1,
@@ -147,7 +149,7 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
              font=(hud._F, _sf(10, hud.zoom_factor), 'bold')).pack(anchor='w', pady=(0, 6))
     compose_txt = ctk.CTkTextbox(
         body_fr,
-        font=(hud._F, _sf(11, hud.zoom_factor)),
+        font=(hud._F, _sf(11)),
         fg_color=_card_bg,
         text_color=_TEXT,
         border_color=_blend(_GREEN, 0.5),
@@ -186,8 +188,8 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
             tk.Label(row, text=p.name, bg=_card_bg, fg=_TEXT,
                      font=(hud._F, _sf(9, hud.zoom_factor)), anchor='w').pack(side='left', fill='x', expand=True)
             ctk.CTkButton(
-                row, text='✕', width=hud._px(36), height=hud._px(32),
-                font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
+                row, text='✕', width=36, height=32,
+                font=(hud._F, _sf(10), 'bold'),
                 fg_color=_blend(_RED, 0.12), hover_color=_blend(_RED, 0.3), text_color=_RED,
                 command=lambda path=p: _rm_comp_attach(path),
             ).pack(side='right')
@@ -223,14 +225,14 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
     tool = tk.Frame(dlg, bg=_BG)
     tool.pack(fill='x', padx=14, pady=(8, 4))
     bt_kw = {
-        'font': (hud._F, _sf(10, hud.zoom_factor), 'bold'),
-        'height': hud._px(44),
+        'font': (hud._F, _sf(10), 'bold'),
+        'height': 44,
         'fg_color': _blend(_CYAN, 0.12),
         'hover_color': _blend(_CYAN, 0.24),
     }
-    ctk.CTkButton(tool, text='Файл…', width=hud._px(88), command=_comp_pick_files, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Фото…', width=hud._px(88), command=_comp_pick_images, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Видео…', width=hud._px(88), command=_comp_pick_videos, **bt_kw).pack(side='left', padx=(0, 6))
+    ctk.CTkButton(tool, text='Файл…', width=88, command=_comp_pick_files, **bt_kw).pack(side='left', padx=(0, 6))
+    ctk.CTkButton(tool, text='Фото…', width=88, command=_comp_pick_images, **bt_kw).pack(side='left', padx=(0, 6))
+    ctk.CTkButton(tool, text='Видео…', width=88, command=_comp_pick_videos, **bt_kw).pack(side='left', padx=(0, 6))
     btn_row = tk.Frame(dlg, bg=_BG)
     btn_row.pack(fill='x', padx=14, pady=(12, 20))
     _btn_center = tk.Frame(btn_row, bg=_BG)
@@ -269,14 +271,14 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
             dlg.after(0, _done)
         threading.Thread(target=work, daemon=True).start()
     ctk.CTkButton(
-        _btn_center, text='ОТПРАВИТЬ', width=hud._px(220), height=hud._px(48),
-        font=(hud._F, _sf(12, hud.zoom_factor), 'bold'),
+        _btn_center, text='ОТПРАВИТЬ', width=220, height=48,
+        font=(hud._F, _sf(12), 'bold'),
         fg_color=_blend(_GREEN, 0.25), hover_color=_blend(_GREEN, 0.45), text_color=_GREEN,
         command=_do_compose_send,
     ).pack(side='left', padx=10)
     ctk.CTkButton(
-        _btn_center, text='ОТМЕНА', width=hud._px(160), height=hud._px(48),
-        font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
+        _btn_center, text='ОТМЕНА', width=160, height=48,
+        font=(hud._F, _sf(11), 'bold'),
         fg_color=_blend(_CYAN, 0.12), hover_color=_blend(_CYAN, 0.22),
         command=dlg.destroy,
     ).pack(side='left')
@@ -294,16 +296,14 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     win.after(100, lambda: _set_dark_title_bar(win))
     hud._track_subwin('mail', win, lambda: open_mail_client(hud, reopen=True))
     win.configure(bg=_BG)
+    win.overrideredirect(True)
     try:
         if hasattr(hud, '_ico_path'):
             win.iconbitmap(hud._ico_path)
     except Exception:
         pass
     sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-    W = int(min(hud._px(1100), sw * 0.95))
-    H = int(min(hud._px(700), sh * 0.92))
-    win.geometry(f'{W}x{H}+{(sw - W) // 2}+{(sh - H) // 2}')
-    win.minsize(1000, 600)
+    win.geometry(f'{sw}x{sh}+0+0')
     from actions.mail_client import (
         delete_message_by_uid,
         fetch_message_body,
@@ -319,8 +319,8 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     def _open_compose():
         open_compose_dialog(hud, win, set_status=lambda t, c=_DIM: status.config(text=t, fg=c))
     ctk.CTkButton(
-        top, text='✉  НАПИСАТЬ', width=hud._px(180), height=hud._px(44),
-        font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
+        top, text='✉  НАПИСАТЬ', width=180, height=44,
+        font=(hud._F, _sf(11), 'bold'),
         fg_color=_blend(_GREEN, 0.22), hover_color=_blend(_GREEN, 0.4), text_color=_GREEN,
         command=_open_compose,
     ).pack(side='left', padx=(24, 0))
@@ -330,10 +330,11 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         bg=_BG,
         fg=_DIM,
         font=(hud._F, _sf(9, hud.zoom_factor), 'bold'),
-        wraplength=max(hud._px(520), W - hud._px(120)),
+        wraplength=int(max(500, sw/hud.zoom_factor - 400) * hud.zoom_factor),
         justify='left',
+        anchor='w'
     )
-    status.pack(side='right', fill='x', expand=True, padx=(12, 0))
+    status.pack(side='left', fill='x', expand=True, padx=(20, 0))
     if not cfg:
         tk.Label(
             win,
@@ -348,18 +349,19 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         ctk.CTkButton(
             win,
             text='ЗАКРЫТЬ',
-            width=hud._px(160),
-            font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
+            width=160,
+            font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_CYAN, 0.2),
             command=win.destroy,
         ).pack(pady=20)
         return
     pan = tk.PanedWindow(win, bg=_BG, sashwidth=5, sashrelief='flat', sashpad=2)
-    pan.pack(fill='both', expand=True, padx=10, pady=(0, 10))
-    left = tk.Frame(pan, bg=_BG, width=hud._px(360))
+    pan.pack(fill='both', expand=True, padx=20, pady=(0, 20))
+    # Logical width of the sidebar, PanedWindow scales the frame but width=360 is starting point
+    left = tk.Frame(pan, bg=_BG, width=320)
     right = tk.Frame(pan, bg=_BG)
-    pan.add(left, minsize=hud._px(260))
-    pan.add(right, minsize=hud._px(380))
+    pan.add(left, minsize=int(260 * hud.zoom_factor))
+    pan.add(right, minsize=int(400 * hud.zoom_factor))
     _LB = '#080b14'
     _CARD_IDLE = _blend(_CYAN, 0.08)
     _CARD_HOVER = _blend(_CYAN, 0.16)
@@ -601,9 +603,9 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             ctk.CTkButton(
                 row,
                 text='✕',
-                width=hud._px(28),
-                height=hud._px(24),
-                font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
+                width=28,
+                height=24,
+                font=(hud._F, _sf(11), 'bold'),
                 fg_color=_blend(_RED, 0.12),
                 hover_color=_blend(_RED, 0.3),
                 text_color=_RED,
@@ -663,14 +665,14 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     tool = tk.Frame(reply_card, bg=_BG)
     tool.pack(fill='x', pady=(0, 6))
     bt_kw = {
-        'font': (hud._F, _sf(10, hud.zoom_factor), 'bold'),
-        'height': hud._px(44),
+        'font': (hud._F, _sf(10), 'bold'),
+        'height': 44,
         'fg_color': _blend(_CYAN, 0.12),
         'hover_color': _blend(_CYAN, 0.24),
     }
-    ctk.CTkButton(tool, text='Файл…', width=hud._px(92), command=_pick_files, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Фото…', width=hud._px(92), command=_pick_images, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Видео…', width=hud._px(92), command=_pick_videos, **bt_kw).pack(side='left', padx=(0, 6))
+    ctk.CTkButton(tool, text='Файл…', width=92, command=_pick_files, **bt_kw).pack(side='left', padx=(0, 6))
+    ctk.CTkButton(tool, text='Фото…', width=92, command=_pick_images, **bt_kw).pack(side='left', padx=(0, 6))
+    ctk.CTkButton(tool, text='Видео…', width=92, command=_pick_videos, **bt_kw).pack(side='left', padx=(0, 6))
     attach_wrap.pack(fill='x', pady=(0, 8))
     tk.Label(attach_wrap, text='Вложения', bg=_card_bg, fg=_DIM, font=(hud._F, _sf(10, hud.zoom_factor), 'bold')).pack(anchor='w', padx=8, pady=(6, 2))
     attach_inner.pack(fill='both', padx=8, pady=(0, 8))
@@ -678,9 +680,9 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     reply_wrap.pack(fill='both', expand=True)
     reply_txt = ctk.CTkTextbox(
         reply_wrap,
-        width=max(400, W - hud._px(340)),
-        height=hud._px(160),
-        font=(hud._F, _sf(11, hud.zoom_factor)),
+        width=max(400, W - 340),
+        height=160,
+        font=(hud._F, _sf(11)),
         fg_color=_card_bg,
         text_color=_TEXT,
         border_color=_blend(_GREEN, 0.5),
@@ -706,8 +708,8 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         dlg.grab_set()
         _set_dark_title_bar(dlg)
         dlg.after(80, lambda: _set_dark_title_bar(dlg))
-        dw = hud._px(460)
-        dlg.geometry(f'{dw}x{hud._px(132)}')
+        dw = 460
+        dlg.geometry(f'{int(dw*hud.zoom_factor)}x{int(132*hud.zoom_factor)}')
         dlg.minsize(380, 110)
         tk.Label(
             dlg,
@@ -721,8 +723,8 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         ent = ctk.CTkEntry(
             dlg,
             width=dw - 24,
-            height=hud._px(34),
-            font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
+            height=34,
+            font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_CYAN, 0.08),
             border_color=_blend(_CYAN, 0.35),
         )
@@ -741,16 +743,16 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         ctk.CTkButton(
             row,
             text='ВСТАВИТЬ',
-            width=hud._px(160),
-            height=hud._px(44),
-            font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
+            width=160,
+            height=44,
+            font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_GREEN, 0.25),
             command=_ok,
         ).pack(side='left', padx=(0, 8))
         ctk.CTkButton(row, text='ОТМЕНА', width=hud._px(120), height=hud._px(44), font=(hud._F, _sf(10, hud.zoom_factor)), fg_color=_blend(_CYAN, 0.1), command=_cancel).pack(side='left')
         ent.bind('<Return>', lambda e: _ok())
         ent.focus_set()
-    ctk.CTkButton(tool, text='Ссылка…', width=hud._px(92), command=_add_link_dialog, **bt_kw).pack(side='left', padx=(0, 6))
+    ctk.CTkButton(tool, text='Ссылка…', width=92, command=_add_link_dialog, **bt_kw).pack(side='left', padx=(0, 6))
     _refresh_attach_ui()
     _bind_text_clipboard(win, reply_txt)
     def _body_readonly_key(e):
@@ -876,8 +878,8 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     ctk.CTkButton(
         _btn_reply_center,
         text='ОТПРАВИТЬ ОТВЕТ',
-        width=hud._px(220),
-        height=hud._px(42),
+        width=220,
+        height=42,
         font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
         fg_color=_blend(_GREEN, 0.25),
         hover_color=_blend(_GREEN, 0.45),
@@ -887,8 +889,8 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     ctk.CTkButton(
         _btn_reply_center,
         text='УДАЛИТЬ ПИСЬМО',
-        width=hud._px(200),
-        height=hud._px(42),
+        width=200,
+        height=42,
         font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
         fg_color=_blend(_RED, 0.15),
         hover_color=_blend(_RED, 0.3),
@@ -898,8 +900,8 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     ctk.CTkButton(
         _btn_reply_center,
         text='ОБНОВИТЬ СПИСОК',
-        width=hud._px(200),
-        height=hud._px(42),
+        width=200,
+        height=42,
         font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
         fg_color=_blend(_CYAN, 0.12),
         hover_color=_blend(_CYAN, 0.22),

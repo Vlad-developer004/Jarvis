@@ -15,6 +15,11 @@ try:
     tt_d, tt_b, tt_h = gather("truck_telemetry")
 except Exception:
     tt_d, tt_b, tt_h = [], [], []
+
+anth_d, anth_b, anth_h = gather("anthropic")
+oa_d,   oa_b,   oa_h   = gather("openai")
+gen_d,  gen_b,  gen_h  = gather("google.generativeai")
+sel_d,  sel_b,  sel_h  = gather("selenium")
 def _walk_datas(src_dir: str, dst_dir: str, exts: tuple[str, ...] | None = None) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     if not os.path.isdir(src_dir):
@@ -45,12 +50,13 @@ def _project_datas() -> list[tuple[str, str]]:
     return datas
 datas = (
     ctk_d + sher_d + pgm_d + cv2_d + pil_d + vosk_d + wsdk_d + tt_d
+    + anth_d + oa_d + gen_d + sel_d
     + _project_datas()
     + collect_data_files("num2words")
     + collect_data_files("wikipedia")
 )
 ICON_PATH = os.path.join(ROOT, "assets", "icon.ico")
-binaries = ctk_b + sher_b + pgm_b + cv2_b + pil_b + vosk_b + wsdk_b + tt_b
+binaries = ctk_b + sher_b + pgm_b + cv2_b + pil_b + vosk_b + wsdk_b + tt_b + anth_b + oa_b + gen_b + sel_b
 hiddenimports = (
     ctk_h + sher_h + pgm_h + cv2_h + pil_h + vosk_h + wsdk_h + tt_h + [
         "customtkinter",
@@ -107,6 +113,8 @@ hiddenimports = (
         "pystray", "pystray._win32",
         "importlib_resources", "importlib.resources",
         "webbrowser", "socket", "threading", "queue",
+        "groq", "httpx", "anyio", "httpcore", "h11", "sniffio",
+        "anthropic", "openai", "google.generativeai", "selenium",
     ]
 )
 a = Analysis(

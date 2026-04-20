@@ -106,9 +106,10 @@ def duck_volume(enable: bool):
                         sessions = []
                     for session in sessions:
                         try:
-                            pid = session.ProcessId
-                            if pid == my_pid or pid == 0:
+                            # Skip common system/idle sessions immediately
+                            if not session.Process or session.ProcessId == my_pid:
                                 continue
+                            pid = session.ProcessId
                             volume = session.SimpleAudioVolume
                             if volume:
                                 current_vol = volume.GetMasterVolume()

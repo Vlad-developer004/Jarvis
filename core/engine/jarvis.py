@@ -121,14 +121,16 @@ class JarvisEngine:
                     continue
                 _tts_blocks = self.handler.is_tts_audio_playing
                 if _tts_blocks and (not self.handler.interactive_state):
-                    try:
-                        from ui import hud as _hud
-                        if _hud.STATE and _hud.STATE.mode != _hud.HudState.SPEAKING:
-                            _hud.STATE.mode = _hud.HudState.SPEAKING
-                    except Exception: pass
-                    if now_ts - self._last_tts_skip_log >= 4.0:
-                        self._last_tts_skip_log = now_ts
-                    continue
+                    from core.audio_utils import is_jarvis_output_headphones
+                    if not is_jarvis_output_headphones():
+                        try:
+                            from ui import hud as _hud
+                            if _hud.STATE and _hud.STATE.mode != _hud.HudState.SPEAKING:
+                                _hud.STATE.mode = _hud.HudState.SPEAKING
+                        except Exception: pass
+                        if now_ts - self._last_tts_skip_log >= 4.0:
+                            self._last_tts_skip_log = now_ts
+                        continue
                 gain = getattr(self.handler, 'mic_gain', MIC_GAIN)
                 if gain != 1.0:
                     arr = _np.frombuffer(data, dtype=_np.int16)

@@ -15,16 +15,19 @@ def handle_info(handler, cmd, text_lower):
             handler.speak(res)
         threading.Thread(target=_rate_task, daemon=True).start()
     elif cmd == 'weather':
-        from actions.weather import get_weather, is_weather_voice_cached
-        q = text_lower
-        for sw in ['какая', 'узнай', 'скажи', 'сейчас', 'погода', 'в', 'городе']:
+        from actions.weather import get_weather, is_weather_voice_cached, extract_date_offset
+        offset, q = extract_date_offset(text_lower)
+        for sw in ['какая', 'будет', 'узнай', 'скажи', 'сейчас', 'погода', 'в', 'городе']:
             q = q.replace(sw, '')
         loc = q.strip()
         loc_arg = loc if loc else None
-        if not is_weather_voice_cached(loc_arg):
+        
+        cache_key = loc_arg if loc_arg else f"__auto___{offset}"
+        if not is_weather_voice_cached(cache_key):
             handler.speak('Секунду, сэр.')
+        
         def _w_task():
-            ok, res = get_weather(loc_arg)
+            ok, res = get_weather(loc_arg, date_offset=offset)
             handler.speak(res)
         threading.Thread(target=_w_task, daemon=True).start()
     elif cmd == 'google_search':

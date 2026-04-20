@@ -263,56 +263,129 @@ def open_latest_clipchamp_video() -> tuple[bool, str]:
         return (True, f'Окрыто видео: {os.path.basename(latest_file)}')
     except Exception as e:
         return (False, str(e))
+from core.system.windows import get_hwnd_process_name
+
 def send_play_pause_to_video(prefer: str | None = None) -> bool:
+    import win32gui
+    import win32con
+    
     try:
         import pyautogui
         pyautogui.FAILSAFE = False
         pyautogui.PAUSE = 0.01
     except Exception:
         pyautogui = None
+
+    all_windows = []
+    def _enum_cb(hwnd, _):
+        # We check both visible and minimized (Iconic) windows
+        title = win32gui.GetWindowText(hwnd)
+        if title or get_hwnd_process_name(hwnd):
+            all_windows.append(hwnd)
+        return True
+    
     try:
-        wins = [w for w in gw.getAllWindows() if getattr(w, 'visible', False) and getattr(w, 'title', '')]
-    except Exception:
-        wins = []
-    if not wins:
+        win32gui.EnumWindows(_enum_cb, None)
+    except Exception as e:
+        print(f"[Media] EnumWindows error: {e}", flush=True)
+
+    if not all_windows:
+        print("[Media] No windows found at all. Global fallback.", flush=True)
+        if pyautogui: pyautogui.press('playpause'); return True
         return False
-    preferred: list = []
-    fallback: list = []
-    browser_only: list = []
-    for w in wins:
+
+    yt_wins = []
+    browser_media_wins = []
+    pure_browser_wins = []
+    general_media_wins = []
+    
+    browsers = ('brave', 'chrome', 'msedge', 'performance', 'opera', 'yandex', 'firefox')
+    browser_exes = ('brave.exe', 'chrome.exe', 'msedge.exe', 'opera.exe', 'browser.exe', 'firefox.exe')
+    media_kw = ('video', 'видео', 'netflix', 'twitch', 'vk video', 'вк видео', 'rutube', 'rtvi', 'spotify', 'soundcloud', 'ядро', 'музыка', 'music', 'player')
+    junk_kw = ('msctfime ui', 'default ime', 'dde server', 'mediametadata', 'gdi+ window', 'olemainthreadwndword', 'msctfime ui')
+
+    print(f"[Media] Scanning {len(all_windows)} windows...", flush=True)
+
+    for hwnd in all_windows:
         try:
-            t = (w.title or '')
+            p_name = get_hwnd_process_name(hwnd)
+            t = win32gui.GetWindowText(hwnd) or ""
             tl = t.lower()
-            if 'youtube' in tl or 'ютуб' in tl:
-                preferred.append(w)
-            elif any(k in tl for k in ('brave', 'chrome', 'msedge')) and any(k in tl for k in ('video', 'видео', 'netflix', 'twitch', 'vk video', 'вк видео', 'rutube', 'rtvi')):
-                browser_only.append(w)
-            elif any(k in tl for k in ('brave', 'chrome', 'msedge')) and any(k in tl for k in ('youtube', 'ютуб', 'video', 'видео', 'netflix', 'twitch', 'vk video', 'вк видео', 'rutube')):
-                fallback.append(w)
+            
+            # Skip empty or junk windows early
+            if not tl and p_name in browser_exes: continue
+            if any(jk in tl for jk in junk_kw): continue
+            
+            is_browser = any(k in tl for k in browsers) or p_name in browser_exes
+            is_youtube = 'youtube' in tl or 'ютуб' in tl
+            is_generic_media = any(k in tl for k in media_kw)
+            is_minimized = win32gui.IsIconic(hwnd)
+
+            if is_youtube:
+                yt_wins.append((hwnd, t, p_name, is_minimized))
+            elif is_browser:
+                if is_generic_media:
+                    browser_media_wins.append((hwnd, t, p_name, is_minimized))
+                elif len(t) > 3: # Must have some meaningful title to be a tab
+                    pure_browser_wins.append((hwnd, t, p_name, is_minimized))
+            elif is_generic_media:
+                general_media_wins.append((hwnd, t, p_name, is_minimized))
         except Exception:
             continue
+
+    print(f"[Media] Prefer: {prefer}", flush=True)
+    print(f"[Media] Categorized: YT={len(yt_wins)}, BrowserMedia={len(browser_media_wins)}, PureBrowser={len(pure_browser_wins)}, General={len(general_media_wins)}", flush=True)
+
+    # Heuristic: Sort by title length and minimized state
+    # Minimized windows get a huge priority boost when we are looking for 'background' control
+    def _rank_and_sort(lst, boost_minimized=False):
+        # Score calculation: 
+        # +1000 for minimized (if boost active)
+        # +title_length for meaningfulness
+        def score(item):
+            s = len(item[1])
+            if boost_minimized and item[3]: # item[3] is is_minimized
+                s += 1000
+            return s
+            
+        lst.sort(key=score, reverse=True)
+        return lst
+
+    # If user asks for 'browser', they likely want the hidden/minimized one
+    boost_min = (prefer == 'browser')
+    yt_wins = _rank_and_sort(yt_wins, boost_minimized=boost_min)
+    browser_media_wins = _rank_and_sort(browser_media_wins, boost_minimized=boost_min)
+    pure_browser_wins = _rank_and_sort(pure_browser_wins, boost_minimized=boost_min)
+    general_media_wins = _rank_and_sort(general_media_wins, boost_minimized=boost_min)
+
     if prefer == 'youtube':
-        target = preferred
+        target_objs = yt_wins or browser_media_wins or pure_browser_wins or general_media_wins
     elif prefer == 'browser':
-        target = (browser_only or fallback)
+        target_objs = browser_media_wins or pure_browser_wins or yt_wins or general_media_wins
     else:
-        target = (preferred or fallback)
-    if not target:
+        target_objs = yt_wins or browser_media_wins or general_media_wins or pure_browser_wins
+
+    if not target_objs:
+        print("[Media] No targeted windows identified. Global fallback.", flush=True)
+        if pyautogui: pyautogui.press('playpause'); return True
         return False
-    w = target[0]
-    try:
-        hwnd = int(getattr(w, '_hWnd', 0) or 0)
-        if hwnd:
-            _switch_to_hwnd(hwnd)
-        else:
-            try:
-                w.activate()
-            except Exception:
-                pass
-        time.sleep(0.05)
-        if pyautogui:
-            pyautogui.press('space')
-            return True
-    except Exception:
-        pass
-    return False
+
+    success = False
+    for hwnd, title, p_name, is_min in target_objs[:5]:
+        try:
+            status = "Minimized" if is_min else "Visible"
+            print(f"[Media] Targeting: {title} ({p_name}, {status}, HWND: {hwnd})", flush=True)
+            # APPCOMMAND_MEDIA_PLAY_PAUSE = 14, WM_APPCOMMAND = 0x0319
+            win32gui.SendMessage(hwnd, 0x0319, 0, 14 << 16)
+            success = True
+            break 
+        except Exception as e:
+            print(f"[Media] Error targeting {hwnd}: {e}", flush=True)
+            continue
+
+    if not success and pyautogui:
+        print("[Media] Silent target failed. Global fallback.", flush=True)
+        pyautogui.press('playpause')
+        return True
+
+    return success

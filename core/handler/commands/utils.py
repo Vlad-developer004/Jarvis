@@ -53,19 +53,44 @@ def handle_utils(handler, cmd, text_lower):
         name = text_lower.replace('удали', '').replace('команду', '').replace('сотри', '').strip()
         if delete_command(name): handler.play_response()
     elif cmd == 'git_commit':
-        from actions.git_commit import git_commit_push
+        from actions.git_commit import detect_repo_and_status, git_commit_push
         import win32gui
         fg_hwnd = win32gui.GetForegroundWindow()
+        
         def _show_and_commit(hwnd=fg_hwnd):
-            from ui.dialogs.commit_dlg import ask_commit_message
-            msg_input = ask_commit_message()
-            if msg_input is None:
-                handler.speak('Коммит отменён.')
+            # 1. Detect environment
+            repo, status = detect_repo_and_status(hwnd)
+            if not repo:
+                handler.speak('Репозиторий не найден. Откройте папку проекта.')
                 return
-            ok, msg = git_commit_push(active_hwnd=hwnd, custom_msg=msg_input)
+            if not status:
+                handler.speak('Нет изменений для комм+ита.')
+                return
+            
+            # 2. Unified Staging & Message
+            from ui.dialogs.git_stage_dlg import ask_git_stage
+            dlg_res = ask_git_stage(repo, status) # Returns (selected_files, message) or None
+            
+            if dlg_res is None: # Cancelled
+                handler.speak('Комм+ит отменён.')
+                return
+            
+            selected_files, msg_input = dlg_res
+            
+            if not selected_files:
+                handler.speak('Вы не выбр+али ни одного файла.')
+                return
+            
+            # 3. Final step
+            # Note: msg_input might be empty, git_commit_push handles generation
+            all_selected = (len(selected_files) == len(status))
+            to_stage = selected_files if not all_selected else None
+            
+            ok, msg = git_commit_push(active_hwnd=hwnd, custom_msg=msg_input, files_to_add=to_stage)
             handler.speak(msg)
             if ok:
                 handler.play_response()
+        
         threading.Thread(target=_show_and_commit, daemon=True).start()
     elif cmd == 'today_summary':
         def _run():

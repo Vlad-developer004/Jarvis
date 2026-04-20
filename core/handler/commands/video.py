@@ -63,7 +63,17 @@ def handle_video(handler, cmd, text_lower):
         else: handler.speak(res)
     elif cmd == 'paste_file' or cmd == 'paste_video':
         ftype = 'video' if 'видео' in text_lower else ('photo' if 'фото' in text_lower else 'document')
-        if find_and_paste_file(ftype)[0]: handler.play_response()
+        query = text_lower
+        for kw in ['вставь файл', 'скинь документ', 'отправь фото', 'прикрепи картинку',
+                   'вставь фото', 'скинь скрин', 'вставь картинку', 'отправь скриншот',
+                   'вставь документ', 'вставь', 'скинь', 'закинь', 'прикрепи']:
+            if query.startswith(kw):
+                query = query[len(kw):].strip()
+                break
+        if query in ('это', 'последний', 'последнее', 'последнюю', 'крайнее', ''):
+            query = None
+        if find_and_paste_file(ftype, target_filename=query)[0]:
+            handler.play_response()
     elif cmd == 'ocr_screen':
         from actions.ocr import ocr_from_screenshot
         ok, res = ocr_from_screenshot()

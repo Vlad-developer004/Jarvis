@@ -12,4 +12,5 @@ class AppState:
         self.mouse_dx: int = 0
         self.mouse_dy: int = 0
         self.mouse_speed: float = 1.0
+        self.hud = None
 app_state = AppState()

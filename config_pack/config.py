@@ -18,9 +18,9 @@ MODEL_PATH = 'models/sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16'
 SILERO_VAD_PATH = 'models/silero_vad'
 RATE = 16000
 CHUNK_MS = 32
-SILENCE_MS = 150
-VAD_SILENCE_MS = 150
-GAME_SILENCE_MS = 220
+SILENCE_MS = 250
+VAD_SILENCE_MS = 250
+GAME_SILENCE_MS = 250
 VAD_CONFIDENCE_THRESHOLD = 0.25
 MIN_SPEECH_MS = 80
 CALIBRATION_SEC = 0.8
@@ -58,10 +58,10 @@ def _read_tts_warmup() -> bool:
         p = Path('data') / 'jarvis_settings.json'
         if p.exists():
             data = json.loads(p.read_text(encoding='utf-8'))
-            return bool(data.get('tts_warmup', False))
+            return bool(data.get('tts_warmup', True))
     except Exception:
         pass
-    return False
+    return True
 TTS_WARMUP = _read_tts_warmup()
 def _read_max_saved_videos() -> int:
     import json
@@ -75,3 +75,16 @@ def _read_max_saved_videos() -> int:
         pass
     return 10
 MAX_SAVED_VIDEOS = _read_max_saved_videos()
+
+def _read_tts_unload_timeout() -> float:
+    import json
+    from pathlib import Path
+    try:
+        p = Path('data') / 'jarvis_settings.json'
+        if p.exists():
+            data = json.loads(p.read_text(encoding='utf-8'))
+            return float(data.get('tts_unload_timeout', 300.0))
+    except Exception:
+        pass
+    return 300.0
+TTS_UNLOAD_TIMEOUT = _read_tts_unload_timeout()

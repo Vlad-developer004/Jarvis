@@ -1,9 +1,11 @@
 import os
 import time
 import subprocess
+from pathlib import Path
+from rapidfuzz import fuzz
+from actions.filesystem import get_name_variants, calculate_match_score
+
 def find_and_paste_file(file_type: str = None, target_filename: str = None) -> tuple[bool, str]:
-    import pyautogui
-    from rapidfuzz import fuzz
     user_prof = os.environ['USERPROFILE']
     desktop = os.path.join(user_prof, 'Desktop')
     onedrive_desktop = os.path.join(user_prof, 'OneDrive', 'Desktop')
@@ -34,7 +36,10 @@ def find_and_paste_file(file_type: str = None, target_filename: str = None) -> t
         return name.startswith(('~', '.')) or name.endswith(('.tmp', '.crdownload', '.part'))
     if target_filename:
         target_filename = target_filename.lower().replace('документ', '').replace('видео', '').replace('фото', '').strip()
-    if target_filename:
+        query_vars = get_name_variants(target_filename)
+        if not query_vars:
+            return (False, "Некорректный запрос")
+
         max_depth = 3
         for s_dir in search_dirs:
             if not os.path.isdir(s_dir):
@@ -49,19 +54,32 @@ def find_and_paste_file(file_type: str = None, target_filename: str = None) -> t
                 for file in files:
                     if _bad_file(file):
                         continue
-                    _, ext = os.path.splitext(file)
-                    if ext_filters and ext.lower() not in ext_filters:
+                    p_obj = Path(file)
+                    ext = p_obj.suffix.lower()
+                    if ext_filters and ext not in ext_filters:
                         continue
-                    full_path = os.path.join(root, file)
-                    name_clean = os.path.splitext(file)[0].lower().replace('_', ' ')
-                    score = fuzz.token_set_ratio(target_filename, name_clean)
-                    if 'диплом' in target_filename:
-                        score += 20 if 'диплом' in name_clean else -20
-                    if 'записка' in target_filename:
-                        score += 20 if 'записка' in name_clean or 'поясн' in name_clean else -20
-                    if score > 65 and score > best_score:
-                        best_score = score
-                        best_file = full_path
+                    
+                    stem = p_obj.stem
+                    file_vars = get_name_variants(stem)
+                    
+                    current_file_best = 0
+                    for q in query_vars:
+                        for ev in file_vars:
+                            s = max(
+                                calculate_match_score(q, ev),
+                                int(fuzz.token_set_ratio(q, ev))
+                            )
+                            if s > current_file_best:
+                                current_file_best = s
+                    
+                    if current_file_best >= 75 and current_file_best > best_score:
+                        best_score = current_file_best
+                        best_file = os.path.join(root, file)
+                        
+                    if best_score >= 98:
+                        break
+                if best_score >= 98:
+                    break
     else:
         for s_dir in search_dirs:
             if not os.path.isdir(s_dir) or _bad_dir(s_dir):

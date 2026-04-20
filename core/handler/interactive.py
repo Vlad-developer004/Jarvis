@@ -95,26 +95,61 @@ def handle_interactive(handler, text: str) -> dict:
             handler._set_interactive(None)
             handler.handle(cmd, text_clean)
             return {'clear_state': True}
-        from features.qa import search_answer, is_real_question, check_relevance
+        from features.qa import search_answer, is_real_question
         context = data.get('context', '')
+        last_ans = data.get('last_ans', '')
         if not is_real_question(text_clean):
             return {'new_state': 'qa_clarify', 'new_data': data, 'timeout': 20.0}
-        is_independent = False
-        prefixes = ['что такое', 'кто такой', 'расскажи о', 'почему', 'как', 'где', 'когда']
-        for p in prefixes:
-            if text_clean.startswith(p):
-                is_independent = True; break
-        if not is_independent and context:
-            if not check_relevance(context, text_clean): is_independent = True
-        query = text_clean if is_independent else context
-        raw_query = text_clean if is_independent else f"{context} | {text_clean}"
         handler.play_response('loading')
-        answer = search_answer(query, raw_query=raw_query)
-        if answer:
-            handler.speak(answer)
-            res = {'new_state': 'qa_clarify', 'new_data': {'context': text_clean if is_independent else context}, 'timeout': 20.0}
-        else:
-            speak('Извините, не удалось найти информацию.')
+        # We now pass the user's new question and the previous turn directly.
+        # The LLM prompt handles relevance and topic changes automatically.
+        def _task():
+            from ui import hud
+            has_hud = hud._hud is not None
+            try:
+                gen = search_answer(text_clean, context=context, last_ans=last_ans, stream=True)
+                full_ans = []
+                buffer = ""
+                marks = ('.', '!', '?', '\n')
+                
+                for chunk in gen:
+                    if not chunk: continue
+                    full_ans.append(chunk)
+                    buffer += chunk
+                    
+                    if has_hud:
+                        curr_text = "".join(full_ans).strip()
+                        display_text = curr_text if len(curr_text) < 65 else "..." + curr_text[-62:]
+                        hud._hud.root.after(0, lambda t=display_text: hud._hud.show_msg_stream(t))
+                    
+                    if any(m in buffer for m in marks):
+                        last_mark_pos = -1
+                        for m in marks:
+                            pos = buffer.rfind(m)
+                            if pos > last_mark_pos: last_mark_pos = pos
+                        if last_mark_pos != -1:
+                            sentence = buffer[:last_mark_pos+1].strip()
+                            buffer = buffer[last_mark_pos+1:].strip()
+                            if sentence: handler.speak(sentence)
+
+                if buffer.strip():
+                    handler.speak(buffer.strip())
+                
+                final_ans = "".join(full_ans).strip()
+                if final_ans:
+                    if has_hud: hud._hud.root.after(2000, hud._hud.hide_msg_stream)
+                    handler._set_interactive('qa_clarify', {'context': text_clean, 'last_ans': final_ans}, timeout=25.0)
+                else:
+                    speak('Извините, не удалось найти информацию.')
+                    if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)
+            except Exception as e:
+                print(f"[QA_CLARIFY_STREAM] Error: {e}")
+                speak('Извините, произошла ошибка.')
+                if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)
+
+        threading.Thread(target=_task, daemon=True).start()
+        return {'handled': True}
+    
     if res.get('clear_state'): handler._set_interactive(None)
     elif 'new_state' in res: handler._set_interactive(res['new_state'], res.get('new_data'), res.get('timeout', 60.0))
     return res

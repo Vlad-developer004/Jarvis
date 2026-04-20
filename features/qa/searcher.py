@@ -1,14 +1,20 @@
-from .llm_processor import ask_groq
-def search_answer(query: str, raw_query: str='') -> str:
-    if not query or len(query) < 2: return ''
+from .llm_processor import ask_llm
+
+def search_answer(query: str, raw_query: str='', context: str='', last_ans: str='', stream: bool = False):
+    if not query or len(query) < 2:
+        if stream: return iter([])
+        return ''
+    
+    # Check if this is an old call with piped context 
+    # (fallback for safety though we removed this from interactive.py)
     full_q = raw_query if raw_query else query
+    if not context and ' | ' in full_q:
+        parts = full_q.split(' | ', 1)
+        context, query = parts[0].strip(), parts[1].strip()
+
     try:
-        ctx_part, question_part = '', ''
-        if ' | ' in full_q:
-            parts = full_q.split(' | ', 1)
-            ctx_part, question_part = parts[0].strip(), parts[1].strip()
-            full_q = ctx_part + ' ' + question_part
-        llm_answer = ask_groq(topic=ctx_part, question=full_q)
-        if llm_answer: return llm_answer
+        return ask_llm(topic=context, question=query, last_ans=last_ans, stream=stream)
     except Exception: pass
+    
+    if stream: return iter([])
     return ''

@@ -86,7 +86,7 @@ class BaseHandler:
         self.asr.reset()
     def speak(self, text: str, wait: bool = False):
         if self.silent_mode: return
-        stop_speaking()
+        # REMOVED: stop_speaking() - now using natural TTS queue for smooth transitions
         speak(text, wait=wait)
         if not self.interactive_state:
             self.asr.reset()

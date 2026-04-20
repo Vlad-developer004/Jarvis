@@ -7,6 +7,11 @@ from .interactive import handle_interactive
 class CommandHandler(BaseHandler):
     def __init__(self, pa, rate, chunk, asr):
         super().__init__(pa, rate, chunk, asr)
+        try:
+            from ui.hud_utils import _load_hud_settings
+            self._settings = _load_hud_settings()
+        except Exception:
+            self._settings = {}
     def handle(self, cmd: str, text: str):
         text_lower = text.lower().strip()
         amount = extract_amount(text_lower)
@@ -102,7 +107,7 @@ class CommandHandler(BaseHandler):
         elif cmd in ['currency_rate', 'weather', 'google_search', 'translate', 'translate_speech', 'my_ip']:
             from .commands.info import handle_info
             handle_info(self, cmd, text_lower)
-        elif cmd in ['empty_trash', 'create_folder', 'delete_folder', 'cd_folder', 'explorer_goto', 'find_doc', 'find_sheet', 'find_file', 'create_word_doc'] or cmd.startswith('recent_'):
+        elif cmd in ['empty_trash', 'create_folder', 'delete_folder', 'delete_file', 'cd_folder', 'explorer_go_up', 'explorer_goto', 'find_doc', 'find_sheet', 'find_file', 'create_word_doc'] or cmd.startswith('recent_'):
             from .commands.files import handle_files
             handle_files(self, cmd, text_lower)
         elif cmd in ['screenshot', 'screenshot_terminal', 'screenshot_site', 'start_video', 'stop_video', 'save_video', 'open_saved', 'clipchamp_last', 'open_last_video', 'paste_file', 'paste_video', 'download_video'] or cmd.startswith('ocr_'):
@@ -219,6 +224,22 @@ class CommandHandler(BaseHandler):
         elif cmd in ['time_now', 'system_status', 'how_are_you', 'system_insult', 'praise']:
             from .commands.social import handle_social
             handle_social(self, cmd, text_lower)
+        elif cmd == 'show_help':
+            try:
+                from ui.dialogs.welcome_dlg import open_welcome
+                from ui import hud
+                open_welcome(hud._hud, force=True)
+                self.play_response()
+            except Exception as e:
+                print(f'[dispatch] show_help error: {e}', flush=True)
+                self.speak('Не удалось открыть руководство.')
+        elif cmd == 'show_hud':
+            try:
+                from ui.hud import show_hud
+                show_hud()
+                self.play_response()
+            except Exception as e:
+                print(f'[dispatch] show_hud error: {e}', flush=True)
     def _launch_game_engine(self, game_info):
         from .commands.game import launch_game_engine
         launch_game_engine(self, game_info)
@@ -243,8 +264,14 @@ def parse_cd_name(text_lower: str) -> str:
     tokens = text_lower.replace('—', ' ').split()
     if 'папку' in tokens:
         idx = tokens.index('папку')
-        return ' '.join([t for t in tokens[idx+1:] if t != 'здесь']).strip()
-    elif 'зайди' in tokens:
-        idx = tokens.index('зайди')
-        return ' '.join([t for t in tokens[idx+1:] if t not in ('в', 'папку', 'сюда', 'здесь')]).strip()
+        return ' '.join([t for t in tokens[idx+1:] if t not in ('здесь', 'сюда', 'тут')]).strip()
+    elif 'папка' in tokens:
+        idx = tokens.index('папка')
+        return ' '.join([t for t in tokens[idx+1:] if t not in ('здесь', 'сюда', 'тут')]).strip()
+    
+    # Generic "go to" logic
+    for kw in ('зайди', 'перейди', 'открой', 'goto', 'open'):
+        if kw in tokens:
+            idx = tokens.index(kw)
+            return ' '.join([t for t in tokens[idx+1:] if t not in ('в', 'у', 'to', 'папку', 'папку', 'папка', 'сюда', 'здесь', 'тут')]).strip()
     return ''

@@ -54,28 +54,27 @@ if not exist dist\Jarvis\models mkdir dist\Jarvis\models
 :: --- Copy assets ---
 echo Copying assets...
 if exist audio    robocopy audio    dist\Jarvis\audio    /E /NFL /NDL /NJH /NJS /XD __pycache__
-if exist data     robocopy data     dist\Jarvis\data     /E /NFL /NDL /NJH /NJS /XD __pycache__
 if exist assets   robocopy assets   dist\Jarvis\assets   /E /NFL /NDL /NJH /NJS /XD __pycache__
 if exist models   robocopy models   dist\Jarvis\models   /E /NFL /NDL /NJH /NJS /XD __pycache__
 if exist config_pack robocopy config_pack dist\Jarvis\config_pack /E /NFL /NDL /NJH /NJS /XD __pycache__
 
-:: --- Copy optional files ---
+:: --- Copy selective data files (only static defaults) ---
+echo Preparing data directory...
+if not exist dist\Jarvis\data mkdir dist\Jarvis\data
+if exist data\game_profiles (
+    robocopy data\game_profiles dist\Jarvis\data\game_profiles /E /NFL /NDL /NJH /NJS
+)
+if exist data\extensions_catalog.json copy /Y data\extensions_catalog.json dist\Jarvis\data\ >nul
+if exist data\jarvis_settings.example.json copy /Y data\jarvis_settings.example.json dist\Jarvis\data\ >nul
+
+:: --- Handle .env (Do NOT copy local personal .env to dist by default) ---
 if exist .env (
-    copy /Y .env dist\Jarvis\.env >nul
-    echo .env copied.
-) else (
-    echo [WARN] .env not found - Telegram alerts will not work.
+    echo [INFO] .env exists locally but will NOT be copied to dist to protect your API keys.
+    echo [INFO] Copy it manually if you intend to use THIS specific build for yourself.
 )
 
 if exist jarvis_task.xml (
     copy /Y jarvis_task.xml dist\Jarvis\jarvis_task.xml >nul
-    echo jarvis_task.xml copied.
-)
-
-:: --- Copy game profiles if present ---
-if exist data\game_profiles (
-    if not exist dist\Jarvis\data\game_profiles mkdir dist\Jarvis\data\game_profiles
-    robocopy data\game_profiles dist\Jarvis\data\game_profiles /E /NFL /NDL /NJH /NJS
 )
 
 :: --- Show dist size ---

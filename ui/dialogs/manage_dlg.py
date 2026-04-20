@@ -18,9 +18,9 @@ def _base_win(hud, title: str, w: int = 620, h: int = 560) -> tk.Toplevel:
     except Exception:
         pass
     sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-    W = int(min(hud._px(w), sw * 0.95))
-    H = int(min(hud._px(h), sh * 0.92))
-    win.geometry(f'{W}x{H}+{(sw-W)//2}+{(sh-H)//2}')
+    W = int(min(w, sw * 0.95 / hud.zoom_factor))
+    H = int(min(h, sh * 0.92 / hud.zoom_factor))
+    win.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw-int(W*hud.zoom_factor))//2}+{(sh-int(H*hud.zoom_factor))//2}')
     win.minsize(400, 300)
     win.resizable(True, True)
     return win
@@ -119,7 +119,7 @@ def open_meetings_manager(hud) -> None:
                 body.pack(side='left', fill='both', expand=True, padx=12, pady=10)
                 _ekw = dict(font=(hud._F, _sf(9)), fg_color='#0b0e14', text_color=_WHITE,
                             border_color=_blend(_GREEN, 0.25), border_width=2,
-                            corner_radius=8, height=hud._px(36),
+                            corner_radius=8, height=36,
                             placeholder_text_color=_blend(_WHITE, 0.3))
                 _lkw = dict(bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8)), anchor='w')
                 tk.Label(body, text='Голосовая фраза', **_lkw).pack(fill='x')

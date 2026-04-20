@@ -37,6 +37,16 @@ def _run_hud():
 def _background_init():
     global engine, handler, asr, pa, stream
     try:
+        # Start TTS warmup with a delay to avoid hardware contention
+        if TTS_WARMUP:
+            def _delayed_warmup():
+                time.sleep(2.0)
+                try:
+                    from core.speech import warmup_tts
+                    warmup_tts()
+                except Exception: pass
+            _threading.Thread(target=_delayed_warmup, daemon=True).start()
+
         pa = pyaudio.PyAudio()
         chunk = int(RATE * CHUNK_MS / 1000)
         try:
@@ -71,9 +81,6 @@ def _background_init():
                     with open('logs/debug_init.log', 'a', encoding='utf-8') as f:
                         f.write(f"MAIN: delayed calibration failed: {e}\n")
             _threading.Thread(target=_delayed_calibration, daemon=True).start()
-        if TTS_WARMUP:
-            from core.speech import warmup_tts
-            _threading.Thread(target=warmup_tts, daemon=True).start()
         def _start_features():
             if module_enabled('battery_monitor'):
                 from features.battery import start_battery_monitor

@@ -57,11 +57,11 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     win.configure(bg=_BG)
     win.resizable(False, True)
     win.update_idletasks()
-    _W = int(min(hud._px(640), win.winfo_screenwidth() * 0.95))
-    _H = int(min(hud._px(700), win.winfo_screenheight() * 0.92))
-    _sx = (win.winfo_screenwidth() - _W) // 2
-    _sy = (win.winfo_screenheight() - _H) // 2
-    win.geometry(f'{_W}x{_H}+{_sx}+{_sy}')
+    _W, _H = 640, 700
+    gw, gh = int(_W * hud.zoom_factor), int(_H * hud.zoom_factor)
+    _sx = (win.winfo_screenwidth() - gw) // 2
+    _sy = (win.winfo_screenheight() - gh) // 2
+    win.geometry(f'{gw}x{gh}+{_sx}+{_sy}')
     win.lift()
     win.focus_force()
     tk.Frame(win, bg=_CYAN, height=3).pack(fill='x')
@@ -135,14 +135,14 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         row.pack(fill='x', pady=1, padx=6)
         tk.Frame(row, bg=_CYAN if key_val else _BRD, width=4).pack(side='left', fill='y')
         disp = key_val.upper() if key_val and len(key_val) <= 3 else key_val or '—'
-        btn = ctk.CTkButton(row, text=disp, fg_color=_blend(_CYAN, 0.1) if key_val else _BG, hover_color=_blend(_CYAN, 0.24) if key_val else _BRD_I, text_color=_CYAN if key_val else '#555566', border_color=_blend(_CYAN, 0.5) if key_val else _BRD, border_width=1, corner_radius=8, font=(hud._F, hud._fs(14), 'bold'), height=hud._px(42), width=hud._px(140))
+        btn = ctk.CTkButton(row, text=disp, fg_color=_blend(_CYAN, 0.1) if key_val else _BG, hover_color=_blend(_CYAN, 0.24) if key_val else _BRD_I, text_color=_CYAN if key_val else '#555566', border_color=_blend(_CYAN, 0.5) if key_val else _BRD, border_width=1, corner_radius=8, font=(hud._F, hud._fs(14), 'bold'), height=42, width=140)
         key_buttons[bid] = btn
         def _clear(b=bid):
             _stop_listen()
             current[b] = ''
             key_buttons[b].configure(text='—', fg_color=_BG, hover_color=_BRD_I, text_color='#555566', border_color=_BRD)
             _autosave()
-        ctk.CTkButton(row, text='✕', fg_color=row_bg, hover_color=_blend(_RED, 0.22), text_color=_blend(_RED, 0.55), border_color=row_bg, border_width=0, corner_radius=8, font=(hud._F, hud._fs(12)), width=hud._px(28), height=hud._px(34), command=lambda b=bid: _clear(b)).pack(side='right', padx=(0, 10))
+        ctk.CTkButton(row, text='✕', fg_color=row_bg, hover_color=_blend(_RED, 0.22), text_color=_blend(_RED, 0.55), border_color=row_bg, border_width=0, corner_radius=8, font=(hud._F, hud._fs(12)), width=28, height=34, command=lambda b=bid: _clear(b)).pack(side='right', padx=(0, 10))
         btn.configure(command=lambda b=bid: _start_listen(b))
         btn.pack(side='right', padx=(0, 6))
         icon = _CAT_ICON.get(bid, '·')
@@ -213,11 +213,11 @@ def open_spell_editor(hud, reopen: bool = False) -> None:
     win.configure(bg=_BG)
     win.resizable(False, False)
     win.update_idletasks()
-    _W = int(min(hud._px(740), win.winfo_screenwidth() * 0.95))
-    _H = int(min(hud._px(420), win.winfo_screenheight() * 0.9))
-    _sx = (win.winfo_screenwidth() - _W) // 2
-    _sy = (win.winfo_screenheight() - _H) // 2
-    win.geometry(f'{_W}x{_H}+{_sx}+{_sy}')
+    _W, _H = 740, 420
+    gw, gh = int(_W * hud.zoom_factor), int(_H * hud.zoom_factor)
+    _sx = (win.winfo_screenwidth() - gw) // 2
+    _sy = (win.winfo_screenheight() - gh) // 2
+    win.geometry(f'{gw}x{gh}+{_sx}+{_sy}')
     win.lift()
     win.focus_force()
     _F_COLORS = ['#00eaff', '#cc44ff', '#44ff88', '#ffaa00']
@@ -258,7 +258,7 @@ def open_spell_editor(hud, reopen: bool = False) -> None:
     tk.Label(hdr, text=profile_display, bg=_BG, fg=_DIM, font=(hud._F, hud._fs(10))).pack(side='right', padx=20)
     col_hdr = tk.Frame(win, bg=_BG)
     col_hdr.pack(fill='x', padx=20, pady=(10, 2))
-    tk.Frame(col_hdr, bg=_BG, width=hud._px(70)).pack(side='left')
+    tk.Frame(col_hdr, bg=_BG, width=70).pack(side='left')
     for idx in range(4):
         cell = tk.Frame(col_hdr, bg=_BG)
         cell.pack(side='left', expand=True, fill='x')
@@ -281,7 +281,7 @@ def open_spell_editor(hud, reopen: bool = False) -> None:
         for j, slot_num in enumerate([1, 2, 3, 4]):
             val = assign[set_num].get(slot_num, '—')
             filled = val != '—'
-            cb = ctk.CTkComboBox(slots_row, values=all_names, state='readonly', fg_color=_blend(color, 0.07) if filled else _BG, button_color=_blend(color, 0.35) if filled else _BRD, button_hover_color=_blend(color, 0.55), border_color=_blend(color, 0.5) if filled else _BRD, border_width=1, corner_radius=6, text_color=color if filled else '#555566', dropdown_fg_color=_PANEL, dropdown_text_color=_TEXT, dropdown_hover_color=_BRD_I, font=(hud._F, hud._fs(11)), height=hud._px(36), command=lambda v, sn=set_num, sl=slot_num: _on_select(sn, sl, v))
+            cb = ctk.CTkComboBox(slots_row, values=all_names, state='readonly', fg_color=_blend(color, 0.07) if filled else _BG, button_color=_blend(color, 0.35) if filled else _BRD, button_hover_color=_blend(color, 0.55), border_color=_blend(color, 0.5) if filled else _BRD, border_width=1, corner_radius=6, text_color=color if filled else '#555566', dropdown_fg_color=_PANEL, dropdown_text_color=_TEXT, dropdown_hover_color=_BRD_I, font=(hud._F, hud._fs(11)), height=36, command=lambda v, sn=set_num, sl=slot_num: _on_select(sn, sl, v))
             cb.set(val)
             cb.pack(side='left', fill='x', expand=True, padx=(0, 6) if j < 3 else 0)
             slot_cbs[set_num, slot_num] = cb

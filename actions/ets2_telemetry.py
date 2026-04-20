@@ -104,6 +104,11 @@ def _read_raw() -> Optional[dict]:
         return None
 def get() -> Optional[dict]:
     global _cache, _last_read
+    
+    # Auto-start background polling on first get() to ensure responsiveness
+    if not (_poll_thread and _poll_thread.is_alive()):
+        start_background_poll()
+        
     now = time.monotonic()
     with _lock:
         if now - _last_read < _CACHE_TTL and _cache is not None:

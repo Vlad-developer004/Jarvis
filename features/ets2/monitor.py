@@ -8,14 +8,18 @@ _stop_event = threading.Event()
 _thread: Optional[threading.Thread] = None
 _auto_cruise: bool = False
 _auto_cruise_lock = threading.Lock()
+_last_auto_limit_snapped: float = 0.0
 def set_auto_cruise(enabled: bool) -> None:
-    global _auto_cruise
+    global _auto_cruise, _last_auto_limit_snapped
     with _auto_cruise_lock:
         _auto_cruise = enabled
+        if enabled:
+            # Reset to allow immediate trigger on current limit
+            _last_auto_limit_snapped = 0.0
 def _speak(text: str) -> None:
     try:
-        from core.speech import speak
-        speak(text)
+        from core.speech import speak_async
+        speak_async(text)
     except Exception:
         pass
 def get_wear_report() -> str:
@@ -80,7 +84,9 @@ def _monitor_loop() -> None:
     idle_warned: bool = False
     last_speed_abs: float = 0.0
     last_auto_limit_snapped: float = 0.0
+    global _last_auto_limit_snapped
     while not _stop_event.is_set():
+
         try:
             _stop_event.wait(POLL_INTERVAL)
             if _stop_event.is_set(): break
@@ -134,6 +140,7 @@ def _monitor_loop() -> None:
         if limit_kmh > 0:
             over = speed_kmh - limit_kmh
             now = time.monotonic()
+            # 1. Over speed warning
             if over >= SPEED_OVER_LIMIT:
                 if not speed_was_over and (now - last_speed_warn >= SPEED_COOLDOWN):
                     speed_was_over = True
@@ -141,24 +148,22 @@ def _monitor_loop() -> None:
                     _speak(f"Сэр, превышение скорости. Лимит {int(round(limit_kmh))}, ваша скорость {int(round(speed_kmh))}.")
             else:
                 speed_was_over = False
-        with _auto_cruise_lock:
-            _ac_enabled = _auto_cruise
-        if _ac_enabled and engine_on and limit_kmh >= 10:
-            new_snapped = round(limit_kmh / 5.0) * 5.0
-            if new_snapped != last_auto_limit_snapped and last_auto_limit_snapped > 0:
-                try:
-                    from actions.game_input import cruise_set_speed as _css
-                    from actions.ets2_telemetry import get_cruise_speed_kmh as _ckm, get_speed_kmh as _spd
-                    current = _ckm()
-                    if current is None:
-                        current = _spd() or last_auto_limit_snapped
-                    ok, actual = _css(int(new_snapped), current)
-                    if ok and actual != int(round(current / 5.0) * 5.0):
-                        direction = 'повышен' if new_snapped > last_auto_limit_snapped else 'снижен'
-                        _speak(f'Ограничение изменилось на {int(new_snapped)} км/ч. Круиз {direction}.')
-                except Exception:
-                    pass
-            last_auto_limit_snapped = new_snapped
+
+            # 2. Cruise Control Support (Selective)
+            if _auto_cruise and speed_kmh >= 30.0:
+                from actions.ets2_telemetry import get_cruise_active
+                if get_cruise_active():
+                    new_snapped = round(limit_kmh / 5.0) * 5.0
+                    if new_snapped != _last_auto_limit_snapped:
+                        # Only speak if it's a real change, not the first activation
+                        if _last_auto_limit_snapped != 0.0:
+                            _speak(f"Лимит {int(new_snapped)}. Корректирую круиз.")
+                        _last_auto_limit_snapped = new_snapped
+                        from actions.game_input_parts.driving import cruise_set_speed
+                        cruise_set_speed(int(new_snapped), speed_kmh, auto_mode=True)
+                elif _last_auto_limit_snapped != 0.0:
+                    # User manually turned it off, reset memory to allow sync when turned back on
+                    _last_auto_limit_snapped = 0.0
         if not engine_on: continue
         if not startup_wear_spoken:
             try:
@@ -225,11 +230,9 @@ def _monitor_loop() -> None:
         if 0 <= route_dist <= 50 and not fired_destination and on_job and engine_on:
             fired_destination = True
             try:
-                import pydirectinput as _pdi
-                _pdi.PAUSE = 0
-                from actions.game_input import get_binding as _gb
+                from actions.game_input import press_robust, get_binding as _gb
                 key = _gb('action', 'enter')
-                _pdi.press(key)
+                press_robust(key)
             except Exception:
                 pass
             phrases = [

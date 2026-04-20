@@ -74,7 +74,7 @@ def _generate_message(changed: list[dict]) -> str:
         return 'обновление кода'
     msg = '; '.join(parts)
     return msg[0].upper() + msg[1:]
-def git_commit_push(active_hwnd=None, custom_msg: str='') -> tuple[bool, str]:
+def detect_repo_and_status(active_hwnd=None) -> tuple[str | None, list[dict]]:
     repo = None
     if active_hwnd:
         try:
@@ -87,58 +87,38 @@ def git_commit_push(active_hwnd=None, custom_msg: str='') -> tuple[bool, str]:
                 for arg in proc.cmdline()[1:]:
                     if Path(arg).is_dir():
                         repo = _find_git_repo(arg)
-                        if repo:
-                            break
+                        if repo: break
             if not repo:
                 repo = _repo_from_window_title(active_hwnd)
-            if not repo:
-                parent = proc.parent()
-                if parent:
-                    repo = _find_git_repo(parent.cwd())
-        except Exception:
-            pass
+        except Exception: pass
+    
+    if not repo: repo = _find_git_repo()
+    if not repo: repo = _find_git_repo(os.getcwd())
+    
+    if not repo: return None, []
+    return repo, _get_status(repo)
+
+def git_commit_push(active_hwnd=None, custom_msg: str='', files_to_add: list[str] | None=None) -> tuple[bool, str]:
+    # Use helper if no repo passed (though we usually have it from dlg now)
+    repo, status = detect_repo_and_status(active_hwnd)
+    
     if not repo:
-        try:
-            import json as _json
-            import win32gui as _wg
-            sessions_file = Path('data') / 'sessions.json'
-            sessions = _json.loads(sessions_file.read_text(encoding='utf-8'))
-            all_ide_paths: list[tuple[str, str]] = []
-            for session in sessions.values():
-                for ide in session.get('ides', []):
-                    p = ide.get('path', '')
-                    n = ide.get('project_name', '')
-                    if p:
-                        all_ide_paths.append((n.lower(), p))
-            title = (_wg.GetWindowText(active_hwnd) if active_hwnd else '').lower()
-            matched = None
-            for proj_name, ide_path in all_ide_paths:
-                if proj_name and proj_name in title:
-                    matched = ide_path
-                    break
-            if not matched and all_ide_paths:
-                matched = all_ide_paths[0][1]
-            if matched:
-                repo = _find_git_repo(matched)
-        except Exception:
-            pass
-    if not repo:
-        for ws_path in _vscode_recent_workspaces():
-            repo = _find_git_repo(ws_path)
-            if repo:
-                break
-    if not repo:
-        repo = _find_git_repo()
-    if not repo:
-        repo = _find_git_repo(os.getcwd())
-    if not repo:
-        return (False, 'Репозиторий не найден. Откройте папку проекта в редакторе или перейдите в неё в терминале.')
-    changed = _get_status(repo)
-    if not changed:
+        return (False, 'Репозиторий не найден. Откройте папку проекта в редакторе.')
+    if not status:
         return (False, 'Нет изменений для коммита.')
-    msg = custom_msg.strip() if custom_msg.strip() else _generate_message(changed)
+    
+    msg = custom_msg.strip() if custom_msg.strip() else _generate_message(status)
     try:
-        subprocess.run(['git', '-C', repo, 'add', '-A'], check=True, capture_output=True)
+        if files_to_add is not None:
+            # Stage only specific files
+            # First reset staging to be sure we only add what was requested
+            subprocess.run(['git', '-C', repo, 'reset'], capture_output=True)
+            for f in files_to_add:
+                subprocess.run(['git', '-C', repo, 'add', f], check=True, capture_output=True)
+        else:
+            # Default: add everything
+            subprocess.run(['git', '-C', repo, 'add', '-A'], check=True, capture_output=True)
+        
         subprocess.run(['git', '-C', repo, 'commit', '-m', msg], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         err = (e.stderr or b'').decode('utf-8', errors='replace').strip()
@@ -147,8 +127,8 @@ def git_commit_push(active_hwnd=None, custom_msg: str='') -> tuple[bool, str]:
     if remotes:
         try:
             subprocess.run(['git', '-C', repo, 'push'], check=True, capture_output=True)
-            return (True, f'Коммит отправлен: {msg}')
+            return (True, f'Комм+ит отправлен: {msg}')
         except subprocess.CalledProcessError as e:
             err = e.stderr.decode('utf-8', errors='replace').strip()
-            return (False, f'Коммит создан, но push упал: {err}')
-    return (True, f'Коммит создан локально: {msg}')
+            return (False, f'Комм+ит создан, но push упал: {err}')
+    return (True, f'Комм+ит создан локально: {msg}')

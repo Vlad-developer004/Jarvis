@@ -28,16 +28,34 @@ def show_hud() -> None:
     _hud._hud_queue.put(_hud.root.focus_force)
 class JarvisHUD:
     def __init__(self) -> None:
-        ctk.set_widget_scaling(1.0)
+        self._settings = _load_hud_settings()
+        self.zoom_factor: float = float(self._settings.get('zoom_factor', 1.0))
+        if self.zoom_factor <= 0.0: self.zoom_factor = 1.0
+
+        # Framework scaling MUST be set before or during root creation
         ctk.set_appearance_mode('dark')
         ctk.set_default_color_theme('dark-blue')
+        ctk.set_widget_scaling(self.zoom_factor)
+        ctk.set_window_scaling(self.zoom_factor)
+        
         self.root = ctk.CTk()
+        from core.system import app_state
+        app_state.hud = self
+        
+        # 1. Hide immediately to prepare geometry
         self.root.withdraw()
-        self.root.title('J.A.R.V.I.S. — HUD v1.4')
+        self.root.title('J.A.R.V.I.S. — HUD v1.5')
         self.root.configure(fg_color=_BG)
         _set_dark_title_bar(self.root)
         self.root.minsize(1100, 620)
+        
+        # 2. Set base geometry THEN request maximization
         self.root.geometry('1280x720')
+        if self._settings.get('start_maximized', True):
+            try: self.root.state('zoomed')
+            except: pass
+
+        # --- Original Initialization Block (Stable) ---
         import sys
         if getattr(sys, 'frozen', False):
             base_path = os.path.dirname(sys.executable)
@@ -49,6 +67,7 @@ class JarvisHUD:
                 self.root.iconbitmap(self._ico_path)
         except Exception:
             pass
+            
         self.root.protocol('WM_DELETE_WINDOW', self._hide_to_tray)
         self._tray_icon = None
         self._hud_queue: _q_mod.Queue = _q_mod.Queue()
@@ -60,23 +79,8 @@ class JarvisHUD:
         self._spell_win = None
         self._keybind_win = None
         self._ui_scale = self._get_dpi_scale()
-        self._settings = _load_hud_settings()
-        self.zoom_factor: float = float(self._settings.get('zoom_factor', 0.0))
-        if self.zoom_factor == 0.0:
-            self.zoom_factor = self._auto_detect_zoom()
-        else:
-            if self.zoom_factor * self._ui_scale > 2.5:
-                self.zoom_factor = self._auto_detect_zoom()
-                self._settings['zoom_factor'] = self.zoom_factor
-                _save_hud_settings(self._settings)
         self._widget_vis: dict = {**_c._DEFAULT_VIS, **self._settings.get('widget_vis', {})}
         self._panel_w = self._calc_panel_w()
-        self._perf_win = None
-        self._deck_win = None
-        self._settings_win = None
-        self._ext_win = None
-        self._spell_win = None
-        self._keybind_win = None
         self._last_weather_data = None
         self._cx = self._cy = 300
         self._tick = 0
@@ -134,36 +138,33 @@ class JarvisHUD:
         weather.weather_tick(self)
         self.root.after(50, self._poll_hud_queue)
         self.root.after(200, self._start_tray)
-        if self._settings.get('start_maximized', True):
-            try:
-                self.root.state('zoomed')
-            except Exception:
-                pass
         self.root.after(250, self.root.deiconify)
         self.root.bind_all('<MouseWheel>', self._route_wheel)
         self.root.bind_all('<Control-equal>', lambda e: self._zoom_step(+0.1))
         self.root.bind_all('<Control-plus>', lambda e: self._zoom_step(+0.1))
         self.root.bind_all('<Control-minus>', lambda e: self._zoom_step(-0.1))
         self.root.bind_all('<Control-0>', lambda e: self._zoom_reset())
+
     def _px(self, n: int) -> int:
-        return int(n * self._ui_scale * self.zoom_factor)
+        # We scale for internal canvases. CTK widgets will use logical pixels.
+        return int(n * self.zoom_factor)
     def _fs(self, n: int) -> int:
+        # Standard tk.Labels need font scaling as CTK doesn't auto-scale them.
         return max(6, int(n * self.zoom_factor))
     def _auto_detect_zoom(self) -> float:
         try:
             sw = self.root.winfo_screenwidth()
-            lw = int(sw / max(1.0, self._ui_scale))
-            if lw >= 3840: return 2.0
-            if lw >= 2560: return 1.5
-            if lw >= 1920: return 1.25
+            # On 4K, sw is usually 3840 (if DPI is 1.0) or logical (~1920 with 2x DPI)
+            # Since CTK handles DPI, winfo_screenwidth() returns logical pixels.
+            if sw >= 3000: return 2.0
+            if sw >= 2000: return 1.5
+            if sw >= 1600: return 1.25
             return 1.0
         except Exception:
             return 1.0
     def _get_dpi_scale(self) -> float:
-        try:
-            return self.root.winfo_fpixels('1i') / 96.0
-        except Exception:
-            return 1.0
+        # Framework handles DPI natively.
+        return 1.0
     def _calc_panel_w(self) -> int:
         import tkinter.font as _tf
         try:
@@ -193,8 +194,15 @@ class JarvisHUD:
         except Exception:
             _content_w = self._px(280)
         sw = self.root.winfo_screenwidth()
-        _max_pct = 0.41 if self.zoom_factor >= 1.9 else 0.38
-        return max(self._px(230), min(_content_w + 30, int(sw * _max_pct)))
+        _max_pct = 0.38
+        if sw >= 1920: _max_pct = 0.32
+        if sw >= 2560: _max_pct = 0.26
+        if sw >= 3840: _max_pct = 0.20
+        if self.zoom_factor >= 1.8: _max_pct += 0.05
+        
+        _w = max(self._px(230), min(_content_w + 30, int(sw * _max_pct)))
+        # Hard cap for 4K to prevent half-screen buttons
+        return min(_w, self._px(550))
     def _poll_hud_queue(self):
         try:
             while not self._hud_queue.empty():
@@ -230,9 +238,11 @@ class JarvisHUD:
         _save_hud_settings(self._settings)
         self._apply_zoom_rebuild()
     def _apply_zoom_rebuild(self) -> None:
+        self.root.update_idletasks()
         self._panel_w = self._calc_panel_w()
-        self._left.configure(width=self._panel_w)
-        self._right.configure(width=self._panel_w)
+        if hasattr(self._left, 'outer'): self._left.outer.configure(width=self._panel_w)
+        if hasattr(self._right, 'outer'): self._right.outer.configure(width=self._panel_w)
+        self.root.update()
         layout.rebuild_left(self)
         layout.rebuild_right(self)
         layout.update_header_fonts(self)
@@ -243,6 +253,28 @@ class JarvisHUD:
             except: pass
     def _apply_widget_visibility(self) -> None:
         layout.apply_widget_visibility(self)
+    def show_msg(self, text: str, color: str = _c._CYAN, duration: int = 3000):
+        if not hasattr(self, '_hdr_title_lbl') or not self._hdr_title_lbl.winfo_exists():
+            return
+        orig_text = 'J.A.R.V.I.S.'
+        orig_color = _c._CYAN
+        self._hdr_title_lbl.configure(text=text.upper(), fg=color)
+        def _restore():
+            if self._hdr_title_lbl.winfo_exists():
+                self._hdr_title_lbl.configure(text=orig_text, fg=orig_color)
+        self.root.after(duration, _restore)
+
+    def show_msg_stream(self, text: str, color: str = _c._CYAN):
+        """Update header without duration/restore for streaming."""
+        if not hasattr(self, '_hdr_title_lbl') or not self._hdr_title_lbl.winfo_exists():
+            return
+        self._hdr_title_lbl.configure(text=text.upper(), fg=color)
+
+    def hide_msg_stream(self):
+        """Manually restore header after stream is finished."""
+        if not hasattr(self, '_hdr_title_lbl') or not self._hdr_title_lbl.winfo_exists():
+            return
+        self._hdr_title_lbl.configure(text='J.A.R.V.I.S.', fg=_c._CYAN)
     def update_jarvis_params(self, threshold: int, gain: float, volume: float):
         if _UPDATE_ASR_CALLBACK:
             _UPDATE_ASR_CALLBACK(threshold, gain, volume)

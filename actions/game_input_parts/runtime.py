@@ -7,10 +7,11 @@ from actions.game_input_parts.profile import (
     _last_cast,
     CAST_COOLDOWN,
     match_command,
+    press_robust,
 )
 _wiper_state: int = 0
 def _switch_panel(target: int):
-    _input.press(f'f{target}')
+    press_robust(f'f{target}', duration=0.1)
     time.sleep(0.05)
 def _execute_sequence(steps: list[dict]):
     for step in steps:
@@ -22,7 +23,7 @@ def _execute_sequence(steps: list[dict]):
                 time.sleep(step['hold'])
                 _input.keyUp(step['key'])
             else:
-                _input.press(step['key'])
+                press_robust(step['key'])
             time.sleep(0.05)
         elif 'keys' in step:
             ks = step['keys']
@@ -97,7 +98,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
             if target == 0:
                 max_tries = 3
                 while _get_w_on() is True and max_tries > 0:
-                    _input.press(key or 'p')
+                    press_robust(key or 'p')
                     time.sleep(0.15)
                     max_tries -= 1
                 _wiper_state = 0
@@ -107,7 +108,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
                 for i in range(presses):
                     if i > 0:
                         time.sleep(0.12)
-                    _input.press(wiper_key)
+                    press_robust(wiper_key)
                 _wiper_state = target
         if lights_target:
             if wiper_target is not None:
@@ -121,7 +122,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
             if lights_target == 'low_on':
                 if get_lights_low() is not True:
                     for _ in range(4):
-                        _input.press('l')
+                        press_robust('l')
                         time.sleep(0.14)
                         if get_lights_low() is True:
                             break
@@ -130,27 +131,27 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
                 if lights_target_raw == 'low_adaptive' and _is_lights_recommended():
                     time.sleep(0.18)
                     if get_lights_low() is True and get_lights_high() is not True:
-                        _input.press('k')
+                        press_robust('k')
             elif lights_target == 'parking_on':
                 if not p_on:
-                    _input.press('l')
+                    press_robust('l')
                 elif l_on:
-                    _input.press('l')
+                    press_robust('l')
                     time.sleep(0.1)
-                    _input.press('l')
+                    press_robust('l')
             elif lights_target == 'off':
                 if l_on:
-                    _input.press('l')
+                    press_robust('l')
                 elif p_on:
-                    _input.press('l')
+                    press_robust('l')
                     time.sleep(0.1)
-                    _input.press('l')
+                    press_robust('l')
             elif lights_target == 'high_on':
                 if not h_on:
-                    _input.press('k')
+                    press_robust('k')
             elif lights_target == 'high_off':
                 if h_on:
-                    _input.press('k')
+                    press_robust('k')
         if response:
             threading.Thread(target=_speak_response, args=(response,), daemon=True).start()
         if not (key or keys or mouse or sequence):
@@ -181,7 +182,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
                 time.sleep(0.05)
             _input.keyUp(keys[0])
         else:
-            _input.press(key)
+            press_robust(key)
         return (True, name)
     except Exception:
         return (False, '')
@@ -214,7 +215,7 @@ def execute_by_name(name: str) -> bool:
                 time.sleep(0.05)
             _input.keyUp(keys[0])
         else:
-            _input.press(key)
+            press_robust(key)
         return True
     except Exception:
         return False

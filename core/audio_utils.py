@@ -29,3 +29,59 @@ def open_input_stream(pa, rate: int, chunk_frames: int, device_index: int | None
     return pa.open(**kw)
 def now() -> float:
     return time.perf_counter()
+
+_last_hp_check = 0.0
+_last_hp_res = False
+
+def is_current_output_headphones() -> bool:
+    global _last_hp_check, _last_hp_res
+    t = time.time()
+    if t - _last_hp_check < 2.5:
+        return _last_hp_res
+    
+    _last_hp_check = t
+    try:
+        import pythoncom
+        from pycaw.pycaw import AudioUtilities
+        pythoncom.CoInitialize()
+        dev = AudioUtilities.GetSpeakers()
+        if not dev:
+            _last_hp_res = False
+            return False
+        
+        name = str(dev.GetFriendlyName() or "").lower()
+        keywords = ['headphone', 'headset', 'phone', 'наушники', 'гарнитура', 'kopfhörer']
+        _last_hp_res = any(k in name for k in keywords)
+    except Exception:
+        _last_hp_res = False
+    return _last_hp_res
+
+
+_last_jarvis_hp_check = 0.0
+_last_jarvis_hp_res = False
+
+def is_jarvis_output_headphones() -> bool:
+    """Check if Jarvis's *configured* output device is headphones.
+    Unlike is_current_output_headphones(), this reads Jarvis settings directly
+    instead of the Windows system default — so it's correct even when Jarvis
+    outputs to a different device than the OS default.
+    """
+    global _last_jarvis_hp_check, _last_jarvis_hp_res
+    t = time.time()
+    if t - _last_jarvis_hp_check < 2.5:
+        return _last_jarvis_hp_res
+
+    _last_jarvis_hp_check = t
+    try:
+        d = _load_audio_settings()
+        dev_name = str(d.get('audio_output_device_name') or '').lower()
+        if dev_name:
+            keywords = ['headphone', 'headset', 'kopfhörer', 'наушники', 'гарнитура', 'phone']
+            _last_jarvis_hp_res = any(k in dev_name for k in keywords)
+            return _last_jarvis_hp_res
+    except Exception:
+        pass
+    # No configured device → fall back to checking system default
+    _last_jarvis_hp_res = is_current_output_headphones()
+    return _last_jarvis_hp_res
+

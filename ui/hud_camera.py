@@ -32,8 +32,8 @@ def draw_cam_standby(hud) -> None:
     for x, y, dx, dy in [(hud._px(10), hud._px(10), 1, 1), (w - hud._px(10), hud._px(10), -1, 1), (hud._px(10), h - hud._px(10), 1, -1), (w - hud._px(10), h - hud._px(10), -1, -1)]:
         c.create_line(x, y, x + dx * s, y, fill=_CYAN, width=2)
         c.create_line(x, y, x, y + dy * s, fill=_CYAN, width=2)
-    c.create_text(cx, cy + int(h * 0.25), text='ВИДЕОСЕНСОР: ОЖИДАНИЕ', fill=_blend(_CYAN, 0.5), font=(hud._F, hud._fs(10), 'bold'))
-    c.create_text(cx, cy + int(h * 0.40), text='СИГНАЛ НЕ ОБНАРУЖЕН', fill=_RED, font=(hud._F, hud._fs(8)))
+    c.create_text(cx, cy + r + hud._px(35), text='ВИДЕОСЕНСОР: ОЖИДАНИЕ', fill=_blend(_CYAN, 0.5), font=(hud._F, hud._fs(10), 'bold'))
+    c.create_text(cx, cy + r + hud._px(60), text='СИГНАЛ НЕ ОБНАРУЖЕН', fill=_RED, font=(hud._F, hud._fs(8)))
 def toggle_cam(hud) -> None:
     if not _CV2_OK or not _PIL_OK:
         return

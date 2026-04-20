@@ -13,6 +13,23 @@ _entries: list[dict] = []
 _flat: list[tuple[str, dict]] = []
 _bindings: dict = {}
 _last_cast: dict[str, float] = {}
+def press_robust(key: str, duration: float = 0.15):
+    """
+    Iron-clad key press for DirectX games.
+    Holds the key for a short duration to ensure registration.
+    """
+    if not key:
+        return
+    try:
+        _input.keyDown(key)
+        time.sleep(duration)
+        _input.keyUp(key)
+    except Exception:
+        # Fallback to simple press if keyDown/Up fails or not supported
+        try:
+            _input.press(key)
+        except Exception:
+            pass
 def get_binding(name: str, default: str = '') -> str:
     return _bindings.get(name, default)
 CAST_COOLDOWN = 1.0

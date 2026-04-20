@@ -12,7 +12,7 @@ def build_header(hud) -> None:
     hdr = tk.Frame(hud.root, bg='#080910', height=hud._px(40))
     hdr.pack(fill='x')
     hdr.pack_propagate(False)
-    hud._hdr_os_lbl = tk.Label(hdr, text='  JARVIS OS  v1.4', bg='#080910', fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
+    hud._hdr_os_lbl = tk.Label(hdr, text='  JARVIS OS  v1.5', bg='#080910', fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
     hud._hdr_os_lbl.pack(side='left', padx=8)
     hud._hdr_time = tk.Label(hdr, text='', bg='#080910', fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
     hud._hdr_time.pack(side='right', padx=12)
@@ -134,7 +134,7 @@ def build_left(hud) -> None:
     make_hud_btn(hud, p, 'БАЗА КОМАНД', '◈', _MAG, hud._open_deck, icon_fs=28)
     make_hud_btn(hud, p, 'НАСТРОЙКИ СИСТЕМЫ', '⚙', _CYAN, hud._open_settings, icon_fs=18)
     make_hud_btn(hud, p, 'ЦЕНТР РАСШИРЕНИЙ', '⬡', _RED, hud._open_extensions, icon_fs=26)
-    if module_enabled('inbox_digest'):
+    if module_enabled('inbox_digest') and _ext.is_installed('feature_mail_client'):
         make_hud_btn(hud, p, 'ПОЧТА', '✉', _CYAN, hud._open_mail, icon_fs=22)
     if hud._widget_vis.get('meetings_btn', True):
         from actions.meetings import get_meetings as _get_meetings

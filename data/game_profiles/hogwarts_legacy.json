@@ -3,7 +3,7 @@
   "description": "Default PC keybindings (verified from screenshots). Fixed actions: Q=Protego, X=Ancient Magic, Z=Ancient Magic Throw, R=Revelio, G=Heal, CapsLock=Lock On, Ctrl=Dodge, F=Interact. Spell panels F1-F4 (alt: 5-8), slots 1-4.",
   "spells": [
     {
-      "name": "Basic Cast",
+      "name": "Базовая атака",
       "variants": [
         "выстрел",
         "базовый выстрел",
@@ -15,7 +15,7 @@
       "mouse": "left"
     },
     {
-      "name": "Aim",
+      "name": "Прицеливание",
       "variants": [
         "прицелься",
         "прицеливание",
@@ -26,7 +26,7 @@
       "mouse": "right"
     },
     {
-      "name": "Protego",
+      "name": "Протего (Щит)",
       "variants": [
         "протего",
         "протегос",
@@ -40,7 +40,7 @@
       "set": 1
     },
     {
-      "name": "Ancient Magic",
+      "name": "Древняя магия",
       "variants": [
         "древняя магия",
         "финишер",
@@ -52,7 +52,7 @@
       "key": "x"
     },
     {
-      "name": "Ancient Magic Throw",
+      "name": "Бросок древней магии",
       "variants": [
         "бросок",
         "бросок магии",
@@ -64,7 +64,7 @@
       "key": "z"
     },
     {
-      "name": "Revelio",
+      "name": "Ревелио",
       "variants": [
         "ревелио",
         "ревелиос",
@@ -76,7 +76,7 @@
       "key": "r"
     },
     {
-      "name": "Heal",
+      "name": "Исцеление",
       "variants": [
         "исцеление",
         "зелье",
@@ -89,7 +89,7 @@
       "key": "g"
     },
     {
-      "name": "Interact",
+      "name": "Взаимодействие",
       "variants": [
         "взаимодействие",
         "взаимодействуй",
@@ -104,7 +104,7 @@
       "key": "f"
     },
     {
-      "name": "Lock On",
+      "name": "Захват цели",
       "variants": [
         "захват цели",
         "блокировка цели",
@@ -116,7 +116,7 @@
       "key": "capslock"
     },
     {
-      "name": "Dodge",
+      "name": "Уклонение",
       "variants": [
         "уклонись",
         "уклонение",
@@ -128,7 +128,7 @@
       "key": "ctrl"
     },
     {
-      "name": "Map",
+      "name": "Карта",
       "variants": [
         "карта",
         "открой карту",
@@ -139,7 +139,7 @@
       "key": "m"
     },
     {
-      "name": "Inventory",
+      "name": "Инвентарь",
       "variants": [
         "инвентарь",
         "снаряжение",
@@ -150,7 +150,7 @@
       "key": "i"
     },
     {
-      "name": "Quests",
+      "name": "Задания (Квесты)",
       "variants": [
         "задания",
         "квесты",
@@ -161,7 +161,7 @@
       "key": "l"
     },
     {
-      "name": "Talents",
+      "name": "Таланты",
       "variants": [
         "таланты",
         "способности",
@@ -171,7 +171,7 @@
       "key": "u"
     },
     {
-      "name": "Spell Menu",
+      "name": "Меню заклинаний",
       "variants": [
         "меню заклинаний",
         "назначить заклинания",
@@ -181,7 +181,7 @@
       "key": "t"
     },
     {
-      "name": "Compass",
+      "name": "Компас",
       "variants": [
         "путеводная нить",
         "компас",
@@ -192,7 +192,7 @@
       "key": "v"
     },
     {
-      "name": "Dismount",
+      "name": "Слезть с метлы",
       "variants": [
         "слезть с метлы",
         "слезь",
@@ -203,7 +203,7 @@
       "key": "b"
     },
     {
-      "name": "Mount Broom",
+      "name": "Сесть на метлу",
       "variants": [
         "метла",
         "достань метлу",
@@ -218,7 +218,7 @@
       ]
     },
     {
-      "name": "Accio",
+      "name": "Акцио",
       "variants": [
         "акцио",
         "аксио",
@@ -229,7 +229,7 @@
       ]
     },
     {
-      "name": "Levioso",
+      "name": "Левиозо",
       "variants": [
         "левиозо",
         "левиоса",
@@ -242,7 +242,7 @@
       ]
     },
     {
-      "name": "Expelliarmus",
+      "name": "Экспеллиармус",
       "variants": [
         "экспеллиармус",
         "экспелиармус",
@@ -256,7 +256,7 @@
       "set": 1
     },
     {
-      "name": "Depulso",
+      "name": "Депульсо",
       "variants": [
         "депульсо",
         "депулсо",
@@ -269,7 +269,7 @@
       "set": 1
     },
     {
-      "name": "Incendio",
+      "name": "Инцендио",
       "variants": [
         "инцендио",
         "инцендий",
@@ -283,7 +283,7 @@
       "set": 2
     },
     {
-      "name": "Confringo",
+      "name": "Конфринго",
       "variants": [
         "конфринго",
         "конфрингос",
@@ -295,7 +295,7 @@
       "set": 2
     },
     {
-      "name": "Bombarda",
+      "name": "Бомбарда",
       "variants": [
         "бомбарда",
         "бомбардо",
@@ -308,7 +308,7 @@
       "set": 2
     },
     {
-      "name": "Diffindo",
+      "name": "Диффиндо",
       "variants": [
         "диффиндо",
         "дифиндо",
@@ -321,7 +321,7 @@
       "set": 2
     },
     {
-      "name": "Glacius",
+      "name": "Гляциус",
       "variants": [
         "гляциус",
         "гляциос",
@@ -335,7 +335,7 @@
       "set": 3
     },
     {
-      "name": "Arresto Momentum",
+      "name": "Арресто моментум",
       "variants": [
         "арресто моментум",
         "аресто моментум",
@@ -348,7 +348,7 @@
       "set": 3
     },
     {
-      "name": "Descendo",
+      "name": "Десендо",
       "variants": [
         "десендо",
         "дисендо",
@@ -362,7 +362,7 @@
       "set": 3
     },
     {
-      "name": "Flipendo",
+      "name": "Флипендо",
       "variants": [
         "флипендо",
         "флипендос",
@@ -373,7 +373,7 @@
       ]
     },
     {
-      "name": "Avada Kedavra",
+      "name": "Авада Кедавра",
       "variants": [
         "авада кедавра",
         "аввадакидавра",
@@ -385,7 +385,7 @@
       "set": 4
     },
     {
-      "name": "Crucio",
+      "name": "Круцио",
       "variants": [
         "круцио",
         "круциатус",
@@ -398,7 +398,7 @@
       "set": 4
     },
     {
-      "name": "Disillusionment",
+      "name": "Невидимость",
       "variants": [
         "дисиллюжнмент",
         "невидимость",
@@ -409,7 +409,7 @@
       ]
     },
     {
-      "name": "Lumos",
+      "name": "Люмос",
       "variants": [
         "люмос",
         "лумос",

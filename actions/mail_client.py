@@ -11,7 +11,42 @@ from email.message import EmailMessage
 from email.parser import BytesParser
 from email.policy import default as email_policy
 from pathlib import Path
+from pathlib import Path
+
 _SETTINGS_PATH = Path('data') / 'jarvis_settings.json'
+
+def _update_env_var(key: str, value: str):
+    """Safely update or add a variable in the .env file."""
+    try:
+        import sys
+        # Find .env near the executable or in the current directory
+        env_path = Path('.env')
+        if hasattr(sys, 'frozen'):
+            env_path = Path(sys.executable).parent / '.env'
+            
+        lines = []
+        if env_path.exists():
+            lines = env_path.read_text(encoding='utf-8').splitlines()
+        
+        found = False
+        new_line = f'{key}="{value}"'
+        for i, line in enumerate(lines):
+            if line.strip().startswith(f'{key}='):
+                lines[i] = new_line
+                found = True
+                break
+        
+        if not found:
+            if lines and lines[-1].strip():
+                lines.append('')
+            lines.append(new_line)
+            
+        env_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        # Also update os.environ for the current session
+        os.environ[key] = value
+    except Exception as e:
+        with open('logs/debug_init.log', 'a', encoding='utf-8') as f:
+            f.write(f"MAIL_CLIENT: Error updating .env: {e}\n")
 def _load_settings() -> dict:
     try:
         if _SETTINGS_PATH.exists():
@@ -38,10 +73,34 @@ def get_resolved_mail_config() -> dict | None:
     acct = s.get('mail_account')
     if not isinstance(acct, dict):
         acct = {}
+        
+    # Security: Check for password in JSON and migrate to .env if found
+    json_pass = acct.get('password', '').strip()
+    env_pass = os.environ.get('JARVIS_IMAP_PASS', '').strip()
+    
+    password = env_pass
+    if json_pass and not env_pass:
+        # Auto-migrate
+        _update_env_var('JARVIS_IMAP_PASS', json_pass)
+        password = json_pass
+        # Scrub from JSON
+        acct['password'] = ""
+        s['mail_account'] = acct
+        try:
+            _SETTINGS_PATH.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding='utf-8')
+        except: pass
+    elif json_pass and env_pass:
+        # Already migrated, just scrub from JSON
+        acct['password'] = ""
+        s['mail_account'] = acct
+        try:
+            _SETTINGS_PATH.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding='utf-8')
+        except: pass
+
     email = (acct.get('email') or os.environ.get('JARVIS_IMAP_USER', '')).strip()
-    password = (acct.get('password') or os.environ.get('JARVIS_IMAP_PASS', '')).strip()
     imap_host = (acct.get('imap_host') or os.environ.get('JARVIS_IMAP_HOST', '')).strip()
     smtp_host = (acct.get('smtp_host') or os.environ.get('JARVIS_SMTP_HOST', '')).strip()
+    
     try:
         imap_port = int(acct.get('imap_port') or os.environ.get('JARVIS_IMAP_PORT', '993') or 993)
     except ValueError:
@@ -50,7 +109,9 @@ def get_resolved_mail_config() -> dict | None:
         smtp_port = int(acct.get('smtp_port') or os.environ.get('JARVIS_SMTP_PORT', '587') or 587)
     except ValueError:
         smtp_port = 587
+        
     mailbox = (acct.get('mailbox') or os.environ.get('JARVIS_IMAP_MAILBOX', 'INBOX') or 'INBOX').strip() or 'INBOX'
+    
     cfg = {
         'email': email,
         'password': password,
@@ -81,7 +142,13 @@ def save_mail_account(
         data['mail_account'] = {}
     acc = data['mail_account']
     acc['email'] = email.strip()
-    acc['password'] = password
+    acc['password'] = "" # NEVER save key to JSON
+    
+    # Save password to .env
+    if password.strip():
+        _update_env_var('JARVIS_IMAP_PASS', password.strip())
+        _update_env_var('JARVIS_IMAP_USER', email.strip())
+
     ih = (imap_host or '').strip()
     sh = (smtp_host or '').strip()
     if _is_gmail_address(email):

@@ -22,7 +22,9 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
     win.attributes('-alpha', 0.98)
     win.configure(bg=_BG)
     _sw, _sh = hud.root.winfo_screenwidth(), hud.root.winfo_screenheight()
-    _dw, _dh = _px(1160), _px(760)
+    # Windows geometry should be in logical pixels. CTK scales the window automatically.
+    _W, _H = 1160, 760
+    _dw, _dh = int(_W * hud.zoom_factor), int(_H * hud.zoom_factor)
     _dx, _dy = (_sw - _dw) // 2, (_sh - _dh) // 2
     win.geometry(f'{_dw}x{_dh}+{_dx}+{_dy}')
     _drag_data = {'x': 0, 'y': 0}
@@ -44,7 +46,7 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             _hex = "".join(random.choices("0123456789ABCDEF", k=8))
             bg_c.create_text(20, 60 + i*12, text=f"0x{_hex}  [LINK_STABLE]", fill=_blend(_CYAN, 0.15), font=_f8, anchor='w', tags='tech')
             bg_c.create_text(w-20, h-60 - i*12, text=f"SYS_VAL_0{i}: {random.randint(1000,9999)}", fill=_blend(_CYAN, 0.15), font=_f8, anchor='e', tags='tech')
-        bg_c.create_text(w-40, 40, text="STRK_DIAG_CORE v1.4", fill=_blend(_CYAN, 0.2), font=_f8, anchor='e', tags='tech')
+        bg_c.create_text(w-40, 40, text="STRK_DIAG_CORE v1.5", fill=_blend(_CYAN, 0.2), font=_f8, anchor='e', tags='tech')
     def _draw_base():
         bg_c.delete('base')
         w, h = win.winfo_width(), win.winfo_height()
@@ -58,13 +60,13 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             bg_c.create_line(x + dx*6, y + dy*6, x + dx*18, y + dy*6, fill=_blend(_CYAN, 0.4), width=1, tags='base')
         _draw_tech_overlay()
     win.bind('<Configure>', lambda e: _draw_base())
-    hdr = tk.Frame(win, bg=_blend(_CYAN, 0.08), height=_px(46))
-    hdr.place(x=4, y=4, width=_dw-8)
+    hdr = tk.Frame(win, bg=_blend(_CYAN, 0.08), height=46)
+    hdr.place(x=4, y=4, relwidth=1.0, width=-8)
     hdr.bind('<Button-1>', _start_drag)
     hdr.bind('<B1-Motion>', _on_drag)
     tk.Frame(hdr, bg=_CYAN, height=1).pack(fill='x', side='bottom')
     tk.Label(hdr, text='  ⌬  СИСТЕМНЫЙ МОНИТОРИНГ J.A.R.V.I.S.', bg=hdr['bg'], fg=_CYAN, font=(_f, _fs(12), 'bold')).pack(side='left', padx=16)
-    btn_close = tk.Canvas(hdr, width=_px(40), height=_px(40), bg=hdr['bg'], highlightthickness=0, cursor='hand2')
+    btn_close = tk.Canvas(hdr, width=40, height=40, bg=hdr['bg'], highlightthickness=0, cursor='hand2')
     btn_close.pack(side='right', padx=4)
     def _draw_close(col=_DIM):
         btn_close.delete('all')
@@ -76,8 +78,8 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
     _set_dark_title_bar(win)
     win.after(150, lambda: _set_dark_title_bar(win))
     content_f = tk.Frame(win, bg=_BG)
-    content_f.place(x=4, y=54, width=_dw-8, height=_dh-58)
-    sidebar = tk.Frame(content_f, bg=_blend(_CYAN, 0.03), width=_px(280))
+    content_f.place(x=4, y=54, relwidth=1.0, relheight=1.0, width=-8, height=-58)
+    sidebar = tk.Frame(content_f, bg=_blend(_CYAN, 0.03), width=280)
     sidebar.pack(side='left', fill='y', padx=(0, 2))
     sidebar.pack_propagate(False)
     main_area = tk.Frame(content_f, bg=_blend(_CYAN, 0.01))
@@ -105,7 +107,7 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             else: c.pack_forget()
     _sides = {}
     for key, (name, col, _, _, short) in _META.items():
-        f = tk.Frame(sidebar, bg=_BG, cursor='hand2', height=_px(85))
+        f = tk.Frame(sidebar, bg=_BG, cursor='hand2', height=85)
         f.pack(fill='x', pady=1)
         f.pack_propagate(False)
         def _bind_click(w, k=key):
@@ -268,7 +270,8 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
                 continue
             _last_refresh_len[k] = cur_len
             spark.delete('dyn_s')
-            sw, sh = 80, 35
+            sw_s, sh_s = spark.winfo_width(), spark.winfo_height()
+            if sw_s < 10: sw_s, sh_s = 90, 45
             spts = pts[-30:]
             if len(spts) > 1:
                 is_p = k in ['ram', 'dsk_util', 'gpu_util']
@@ -276,10 +279,10 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
                 s_coords = []
                 s_li = float(len(spts) - 1.0)
                 for i, sv in enumerate(spts):
-                    sx = (i / s_li) * sw
-                    sy = sh - (min(max(float(sv), 0.0), s_scale) / s_scale) * sh
+                    sx = (i / s_li) * sw_s
+                    sy = sh_s - (min(max(float(sv), 0.0), s_scale) / s_scale) * sh_s
                     s_coords.extend([sx, sy])
-                sf_c = list(s_coords) + [sw, sh, 0, sh]
+                sf_c = list(s_coords) + [sw_s, sh_s, 0, sh_s]
                 spark.create_polygon(sf_c, fill=_blend(_META[k][1], 0.1), outline='', tags='dyn_s')
                 spark.create_line(s_coords, fill=_blend(_META[k][1], 0.5), width=1.5, smooth=True, tags='dyn_s')
         cur = _active.get()

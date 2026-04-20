@@ -40,7 +40,11 @@ def _get_url_from_history(window_title: str = '') -> str | None:
                 pass
             finally:
                 if tmp is not None:
-                    tmp.unlink(missing_ok=True)
+                    try:
+                        time.sleep(0.2)
+                        tmp.unlink(missing_ok=True)
+                    except Exception:
+                        pass
     result = title_match_url or best_url
     print(f'[_get_url_from_history] title_hint={title_hint!r} match={title_match_url!r} best={best_url!r}', flush=True)
     return result
@@ -238,19 +242,57 @@ def download_youtube_video():
             return (False, 'Не удалось получить ссылку на видео')
         return (False, 'Ошибка скачивания')
 def control_youtube(action: str, amount: int=5):
-    import pyautogui
-    wins = [w for w in gw.getWindowsWithTitle('YouTube') if w.visible]
-    if not wins:
-        browser_keywords = ['brave', 'chrome', 'edge', 'opera', 'yandex']
-        wins = [w for w in gw.getAllWindows() if w.visible and any(k in w.title.lower() for k in browser_keywords)]
-    if not wins:
-        return False
-    hwnd = wins[0]._hWnd
     import win32gui
-    if win32gui.IsIconic(hwnd):
-        win32gui.ShowWindow(hwnd, 9)
-    force_foreground(hwnd)
-    time.sleep(0.2)
+    import win32con
+    import pyautogui
+    from core.system.windows import get_hwnd_process_name
+    
+    # 1. Robust window search
+    all_windows = []
+    def _enum_cb(hwnd, _):
+        title = win32gui.GetWindowText(hwnd)
+        if title or get_hwnd_process_name(hwnd):
+            all_windows.append(hwnd)
+        return True
+    
+    try:
+        win32gui.EnumWindows(_enum_cb, None)
+    except:
+        pass
+
+    target_hwnd = None
+    browser_exes = ('brave.exe', 'chrome.exe', 'msedge.exe', 'opera.exe', 'browser.exe', 'firefox.exe')
+    
+    # Priority: Window with "YouTube" in title + Browser process
+    for hwnd in all_windows:
+        title = win32gui.GetWindowText(hwnd).lower()
+        p_name = get_hwnd_process_name(hwnd)
+        if ('youtube' in title or 'ютуб' in title) and p_name in browser_exes:
+            target_hwnd = hwnd
+            break
+            
+    if not target_hwnd:
+        # Fallback: Just any browser
+        for hwnd in all_windows:
+            p_name = get_hwnd_process_name(hwnd)
+            if p_name in browser_exes:
+                target_hwnd = hwnd
+                break
+
+    if not target_hwnd:
+        return False
+
+    # 2. Silent vs Focused control
+    if action == 'play_pause':
+        # Silent control: WM_APPCOMMAND (no focus needed)
+        win32gui.SendMessage(target_hwnd, 0x0319, 0, 14 << 16)
+        return True
+
+    # For other actions like rewind/fullscreen, we might still need focus
+    if win32gui.IsIconic(target_hwnd):
+        win32gui.ShowWindow(target_hwnd, 9)
+    force_foreground(target_hwnd)
+    time.sleep(0.15)
     if action == 'fullscreen':
         hkl = _ensure_en_layout()
         send_hardware_key(70)
@@ -365,7 +407,11 @@ def open_last_watched_video() -> bool:
             pass
         finally:
             if tmp is not None:
-                tmp.unlink(missing_ok=True)
+                try:
+                    time.sleep(0.2)
+                    tmp.unlink(missing_ok=True)
+                except Exception:
+                    pass
     if best_url:
         _open_youtube_url(best_url)
         return True

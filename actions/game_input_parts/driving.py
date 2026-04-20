@@ -1,21 +1,42 @@
 import time
-from actions.game_input_parts.profile import _input, get_binding
-def cruise_set_speed(target_kmh: int, current_kmh: float) -> tuple[bool, int]:
-    current_snapped = round(current_kmh / 5.0) * 5.0
+from actions.game_input_parts.profile import _input, get_binding, press_robust
+
+def cruise_set_speed(target_kmh: int, current_kmh: float, auto_mode: bool = False) -> tuple[bool, int]:
+    from actions.ets2_telemetry import get_cruise_active, get_cruise_speed_kmh
+    active = get_cruise_active()
+    
+    if active is False:
+        if auto_mode:
+            # Respect manual OFF in auto-cruise mode
+            return (False, 0)
+        # Enable cruise if not active and called manually
+        press_robust(get_binding('cruise', 'c'))
+        time.sleep(0.12)
+        # Refresh state
+        active = get_cruise_active()
+
+    # Use actual cruise speed from telemetry if available, otherwise fallback to current speed
+    telem_cruise = get_cruise_speed_kmh()
+    base_speed = telem_cruise if telem_cruise and telem_cruise > 0 else current_kmh
+    
+    current_snapped = round(base_speed / 5.0) * 5.0
     target_snapped = round(target_kmh / 5.0) * 5.0
+    
     diff = int(target_snapped - current_snapped)
     presses = abs(diff) // 5
+    
     if presses == 0:
         return (True, int(target_snapped))
+    
     key_name = 'cruise_up' if diff > 0 else 'cruise_down'
     key = get_binding(key_name, 'add' if diff > 0 else 'subtract')
     try:
         import pydirectinput as _pdi
         _pdi.PAUSE = 0
         for i in range(presses):
-            _pdi.press(key)
+            press_robust(key)
             if presses > 1:
-                time.sleep(0.07)
+                time.sleep(0.1)  # Slightly slower for better registration
         return (True, int(target_snapped))
     except Exception:
         return (False, int(target_snapped))
@@ -35,11 +56,22 @@ def set_gear(target: int, current: int) -> tuple[bool, int]:
     steps = abs(target - current)
     if steps > 25:
         return (False, current)
+    
     key = up_key if target > current else down_key
     try:
-        for _ in range(steps):
-            _input.press(key)
-            time.sleep(0.06)
+        import pydirectinput as _pdi
+        _pdi.PAUSE = 0
+        for i in range(steps):
+            # Final step to N or R gets extra careful treatment
+            is_final_critical = (i == steps - 1) and (target <= 0)
+            
+            if is_final_critical:
+                press_robust(key, duration_ms=200)
+            else:
+                press_robust(key)
+                
+            if steps > 1:
+                time.sleep(0.12 if is_final_critical else 0.1)
         return (True, target)
     except Exception:
         return (False, current)

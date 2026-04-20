@@ -9,9 +9,33 @@ from . import hud_renderer as renderer
 from . import hud_constants as _hud_constants
 from .hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _RU_MON, _RU_DAYS
 import psutil as _ps
+import pythoncom
+import os
+
+import sys
+
+def _log_monitor_msg(msg: str):
+    try:
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.getcwd()
+        log_dir = os.path.join(base_dir, 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, 'monitoring.log'), 'a', encoding='utf-8') as f:
+            f.write(f"[{datetime.now()}] {msg}\n")
+    except:
+        pass
+
 _LOW_PERF_MODE = (_ps.cpu_count(logical=False) or 4) <= 2
 def start_sys_thread(hud) -> None:
     def _worker() -> None:
+        _log_monitor_msg("start_sys_thread: Worker started")
+        try:
+            pythoncom.CoInitialize()
+            _log_monitor_msg("start_sys_thread: CoInitialize OK")
+        except Exception as e:
+            _log_monitor_msg(f"start_sys_thread: CoInitialize FAILED: {e}")
         wmi_conns = {}
         try:
             import wmi as _wm
@@ -52,10 +76,12 @@ def start_sys_thread(hud) -> None:
                     d['bat_pct'] = bat.percent
                     d['bat_plug'] = bat.power_plugged
                 d['uptime'] = _uptime()
-            except Exception:
-                pass
+            except Exception as e:
+                _log_monitor_msg(f"start_sys_thread loop error: {e}")
             with hud._sys_lock:
                 hud._sys_data.update(d)
+                _log_monitor_msg(f"start_sys_thread: Data updated: {list(d.keys())}")
+            hud.root.after(0, lambda: update_sys_widgets(hud))
             time.sleep(3.0 if _LOW_PERF_MODE else 2.0)
     threading.Thread(target=_worker, daemon=True).start()
 def update_sys_widgets(hud) -> None:
@@ -101,6 +127,10 @@ def update_sys_widgets(hud) -> None:
     hud._uptime_lbl.configure(text=f'ВРЕМЯ РАБОТЫ: {d.get("uptime", "—")}')
 def start_perf_collector(hud) -> None:
     def _worker():
+        _log_monitor_msg("PerfCollector: Worker started")
+        try:
+            pythoncom.CoInitialize()
+        except: pass
         _wc = {}
         def _ps_query_local(query, ns='root/cimv2'):
             import subprocess
@@ -432,8 +462,10 @@ def start_perf_collector(hud) -> None:
                         'ipv6': next((a.address for a in _net_addrs.get('WLAN', []) if a.family == socket.AF_INET6), 'Н/Д')
                     }
                 }
+                _log_monitor_msg("PerfCollector: Loop success")
                 _disk_prev, _net_all_prev, _t_prev = d_io, n_io_all, time.time()
-            except: pass
+            except Exception as e:
+                _log_monitor_msg(f"PerfCollector loop error: {e}")
             elapsed = time.time() - t0
             _interval = 4.0 if _LOW_PERF_MODE else 3.0
             time.sleep(max(0.1, _interval - elapsed))
@@ -449,11 +481,11 @@ def clock_tick(hud) -> None:
         if w < 900:
             hud._hdr_time.configure(text=f'{t_str}  ')
             if hasattr(hud, '_hdr_os_lbl'):
-                hud._hdr_os_lbl.configure(text='  OS v1.4')
+                hud._hdr_os_lbl.configure(text='  OS v1.5')
         else:
             hud._hdr_time.configure(text=f'{d_str}  {t_str}  ')
             if hasattr(hud, '_hdr_os_lbl'):
-                hud._hdr_os_lbl.configure(text='  JARVIS OS  v1.4')
+                hud._hdr_os_lbl.configure(text='  JARVIS OS  v1.5')
     except Exception:
         pass
     try:

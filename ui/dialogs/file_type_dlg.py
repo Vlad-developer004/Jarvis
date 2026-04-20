@@ -61,7 +61,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     btn_close.pack(side="right", padx=10)
     btn_close.bind("<Button-1>", lambda e: _cancel())
     content = tk.Frame(inner, bg=_BG)
-    content.pack(fill="both", expand=True, padx=16, pady=(12, 14))
+    content.pack(fill="both", expand=True, padx=16, pady=(28, 14))
     tk.Label(
         content,
         text="Фильтр или выбор в списке · Enter / двойной щелчок",

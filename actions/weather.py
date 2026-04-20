@@ -31,9 +31,9 @@ def _parse_geo_json(name: str, data: dict) -> tuple[float, float, str] | None:
 def _ip_geolocation(headers: dict, timeout: float = 2.0) -> tuple[float, float, str] | None:
     import requests
     providers = (
+        ("ipwho", "https://ipwho.is/?lang=ru"),
+        ("ip-api", "http://ip-api.com/json/?lang=ru"),
         ("ipapi", "https://ipapi.co/json/"),
-        ("ipwho", "https://ipwho.is/"),
-        ("ipinfo", "https://ipinfo.io/json"),
     )
     def fetch_one(pair: tuple[str, str]) -> tuple[float, float, str] | None:
         name, url = pair
@@ -110,8 +110,29 @@ def get_weather_hud() -> dict:
             if geo:
                 lat, lon, city_name = geo
                 _save_last_location(lat, lon, city_name)
-            else:
-                return {'ok': False, 'city': 'ГЕОЛОКАЦИЯ НЕДОСТУПНА', 'temp': 0, 'feels': 0, 'desc': 'ОШИБКА ГЕО', 'icon': '⚠', 'color': _DIM_COLOR, 'wind': 0, 'humidity': 0, 'pressure': 0, 'sunrise': '—:—', 'sunset': '—:—', 'updated_ts': time.time()}
+        
+        # If city name is English/Latin, try to get Russian name via Geocoding API
+        if city_name and all(ord(c) < 128 for c in city_name) and city_name != 'ГЕОЛОКАЦИЯ НЕДОСТУПНА':
+            try:
+                geo_url = f'https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=5&language=ru&format=json'
+                geo_resp = requests.get(geo_url, headers=headers, timeout=2)
+                if geo_resp.status_code == 200:
+                    results = geo_resp.json().get('results', [])
+                    if results:
+                        # Find closest match by coordinates
+                        best_match = results[0]
+                        min_dist = 999.0
+                        for r in results:
+                            dist = abs(r['latitude'] - lat) + abs(r['longitude'] - lon)
+                            if dist < min_dist:
+                                min_dist = dist
+                                best_match = r
+                        if min_dist < 0.5: # Only if coordinates are reasonably close
+                            city_name = best_match.get('name', city_name)
+                            _save_last_location(lat, lon, city_name)
+            except Exception:
+                pass
+
         url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,surface_pressure&daily=sunrise,sunset&wind_speed_unit=ms&timezone=auto'
         resp_obj = requests.get(url, headers=headers, timeout=3)
         resp = resp_obj.json()
@@ -135,9 +156,9 @@ def is_weather_voice_cached(city: str | None) -> bool:
     key = city.strip().lower() if city else '__auto__'
     c = _weather_cache.get(key)
     return bool(c and time.time() - c['ts'] < _CACHE_TTL_SEC)
-def get_weather(city: str | None) -> tuple[bool, str]:
+def get_weather(city: str | None, date_offset: int = 0) -> tuple[bool, str]:
     import requests
-    cache_key = city.strip().lower() if city else '__auto__'
+    cache_key = f"{city.strip().lower() if city else '__auto__'}_{date_offset}"
     cached = _weather_cache.get(cache_key)
     if cached and time.time() - cached['ts'] < _CACHE_TTL_SEC:
         return (cached['ok'], cached['text'])
@@ -149,35 +170,102 @@ def get_weather(city: str | None) -> tuple[bool, str]:
                 lat, lon, city_name = last
             else:
                 geo = _ip_geolocation(headers, timeout=2.0)
-                if not geo:
-                    return (False, 'Ошибка при определении местоположения.')
+                if not geo: return (False, 'Ошибка при определении местоположения.')
                 lat, lon, city_name = geo
                 _save_last_location(lat, lon, city_name)
         else:
             city_clean = city.strip().lower()
             if len(city_clean) > 4:
-                if city_clean.endswith('е') or city_clean.endswith('и') or city_clean.endswith('а') or city_clean.endswith('у'):
-                    city_clean = city_clean[:-1]
+                if city_clean.endswith(('е', 'и', 'а', 'у')): city_clean = city_clean[:-1]
             geo_url = f'https://geocoding-api.open-meteo.com/v1/search?name={city_clean}&count=1&language=ru&format=json'
             geo_resp = requests.get(geo_url, headers=headers, timeout=3)
             geo_data = geo_resp.json()
-            if not geo_data.get('results'):
-                return (False, f'Город {city} не найден.')
+            if not geo_data.get('results'): return (False, f'Город {city} не найден.')
             result = geo_data['results'][0]
-            lat = result['latitude']
-            lon = result['longitude']
-            city_name = result.get('name', city)
-        weather_url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code&wind_speed_unit=ms'
-        w_resp = requests.get(weather_url, headers=headers, timeout=3)
-        w_data = w_resp.json()
-        current = w_data['current']
-        temp = int(round(current['temperature_2m']))
-        feels_like = int(round(current['apparent_temperature']))
-        code = current['weather_code']
-        descriptions = {0: 'Ясно', 1: 'Преимущественно ясно', 2: 'Переменная облачность', 3: 'Пасмурно', 45: 'Туман', 48: 'Иней', 51: 'Легкий моросящий дождь', 53: 'Умеренный моросящий дождь', 55: 'Плотный моросящий дождь', 61: 'Небольшой дождь', 63: 'Умеренный дождь', 65: 'Сильный дождь', 71: 'Небольшой снегопад', 73: 'Умеренный снегопад', 75: 'Сильный снегопад', 80: 'Слабый ливень', 81: 'Умеренный ливень', 82: 'Сильный ливень', 95: 'Гроза'}
-        desc = descriptions.get(code, 'Неизвестные условия')
-        result_text = f'В городе {city_name} сейчас {desc.lower()}. Температура {temp} градусов, ощущается как {feels_like}.'
+            lat, lon, city_name = result['latitude'], result['longitude'], result.get('name', city)
+        
+        # Localization check for city name (Latin to Russian)
+        if city_name and all(ord(c) < 128 for c in city_name):
+            try:
+                rx_url = f'https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=5&language=ru&format=json'
+                rx_resp = requests.get(rx_url, headers=headers, timeout=2)
+                if rx_resp.status_code == 200:
+                    results = rx_resp.json().get('results', [])
+                    best = next((r for r in results if abs(r['latitude']-lat)+abs(r['longitude']-lon) < 0.5), None)
+                    if best: city_name = best.get('name', city_name)
+            except Exception: pass
+
+        if date_offset == 0:
+            weather_url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code&wind_speed_unit=ms'
+            w_data = requests.get(weather_url, headers=headers, timeout=3).json()
+            current = w_data['current']
+            temp, feels, code = int(round(current['temperature_2m'])), int(round(current['apparent_temperature'])), current['weather_code']
+            desc = _WMO_DESC.get(code, 'неизвестные условия')
+            result_text = f'В городе {city_name} сейчас {desc.lower()}. Температура {_inflect_degree(temp)}, ощущается как {_inflect_degree(feels)}.'
+        else:
+            weather_url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max&timezone=auto&wind_speed_unit=ms'
+            w_data = requests.get(weather_url, headers=headers, timeout=4).json()
+            daily = w_data['daily']
+            if date_offset >= len(daily['time']):
+                return (False, "Прогноз на такой долгий срок недоступен. Я могу заглянуть максимум на неделю вперед.")
+            
+            t_max = int(round(daily['temperature_2m_max'][date_offset]))
+            t_min = int(round(daily['temperature_2m_min'][date_offset]))
+            code = daily['weather_code'][date_offset]
+            desc = _WMO_DESC.get(code, 'неизвестные условия')
+            
+            day_str = "завтра" if date_offset == 1 else ("послезавтра" if date_offset == 2 else f"через {date_offset} дня")
+            if date_offset >= 5: day_str = f"через {date_offset} дней"
+            
+            result_text = f'В городе {city_name} {day_str} ожидается {desc.lower()}. '
+            result_text += f'Ночью будет около {_inflect_degree(t_min)}, а днём температура поднимется до {_inflect_degree(t_max)}. '
+            
+            # Доп. информация
+            rain = daily.get('rain_sum', [0]*10)[date_offset]
+            snow = daily.get('snowfall_sum', [0]*10)[date_offset]
+            wind = daily.get('wind_speed_10m_max', [0]*10)[date_offset]
+            
+            if rain > 1.0: result_text += f'Возможен дождь до {int(rain)} миллиметров. '
+            if snow > 1.0: result_text += f'Ожидается снег. '
+            if wind > 8.0: result_text += f'Будет ветрено, порывы до {int(wind)} метров в секунду.'
+
         _weather_cache[cache_key] = {'ok': True, 'text': result_text, 'ts': time.time()}
         return (True, result_text)
     except Exception as e:
         return (False, f'Ошибка при получении погоды: {str(e)}')
+
+def _inflect_degree(n: int) -> str:
+    """Correctly inflect the word 'degree' in Russian."""
+    abs_n = abs(n)
+    if 11 <= (abs_n % 100) <= 19:
+        return f"{n} градусов"
+    last_digit = abs_n % 10
+    if last_digit == 1:
+        return f"{n} градус"
+    if 2 <= last_digit <= 4:
+        return f"{n} градуса"
+    return f"{n} градусов"
+
+def extract_date_offset(text: str) -> tuple[int, str]:
+    """Extracts date offset and removes temporal keywords from text."""
+    text = text.lower()
+    offset = 0
+    if 'послезавтра' in text:
+        offset = 2
+        text = text.replace('послезавтра', '')
+    elif 'завтра' in text:
+        offset = 1
+        text = text.replace('завтра', '')
+    
+    # Handle "через X дня/дней"
+    import re
+    match = re.search(r'через\s+(один|два|три|четыре|пять|шесть|семь|\d+)\s+(?:день|дня|дней)?', text)
+    if match:
+        val = match.group(1)
+        num_map = {'один': 1, 'два': 2, 'три': 3, 'четыре': 4, 'пять': 5, 'шесть': 6, 'семь': 7}
+        val_int = num_map.get(val) or (int(val) if val.isdigit() else 0)
+        if val_int > 0:
+            offset = val_int
+            text = text.replace(match.group(0), '')
+    
+    return offset, text.strip()

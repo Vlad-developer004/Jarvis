@@ -22,8 +22,8 @@ def open_deck(hud, reopen: bool = False) -> None:
     win.configure(bg=_BG)
     _sw = hud.root.winfo_screenwidth()
     _sh = hud.root.winfo_screenheight()
-    _dw = int(min(1100, _sw * 0.85) * hud._ui_scale * hud.zoom_factor)
-    _dh = int(min(780, _sh * 0.85) * hud._ui_scale * hud.zoom_factor)
+    _dw = int(min(1100, _sw * 0.85 / hud.zoom_factor) * hud.zoom_factor)
+    _dh = int(min(780, _sh * 0.85 / hud.zoom_factor) * hud.zoom_factor)
     _dx = max(0, (_sw - _dw) // 2)
     _dy = max(0, (_sh - _dh) // 2)
     win.geometry(f'{_dw}x{_dh}+{_dx}+{_dy}')
@@ -46,7 +46,7 @@ def open_deck(hud, reopen: bool = False) -> None:
     search_f.pack(fill='x', padx=20, pady=(0, 6))
     tk.Label(search_f, text='⌕', bg=_BG, fg=_CYAN, font=(hud._F, _f14, 'bold')).pack(side='left', padx=(0, 6))
     _search_var = tk.StringVar()
-    search_entry = ctk.CTkEntry(search_f, textvariable=_search_var, placeholder_text='Поиск команды...', font=(hud._F, _f11), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=0, height=hud._px(30))
+    search_entry = ctk.CTkEntry(search_f, textvariable=_search_var, placeholder_text='Поиск команды...', font=(hud._F, _f11), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=0, height=30)
     search_entry.pack(side='left', fill='x', expand=True)
     tk.Frame(win, bg=_SEP, height=1).pack(fill='x', padx=20, pady=(0, 4))
     scroll_outer = tk.Frame(win, bg=_BG)
@@ -78,9 +78,9 @@ def open_deck(hud, reopen: bool = False) -> None:
     _commands: dict = dict(_COMMANDS)
     _all_items: list[tuple[str, str, str, str]] = [(cat, name, phrase, desc) for cat, items in _commands.items() for name, phrase, desc in items]
     def _cols_for_width(w: int) -> int:
-        if w >= int(1150 * hud._ui_scale):
+        if w >= int(1150 * hud.zoom_factor):
             return 3
-        if w >= int(750 * hud._ui_scale):
+        if w >= int(750 * hud.zoom_factor):
             return 2
         return 1
     def _make_card(parent, name: str, phrase: str, desc: str, cat: str = '', wrap_w: int = 300) -> tk.Frame:
