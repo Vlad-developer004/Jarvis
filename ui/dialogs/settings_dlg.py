@@ -111,7 +111,23 @@ def open_settings(hud, reopen: bool = False) -> None:
     tab_canvas.bind('<Configure>', _upd_tab_scroll)
 
     def _on_tab_mousewheel(e):
-        tab_canvas.xview_scroll(int(-1 * (e.delta / 120)), 'units')
+        # Check if tabs actually overflow. If they fit, scroll the vertical content instead.
+        try:
+            total_w = tab_bar.winfo_width()
+            canvas_w = tab_canvas.winfo_width()
+            if total_w > canvas_w:
+                tab_canvas.xview_scroll(int(-1 * (e.delta / 120)), 'units')
+            else:
+                # Redirect to active tab's vertical scroll
+                for frame in tab_frames.values():
+                    if frame.winfo_viewable():
+                        # Find the canvas inside this frame
+                        for child in frame.winfo_children():
+                            if isinstance(child, tk.Canvas):
+                                child.yview_scroll(int(-1 * (e.delta / 120)), 'units')
+                                break
+                        break
+        except Exception: pass
     
     tab_canvas.bind('<MouseWheel>', _on_tab_mousewheel)
     tab_bar.bind('<MouseWheel>', _on_tab_mousewheel)

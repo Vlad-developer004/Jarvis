@@ -497,8 +497,11 @@ def _match_command_inner(text: str, threshold: int) -> str:
         if score >= threshold:
             klen = len(key.split())
             tlen = len(text_norm.split())
-            if tlen == 1 and klen > 1 and score < 100: continue
-            if tlen == 1 and klen > 1 and text_norm in ('удали', 'создай', 'открой', 'закрой'): continue
+            if tlen == 1 and klen > 1:
+                # If it's a single word, it MUST be a high-quality match to a single-word command
+                # or a very specific keyword. "что" matching "что я смотрел в ютубе" is a fail.
+                if score < 100: continue
+                if text_norm in ('удали', 'создай', 'открой', 'закрой', 'что', 'как', 'покажи', 'сделай', 'один', 'два', 'три', 'первый', 'второй', 'третий', '1', '2', '3', 'это'): continue
             if score > best_score or (score == best_score and klen > best_len):
                 best_score, best_len, best_match = score, klen, key
     if best_match:
