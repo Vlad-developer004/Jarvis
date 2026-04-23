@@ -15,6 +15,8 @@ def _switch_panel(target: int):
     time.sleep(0.05)
 def _execute_sequence(steps: list[dict]):
     for step in steps:
+        if step.get('_disabled'):
+            continue
         if 'wait' in step:
             time.sleep(step['wait'])
         elif 'key' in step:

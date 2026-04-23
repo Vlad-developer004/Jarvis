@@ -1,12 +1,29 @@
 import os
+import json
 from dotenv import load_dotenv
+
+def get_project_root() -> str:
+    import sys
+    import os
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    # Path to project root from config_pack/config.py is two levels up
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def get_settings_path() -> str:
+    import os
+    return os.path.join(get_project_root(), 'data', 'jarvis_settings.json')
+
 def _secrets_env_path() -> str:
+    import os
     appdata = os.environ.get('APPDATA', '') or os.environ.get('LOCALAPPDATA', '')
     if appdata:
         return os.path.join(appdata, 'Jarvis', 'secrets.env')
-    return os.path.abspath('.env')
+    return os.path.join(get_project_root(), '.env')
+
 def _load_secrets() -> None:
-    paths = [_secrets_env_path(), os.path.abspath('.env')]
+    import os
+    paths = [_secrets_env_path(), os.path.join(get_project_root(), '.env')]
     for p in paths:
         try:
             if os.path.exists(p):
@@ -31,19 +48,18 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
 TTS_ENGINE = 'piper'
 def _read_stt_engine() -> str:
-    import json
-    import os
-    from pathlib import Path
-    p = Path('data') / 'jarvis_settings.json'
+    p_str = get_settings_path()
     try:
-        if p.exists():
-            data = json.loads(p.read_text(encoding='utf-8'))
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             if 'stt_engine' in data:
                 return data['stt_engine']
             cpu_phys = os.cpu_count() or 2
             engine = 'vosk' if cpu_phys <= 2 else 'gigaam'
             data['stt_engine'] = engine
-            p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+            with open(p_str, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
             return engine
     except Exception:
         pass
@@ -52,24 +68,22 @@ def _read_stt_engine() -> str:
 STT_ENGINE = _read_stt_engine()
 JARVIS_VOLUME = 1.0
 def _read_tts_warmup() -> bool:
-    import json
-    from pathlib import Path
     try:
-        p = Path('data') / 'jarvis_settings.json'
-        if p.exists():
-            data = json.loads(p.read_text(encoding='utf-8'))
+        p_str = get_settings_path()
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             return bool(data.get('tts_warmup', True))
     except Exception:
         pass
     return True
 TTS_WARMUP = _read_tts_warmup()
 def _read_max_saved_videos() -> int:
-    import json
-    from pathlib import Path
     try:
-        p = Path('data') / 'jarvis_settings.json'
-        if p.exists():
-            data = json.loads(p.read_text(encoding='utf-8'))
+        p_str = get_settings_path()
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             return int(data.get('max_saved_videos', 10))
     except Exception:
         pass
@@ -77,12 +91,11 @@ def _read_max_saved_videos() -> int:
 MAX_SAVED_VIDEOS = _read_max_saved_videos()
 
 def _read_tts_unload_timeout() -> float:
-    import json
-    from pathlib import Path
     try:
-        p = Path('data') / 'jarvis_settings.json'
-        if p.exists():
-            data = json.loads(p.read_text(encoding='utf-8'))
+        p_str = get_settings_path()
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             return float(data.get('tts_unload_timeout', 300.0))
     except Exception:
         pass

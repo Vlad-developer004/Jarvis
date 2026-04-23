@@ -48,7 +48,7 @@ APPS = {
         'type': 'lnk',
         'folders': ['Brave Apps', 'Програми Brave', 'Chrome Apps', 'Приложения Chrome'],
         'name': 'YouTube',
-        'keywords': ['youtube'],
+        'keywords': [], # Empty keywords forces skip window check and go to launch/fallback
         'url': 'https://www.youtube.com'
     },
     'discord': {

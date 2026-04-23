@@ -4,7 +4,7 @@ import threading
 import tkinter as tk
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _CYAN, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM
-from ..hud_utils import _blend, _set_dark_title_bar
+from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
 from ..hud_widgets import _HudScrollbar, make_dlg_btn
 def _base_win(hud, title: str, w: int = 620, h: int = 560) -> tk.Toplevel:
     win = tk.Toplevel(hud.root)
@@ -12,17 +12,18 @@ def _base_win(hud, title: str, w: int = 620, h: int = 560) -> tk.Toplevel:
     win.after(150, lambda: _set_dark_title_bar(win))
     win.title(title)
     win.configure(bg=_BG)
-    try:
-        if hasattr(hud, '_ico_path'):
-            win.iconbitmap(hud._ico_path)
-    except Exception:
-        pass
+    _apply_window_icon(win, hud)
     sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-    W = int(min(w, sw * 0.95 / hud.zoom_factor))
-    H = int(min(h, sh * 0.92 / hud.zoom_factor))
-    win.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw-int(W*hud.zoom_factor))//2}+{(sh-int(H*hud.zoom_factor))//2}')
+    win.geometry("")
     win.minsize(400, 300)
     win.resizable(True, True)
+    
+    def _recenter():
+        win.update_idletasks()
+        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
+        win.geometry(f"{rw}x{rh}+{(sw-rw)//2}+{(sh-rh)//2}")
+    win._recenter = _recenter
+    
     return win
 def _add_context_menu(win, entry, _hud, accent):
     menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=accent, activeforeground=_BG, font=(_hud._F, _hud._fs(12)))
@@ -117,7 +118,7 @@ def open_meetings_manager(hud) -> None:
             if _editing[0] == i:
                 body = tk.Frame(card, bg=_PANEL)
                 body.pack(side='left', fill='both', expand=True, padx=12, pady=10)
-                _ekw = dict(font=(hud._F, _sf(9)), fg_color='#0b0e14', text_color=_WHITE,
+                _ekw = dict(font=(hud._F, _sf(9)), fg_color=_BG, text_color=_WHITE,
                             border_color=_blend(_GREEN, 0.25), border_width=2,
                             corner_radius=8, height=36,
                             placeholder_text_color=_blend(_WHITE, 0.3))
@@ -195,6 +196,7 @@ def open_meetings_manager(hud) -> None:
     _rebuild()
     win.lift()
     win.focus_force()
+    if hasattr(win, '_recenter'): win._recenter()
 def _parse_saved_videos() -> list[dict]:
     save_path = os.path.join(os.path.expanduser('~'), 'Jarvis_YT_Saved.txt')
     if not os.path.exists(save_path):
@@ -317,10 +319,10 @@ def open_videos_manager(hud) -> None:
             make_dlg_btn(hud, btn_col, 'УДАЛИТЬ', '🗑', _RED, _del, height=44, width=128).pack(fill='x')
             thumb_w = hud._px(112)
             thumb_h = hud._px(63)
-            thumb_frame = tk.Frame(card, bg='#060810', width=thumb_w, height=thumb_h)
+            thumb_frame = tk.Frame(card, bg=_BG, width=thumb_w, height=thumb_h)
             thumb_frame.pack(side='left', padx=(10, 0), pady=14)
             thumb_frame.pack_propagate(False)
-            thumb_lbl = tk.Label(thumb_frame, bg='#060810', text='▶',
+            thumb_lbl = tk.Label(thumb_frame, bg=_BG, text='▶',
                                  fg=_blend(_CYAN, 0.4), font=(hud._F, _sf(20)))
             thumb_lbl.place(relx=0.5, rely=0.5, anchor='center')
             if vid_id and vid_id in _thumb_refs:
@@ -329,7 +331,7 @@ def open_videos_manager(hud) -> None:
                 thumb_lbl.image = img
             if duration:
                 dur_lbl = tk.Label(thumb_frame, text=duration, bg='#000000',
-                                   fg=_WHITE, font=(hud._F, hud._fs(8), 'bold'))
+                                   fg='white', font=(hud._F, hud._fs(8), 'bold'))
                 dur_lbl.place(relx=1.0, rely=1.0, anchor='se', x=-3, y=-3)
             body = tk.Frame(card, bg=_PANEL)
             body.pack(side='left', fill='both', expand=True, padx=12, pady=14)
@@ -365,3 +367,4 @@ def open_videos_manager(hud) -> None:
     threading.Thread(target=_load_meta, daemon=True).start()
     win.lift()
     win.focus_force()
+    if hasattr(win, '_recenter'): win._recenter()

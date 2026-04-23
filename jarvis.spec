@@ -48,7 +48,35 @@ def _project_datas() -> list[tuple[str, str]]:
         if os.path.exists(p):
             datas.append((p, os.path.join("data", os.path.basename(p))))
     return datas
-datas = (
+def _filter_datas(datas_list):
+    # Strictly exclude any personal or session data
+    forbidden = {
+        'jarvis_settings.json', 'sessions.json', 'exe_cache.json',
+        'game_cache.json', 'mic_profile.json', 'disabled_keyboards.json',
+        'update_ready.json', 'extensions_installed.json', 'game_mode_prefs.json',
+        'last_voice.json', 'last_input.json', 'user_data.json', 'history.json',
+        'tokens.json', 'cache.json', 'qa.log', 'main.log', 'debug.log'
+    }
+    filtered = []
+    for src, dst in datas_list:
+        # Normalize separators for consistent matching
+        d_norm = dst.replace('\\', '/')
+        name = os.path.basename(d_norm)
+        if name in forbidden or name == '.env' or name == 'secrets.env' or name.endswith('.log'):
+            continue
+        
+        # If it's in data/ but not in profiles/catalog/example, skip it
+        # This protects new files that might be added to data/ in the future
+        if d_norm.startswith('data/'):
+            is_gp = d_norm.startswith('data/game_profiles/')
+            is_safe = name in ['extensions_catalog.json', 'jarvis_settings.example.json']
+            if not (is_gp or is_safe):
+                continue
+        
+        filtered.append((src, dst))
+    return filtered
+
+datas = _filter_datas(
     ctk_d + sher_d + pgm_d + cv2_d + pil_d + vosk_d + wsdk_d + tt_d
     + anth_d + oa_d + gen_d + sel_d
     + _project_datas()
@@ -77,7 +105,7 @@ hiddenimports = (
         "actions.weather", "actions.windows", "actions.youtube",
         "actions.ets2_telemetry", "actions.ets2_telemetry_installer",
         "actions.briefing_config", "actions.calendar_ics", "actions.inbox_imap",
-        "actions.mail_client",
+        "actions.mail_client", "actions.meetings", "actions.programming_extensions",
         "core.system.updater",
         "truck_telemetry",
         "truck_telemetry.truck_telemetry",
@@ -92,6 +120,14 @@ hiddenimports = (
         "ui.dialogs.settings_dlg", "ui.dialogs.mail_dlg", "ui.dialogs.name_dlg",
         "ui.dialogs.file_type_dlg", "ui.dialogs.manage_dlg", "ui.dialogs.welcome_dlg",
         "ui.dialogs.extensions", "ui.dialogs.editors", "ui.dialogs.commit_dlg",
+        "ui.dialogs.settings_tabs.appearance",
+        "ui.dialogs.settings_tabs.voice",
+        "ui.dialogs.settings_tabs.modules",
+        "ui.dialogs.settings_tabs.modules.premium_view",
+        "ui.dialogs.settings_tabs.modules.base",
+        "ui.dialogs.settings_tabs.modules.constants",
+        "ui.dialogs.settings_tabs.dev",
+        "ui.dialogs.settings_tabs.tools",
         "sherpa_onnx", "vosk",
         "pyaudio", "sounddevice",
         "numpy",
@@ -109,7 +145,7 @@ hiddenimports = (
         "screen_brightness_control",
         "speedtest", "winsdk",
         "num2words", "g2p_en",
-        "dotenv", "winsound",
+        "dotenv", "winsound", "pyperclip",
         "pystray", "pystray._win32",
         "importlib_resources", "importlib.resources",
         "webbrowser", "socket", "threading", "queue",

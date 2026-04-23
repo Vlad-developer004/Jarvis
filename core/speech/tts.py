@@ -81,10 +81,15 @@ class TTSManager:
         while True:
             try:
                 # Wait for task
-                pri, ts, item = self.queue.get(timeout=0.5)
+                try:
+                    pri, ts, item = self.queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                    
                 if item is None: break
                 
-                print(f"[TTS-WORKER] Processing: {item}", flush=True)
+                now = time.time()
+                print(f"[TTS-WORKER] [{now:.3f}] Processing: {item}", flush=True)
                 self.active_playback = True
                 self.stop_event.clear()
                 
@@ -129,7 +134,8 @@ class TTSManager:
                         self.channel.set_volume(vol)
                         self._safe_hud_set_mode('speaking')
                         
-                        print(f"[TTS-WORKER] Playing: {audio_path}", flush=True)
+                        now = time.time()
+                        print(f"[TTS-WORKER] [{now:.3f}] Playing: {audio_path}", flush=True)
                         try:
                             sound = pygame.mixer.Sound(audio_path)
                         except Exception as e:
@@ -224,7 +230,9 @@ class TTSManager:
         with self._last_items_lock:
             self._last_items = {k: v for k, v in self._last_items.items() if now - v < 5.0}
             last_ts = self._last_items.get(item)
-            if last_ts and (now - last_ts < 2.0): return
+            if last_ts and (now - last_ts < 0.8):
+                print(f"[TTS] Skipped duplicate item within 0.8s: {item}", flush=True)
+                return
             self._last_items[item] = now
         self.queue.put((priority, ts, item))
         self.active_playback = True # Signal active immediately
@@ -239,9 +247,15 @@ class TTSManager:
 
     def stop(self):
         self.stop_event.set()
+        cleared = 0
         while not self.queue.empty():
-            try: self.queue.get_nowait(); self.queue.task_done()
+            try:
+                self.queue.get_nowait()
+                self.queue.task_done()
+                cleared += 1
             except queue.Empty: break
+        if cleared:
+            print(f"[TTS] Stopped: cleared {cleared} items from queue", flush=True)
         with _mixer_lock:
             try:
                 if self.channel:
@@ -416,8 +430,8 @@ def ensure_mixer_init() -> None:
             
             dev = None
             try:
-                import json
-                p = os.path.join('data', 'jarvis_settings.json')
+                from config_pack.config import get_settings_path
+                p = get_settings_path()
                 if os.path.exists(p):
                     with open(p, 'r', encoding='utf-8') as f:
                         d = json.load(f)
@@ -666,15 +680,4 @@ def is_speaking() -> bool:
         queue_empty = True
     return mgr.active_playback or (mgr._gen_count > 0) or busy or (not queue_empty)
 def is_tts_playing_audio() -> bool:
-    mgr = TTSManager()
-    try:
-        if mgr.channel and (mgr.channel.get_busy() or mgr.channel.get_queue() is not None):
-            return True
-    except Exception:
-        pass
-    try:
-        if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
-            return True
-    except Exception:
-        pass
-    return False
+    return is_speaking()

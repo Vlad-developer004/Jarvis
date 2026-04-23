@@ -18,6 +18,21 @@ _FOLDER_QUERY_ALIASES: dict[str, str] = {
     'документс': 'documents',
     'десктоп': 'desktop',
     'десктопе': 'desktop',
+    'лр': 'LR',
+    'лаб': 'Lab',
+    'лаба': 'Lab',
+}
+_NUM_MAP = {
+    'один': '1', 'одна': '1', 'первая': '1', 'первый': '1',
+    'два': '2', 'две': '2', 'вторая': '2', 'второй': '2',
+    'три': '3', 'третья': '3', 'третий': '3',
+    'четыре': '4', 'четвертая': '4', 'четвертый': '4',
+    'пять': '5', 'пятая': '5', 'пятый': '5',
+    'шесть': '6', 'шестая': '6', 'шестой': '6',
+    'семь': '7', 'седьмая': '7', 'седьмой': '7',
+    'восемь': '8', 'восьмая': '8', 'восьмой': '8',
+    'девять': '9', 'девятая': '9', 'девятый': '9',
+    'десять': '10', 'десятая': '10', 'десятый': '10',
 }
 _PHONETIC_ALIASES = {
     'аусбил': 'ausbil',
@@ -52,7 +67,20 @@ def _translit_lat_to_cyr_simple(s: str) -> str:
     return ''.join(out)
 def normalize_folder_voice_query(name: str) -> str:
     s = _fold((name or '').strip())
-    return _FOLDER_QUERY_ALIASES.get(s, (name or '').strip())
+    # 1. Direct aliases
+    if s in _FOLDER_QUERY_ALIASES:
+        return _FOLDER_QUERY_ALIASES[s]
+    # 2. Number words replacement (e.g. "лр один" -> "лр 1")
+    words = s.split()
+    changed = False
+    for i, w in enumerate(words):
+        if w in _NUM_MAP:
+            words[i] = _NUM_MAP[w]
+            changed = True
+    if changed:
+        s = ' '.join(words)
+    # 3. Final mapping check after number conversion
+    return _FOLDER_QUERY_ALIASES.get(s, s)
 def get_name_variants(s: str) -> list[str]:
     s0 = _fold(s)
     if not s0:

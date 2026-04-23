@@ -182,13 +182,13 @@ class _HUDDropdown:
         
         self._sf = lambda n: hud._fs(n + 6)
         
-        self.frame = tk.Frame(master, bg='#0c0e1a', highlightbackground=_blend(self.accent, 0.4), highlightthickness=1)
+        self.frame = tk.Frame(master, bg=_BG, highlightbackground=_blend(self.accent, 0.4), highlightthickness=1)
         
         # Reduced pady from 10 to 6 for a sleeker field
-        self.lbl = tk.Label(self.frame, textvariable=self.variable, bg='#0c0e1a', fg=_TEXT, font=(hud._F, self._sf(9), 'bold'), anchor='w', padx=12)
+        self.lbl = tk.Label(self.frame, textvariable=self.variable, bg=_BG, fg=_TEXT, font=(hud._F, self._sf(9), 'bold'), anchor='w', padx=12)
         self.lbl.pack(side='left', fill='x', expand=True, pady=6)
         
-        self.arr = tk.Label(self.frame, text='▼', bg='#0c0e1a', fg=self.accent, font=(hud._F, self._sf(8)), padx=12)
+        self.arr = tk.Label(self.frame, text='▼', bg=_BG, fg=self.accent, font=(hud._F, self._sf(8)), padx=12)
         self.arr.pack(side='right')
         
         for w in (self.frame, self.lbl, self.arr):

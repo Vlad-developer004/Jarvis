@@ -4,7 +4,7 @@ import tkinter as tk
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ..hud_state import HudState, STATE, set_mode
-from ..hud_utils import _blend, _bar_color, _set_dark_title_bar
+from ..hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ..hud_widgets import _HudScrollbar
 def open_settings(hud, reopen: bool = False) -> None:
     from pathlib import Path
@@ -22,29 +22,24 @@ def open_settings(hud, reopen: bool = False) -> None:
     win.after(150, lambda: _set_dark_title_bar(win))
     hud._track_subwin('settings', win, lambda: open_settings(hud, reopen=True))
     win.title('НАСТРОЙКИ — J.A.R.V.I.S.')
-    try:
-        if hasattr(hud, '_ico_path'):
-            win.iconbitmap(hud._ico_path)
-    except Exception:
-        pass
+    _apply_window_icon(win, hud)
     win.configure(bg=_BG)
     win.update_idletasks()
     _sw_scr = win.winfo_screenwidth()
     _sh_scr = win.winfo_screenheight()
-    _W = int(min(700, _sw_scr * 0.92 / hud.zoom_factor))
-    _H = int(min(780, _sh_scr * 0.86 / hud.zoom_factor))
-    _GW = int(_W * hud.zoom_factor)
-    _GH = int(_H * hud.zoom_factor)
-    _sx = max(0, (_sw_scr - _GW) // 2)
-    _sy = max(0, (_sh_scr - _GH) // 2)
-    win.geometry(f'{_GW}x{_GH}+{_sx}+{_sy}')
+    win.geometry("")
     win.minsize(int(520 * hud.zoom_factor), int(400 * hud.zoom_factor))
     win.resizable(True, True)
+    
+    def _recenter():
+        win.update_idletasks()
+        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
+        win.geometry(f"{rw}x{rh}+{(_sw_scr-rw)//2}+{(_sh_scr-rh)//2}")
+    win._recenter = _recenter
     win.lift()
     win.focus_force()
     _sf = lambda n: hud._fs(n + 6)
-    # Removed fixed top accent to avoid redundancy with the new scrollable tab underline
-    _hdr_bg = '#060810'
+    _hdr_bg = _BG  # theme-aware header background
     hdr_outer = tk.Frame(win, bg=_hdr_bg)
     hdr_outer.pack(fill='x')
     hdr = tk.Frame(hdr_outer, bg=_hdr_bg)
@@ -73,10 +68,10 @@ def open_settings(hud, reopen: bool = False) -> None:
     tk.Frame(win, bg=_BRD_I, height=1).pack(fill='x')
 
     # Tab Navigation
-    tab_bar_outer = tk.Frame(win, bg='#080c14')
+    tab_bar_outer = tk.Frame(win, bg=_BG)
     tab_bar_outer.pack(fill='x', padx=20, pady=(0, 0)) # pady(0,0) to keep it tight
     
-    tab_canvas = tk.Canvas(tab_bar_outer, bg='#080c14', highlightthickness=0, height=int(58 * hud.zoom_factor))
+    tab_canvas = tk.Canvas(tab_bar_outer, bg=_BG, highlightthickness=0, height=int(58 * hud.zoom_factor))
     tab_canvas.pack(fill='x', expand=True)
     
     # Underline placeholder inside the canvas content
@@ -85,7 +80,7 @@ def open_settings(hud, reopen: bool = False) -> None:
     hsb = _HudScrollbar(tab_bar_outer, tab_canvas, color=_CYAN, orient='horizontal')
     tab_canvas.configure(xscrollcommand=hsb.set)
     
-    tab_bar = tk.Frame(tab_canvas, bg='#080c14')
+    tab_bar = tk.Frame(tab_canvas, bg=_BG)
     tcw = tab_canvas.create_window((0, 0), window=tab_bar, anchor='nw')
 
     # Indicator Frame (Neural Underline)
@@ -165,23 +160,29 @@ def open_settings(hud, reopen: bool = False) -> None:
 
     def _build_tab_content(name: str):
         import importlib
-        inner = make_scrollable(tab_frames[name])
-        
-        if name == 'appearance':
-            mod = importlib.import_module('ui.dialogs.settings_tabs.appearance')
-            mod.build_appearance_tab(inner, win, hud, _save_hud_settings)
-        elif name == 'voice':
-            mod = importlib.import_module('ui.dialogs.settings_tabs.voice')
-            mod.build_voice_tab(inner, win, hud, _save_hud_settings)
-        elif name == 'modules':
-            mod = importlib.import_module('ui.dialogs.settings_tabs.modules')
-            mod.build_modules_tab(inner, win, hud, _save_hud_settings)
-        elif name == 'dev':
-            mod = importlib.import_module('ui.dialogs.settings_tabs.dev')
-            mod.build_dev_tab(inner, win, hud, _save_hud_settings)
-        elif name == 'tools':
-            mod = importlib.import_module('ui.dialogs.settings_tabs.tools')
-            mod.build_tools_tab(inner, win, hud, _save_hud_settings)
+        try:
+            inner = make_scrollable(tab_frames[name])
+            
+            if name == 'appearance':
+                mod = importlib.import_module('ui.dialogs.settings_tabs.appearance')
+                mod.build_appearance_tab(inner, win, hud, _save_hud_settings)
+            elif name == 'voice':
+                mod = importlib.import_module('ui.dialogs.settings_tabs.voice')
+                mod.build_voice_tab(inner, win, hud, _save_hud_settings)
+            elif name == 'modules':
+                mod = importlib.import_module('ui.dialogs.settings_tabs.modules')
+                mod.build_modules_tab(inner, win, hud, _save_hud_settings)
+            elif name == 'dev':
+                mod = importlib.import_module('ui.dialogs.settings_tabs.dev')
+                mod.build_dev_tab(inner, win, hud, _save_hud_settings)
+            elif name == 'tools':
+                mod = importlib.import_module('ui.dialogs.settings_tabs.tools')
+                mod.build_tools_tab(inner, win, hud, _save_hud_settings)
+        except Exception as e:
+            import traceback
+            with open('logs/settings_err.log', 'a', encoding='utf-8') as f:
+                f.write(f"[{time.ctime()}] Error building tab {name}: {e}\n{traceback.format_exc()}\n")
+            tk.Label(tab_frames[name], text=f"Ошибка загрузки вкладки: {name}\n{e}", fg=_RED, bg=_BG).pack(expand=True)
 
     def make_scrollable(parent):
         scroll_canvas = tk.Canvas(parent, bg=_BG, highlightthickness=0, borderwidth=0)
@@ -272,3 +273,4 @@ def open_settings(hud, reopen: bool = False) -> None:
 
     # Initial tab
     switch_tab('appearance')
+    _recenter()

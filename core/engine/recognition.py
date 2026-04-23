@@ -98,7 +98,8 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 if h >= 3: _speak(f'Водитель в норме. До обязательного отдыха {txt}.')
                 elif h >= 1: _speak(f'До обязательного отдыха {txt}. Рекомендую планировать остановку.')
                 else: _speak(f'Сэр, водитель очень устал. До обязательного отдыха {txt}.')
-    elif action == 'break_time': _speak('Аварийка включена, ручник затянут, двигатель заглушен. Хорошего отдыха, сэр.')
+    elif action == 'break_time':
+        _speak('Аварийка включена, ручник затянут, двигатель заглушен. Хорошего отдыха, сэр.')
     elif action == 'night_mode':
         try:
             from actions.game_input import press_robust
@@ -534,12 +535,14 @@ def handle_recognized_text(text: str, handler):
         if handler.is_speaking: stop_speaking(); time.sleep(0.1)
         app_state.last_command_time = time.time()
         handler.handle_interactive(text); return
+    # --- GAME MODE HANDLING ---
+    text_norm = _normalize_stt(text)
     if app_state.game_mode:
-        text_norm = _normalize_stt(text)
         if _is_game_mode_off_phrase(text_norm):
             handler.handle('game_mode_off', text); return
+        
         from actions.game_input import cast_command, match_command as _gi_match
-        _fuzzy = 0.75
+        _fuzzy = 0.80
         ok, _ = cast_command(text, fuzzy_threshold=_fuzzy)
         print(f'[GAME_MODE] text={text!r} cast_ok={ok}', flush=True)
         if ok:
@@ -547,8 +550,30 @@ def handle_recognized_text(text: str, handler):
             if match and match[0].get('telemetry_action'):
                 _handle_telemetry_action(match[0]['telemetry_action'], handler, text=text)
             return
+        
         if _is_game_mode_on_phrase(text_norm):
             handler.handle('game_mode_on', text); return
+    else:
+        # BACKGROUND MACRO SUPPORT
+        # If not in game mode, but a game is detected in focus
+        if app_state.detected_game:
+            from actions.game_input import cast_command, match_command as _gi_match, load_profile as _gi_load
+            from actions.game_input_parts.profile import _profile_name as _gi_pname
+            
+            # If the profile for the detected game is not yet loaded into the input engine, load it silently
+            # But don't speak or anything.
+            if not _gi_pname or _gi_pname.lower() != app_state.detected_game.replace('_', ' ').lower():
+                 _gi_load(app_state.detected_game)
+            
+            # Try to cast. If it's a very strong match, execute it.
+            # We use a higher threshold for background macros to avoid false positives.
+            ok, _ = cast_command(text, fuzzy_threshold=0.85)
+            if ok:
+                match = _gi_match(text, threshold=0.85)
+                if match and match[0].get('telemetry_action'):
+                    _handle_telemetry_action(match[0]['telemetry_action'], handler, text=text)
+                return
+
     if app_state.dictation_mode:
         from actions.dictation import handle_dictation_text
         res = handle_dictation_text(text)

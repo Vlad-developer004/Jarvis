@@ -12,6 +12,10 @@ class GitStageDialog(ctk.CTkToplevel):
         hud = hud_mod._hud
         self._hu = hud
         
+        from ui.hud_themes import get_current_theme_name
+        _theme = get_current_theme_name()
+        ctk.set_appearance_mode("Light" if _theme == "light" else "Dark")
+        
         self.repo_path = repo_path
         self.files = files
         self.result = None
@@ -23,10 +27,14 @@ class GitStageDialog(ctk.CTkToplevel):
         self.configure(bg=_BG)
         
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        # Compact geometry: 620x580, aligned to top
-        w, h = 620, 580
-        gw, gh = int(w * hud.zoom_factor), int(h * hud.zoom_factor)
-        self.geometry(f"{gw}x{gh}+{(sw-gw)//2}+{hud._px(60)}")
+        # Start with empty geometry to allow auto-layout calculation
+        # Use underlying tk.Toplevel method to avoid CTK's empty string parsing crash
+        tk.Toplevel.geometry(self, "")
+        
+        def _recenter():
+            self.update_idletasks()
+            rw, rh = self.winfo_reqwidth(), self.winfo_reqheight()
+            self.geometry(f"{rw}x{rh}+{(sw-rw)//2}+{hud._px(60)}")
         
         self.drag_data = {"x": 0, "y": 0}
         def start_move(e): self.drag_data["x"], self.drag_data["y"] = e.x, e.y
@@ -55,9 +63,9 @@ class GitStageDialog(ctk.CTkToplevel):
         self.search_entry = ctk.CTkEntry(
             c_wrap, placeholder_text="Поиск файлов...",
             height=48, # Slightly taller for better touch/visibility
-            fg_color="#0d0f1e", border_color=_blend(_CYAN, 0.3),
-            text_color=_WHITE, font=("Consolas", self._hu._fs(12)),
-            placeholder_text_color=_blend(_WHITE, 0.3),
+            fg_color=_BG, border_color=_blend(_CYAN, 0.3),
+            text_color=_TEXT, font=("Consolas", self._hu._fs(12)),
+            placeholder_text_color=_blend(_TEXT, 0.3),
             border_width=2, corner_radius=12
         )
         self.search_entry.pack(fill="x", pady=(0, 20))
@@ -80,15 +88,15 @@ class GitStageDialog(ctk.CTkToplevel):
         self.all_cb.pack(side="right")
 
         # SCROLL AREA
-        scroll_container = tk.Frame(c_wrap, bg="#05070a", highlightbackground=_blend(_CYAN, 0.1), highlightthickness=1)
+        scroll_container = tk.Frame(c_wrap, bg=_BG, highlightbackground=_blend(_CYAN, 0.1), highlightthickness=1)
         scroll_container.pack(fill="both", expand=True)
         
-        self.canvas = tk.Canvas(scroll_container, bg="#05070a", highlightthickness=0)
+        self.canvas = tk.Canvas(scroll_container, bg=_BG, highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scroll = _HudScrollbar(scroll_container, self.canvas, color=_CYAN)
         self.canvas.configure(yscrollcommand=self.scroll.set)
         
-        self.list_inner = tk.Frame(self.canvas, bg="#05070a")
+        self.list_inner = tk.Frame(self.canvas, bg=_BG)
         self.canvas.create_window((0, 0), window=self.list_inner, anchor="nw", tags="frame")
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfig("frame", width=e.width))
         self.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
@@ -102,9 +110,9 @@ class GitStageDialog(ctk.CTkToplevel):
         
         self.msg_entry = ctk.CTkEntry(
             c_wrap, height=52, font=("Consolas", self._hu._fs(14)),
-            fg_color="#0d0f1e", border_color=_blend(_CYAN, 0.25),
-            text_color=_WHITE, placeholder_text="Опишите изменения...",
-            placeholder_text_color=_blend(_WHITE, 0.2),
+            fg_color=_BG, border_color=_blend(_CYAN, 0.25),
+            text_color=_TEXT, placeholder_text="Опишите изменения...",
+            placeholder_text_color=_blend(_TEXT, 0.2),
             border_width=2, corner_radius=12
         )
         self.msg_entry.pack(fill="x")
@@ -139,6 +147,7 @@ class GitStageDialog(ctk.CTkToplevel):
         
         self.bind("<Escape>", lambda e: self._cancel())
         self.bind("<Return>", lambda e: self._confirm())
+        _recenter()
         self._fade()
 
     def _load_batch(self, start, size):
@@ -146,7 +155,7 @@ class GitStageDialog(ctk.CTkToplevel):
         from ui.hud_constants import _BG, _DIM, _TEXT, _CYAN, _MAG, _WHITE, _PANEL, _BRD, _AMBER
         for i in range(start, end):
             item = self.files[i]
-            f = tk.Frame(self.list_inner, bg="#05070a")
+            f = tk.Frame(self.list_inner, bg=_BG)
             f.pack(fill="x", pady=1)
             var = tk.BooleanVar(value=True)
             st = item['status']

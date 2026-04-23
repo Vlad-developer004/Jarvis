@@ -173,14 +173,14 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10))).pack(anchor='w')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color='#0c121c', border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
         sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
         sw_all.pack(side='right')
-        lb_frame = tk.Frame(pick_win, bg='#070a10', highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
+        lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
-        lb = tk.Listbox(lb_frame, bg='#0c121c', fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
+        lb = tk.Listbox(lb_frame, bg=_BG, fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
         sb = _HudScrollbar(lb_frame, lb, color=_CYAN)
         lb.config(yscrollcommand=sb.set)
         lb.pack(side='left', fill='both', expand=True, padx=8, pady=8)
@@ -210,6 +210,86 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
                 pick_win.destroy()
         lb.bind('<Double-Button-1>', _on_pick)
         ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=hud._px(50), font=(hud._F, _sf(12), 'bold'), fg_color=_CYAN, text_color=_BG).pack(fill='x', padx=20, pady=(0, 20))
+
+    def _on_theme_change(name):
+        from ui.hud_themes import save_theme_name
+        save_theme_name(name)
+        # Also update hud settings
+        hud._settings['theme'] = name
+        _save_hud_settings(hud._settings)
+        _show_restart_notice(name)
+
+    def _show_restart_notice(name):
+        # Show a restart notice banner
+        for w in restart_f.winfo_children():
+            w.destroy()
+        names = {'cyber': 'CYBER NEON', 'dark': 'PURE DARK', 'light': 'PURE LIGHT'}
+        tk.Label(
+            restart_f,
+            text=f'✓  Тема «{names.get(name, name)}» збережена. Потрібен перезапуск.',
+            bg=_blend(_GREEN, 0.08), fg=_GREEN,
+            font=(hud._F, _sf(9), 'bold'), anchor='w'
+        ).pack(side='left', fill='x', expand=True, padx=12, pady=8)
+        def _restart():
+            import subprocess, sys
+            subprocess.Popen([sys.executable] + sys.argv)
+            win.after(200, lambda: __import__('os')._exit(0))
+        ctk.CTkButton(
+            restart_f, text='↺  ПЕРЕЗАПУСТИТИ', command=_restart,
+            height=hud._px(34), font=(hud._F, _sf(9), 'bold'),
+            fg_color=_blend(_GREEN, 0.15), hover_color=_blend(_GREEN, 0.25),
+            text_color=_GREEN, border_color=_blend(_GREEN, 0.5),
+            border_width=1, corner_radius=8, width=hud._px(160)
+        ).pack(side='right', padx=8, pady=6)
+        restart_f.pack(fill='x', pady=(6, 0))
+
+    c0 = _card('◐', 'ЦВЕТ. ТЕМА (перезапуск)', _CYAN)
+    _hint(c0, 'Тема застосовується повністю після перезапуску. Обрана зберігається автоматично.')
+
+    curr_theme = hud._settings.get('theme', 'cyber')
+
+    theme_f = tk.Frame(c0, bg=_PANEL)
+    theme_f.pack(fill='x', pady=(5, 4))
+    for i in range(3):
+        theme_f.columnconfigure(i, weight=1)
+
+    # Theme definitions: (id, label, accent_color, bg_preview, text_preview)
+    _theme_defs = [
+        ('cyber', '⬡  CYBER\nNEON',  '#00ffff', '#0a0b10', '#00ffff'),
+        ('dark',  '◼  PURE\nDARK',   '#4da6ff', '#0d0d0d', '#e8e8e8'),
+        ('light', '◻  PURE\nLIGHT',  '#0055cc', '#f4f6fa', '#1a1a2e'),
+    ]
+
+    def _blend_hex(c1, c2, alpha):
+        r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+        r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
+        return '#{:02x}{:02x}{:02x}'.format(
+            int(r1 + (r2 - r1) * alpha),
+            int(g1 + (g2 - g1) * alpha),
+            int(b1 + (b2 - b1) * alpha)
+        )
+
+    for i, (tid, tname, accent, tbg, tfg) in enumerate(_theme_defs):
+        is_sel = (tid == curr_theme)
+        padx = (0, 4) if i == 0 else (4, 4) if i == 1 else (4, 0)
+        t_btn = ctk.CTkButton(
+            theme_f, text=tname,
+            command=lambda n=tid: _on_theme_change(n),
+            height=hud._px(64),
+            font=(hud._F, _sf(8), 'bold'),
+            fg_color=tbg,
+            hover_color=_blend_hex(tbg, accent, 0.25),
+            text_color=tfg if not is_sel else accent,
+            border_color=accent if is_sel else '#333333',
+            border_width=2 if is_sel else 1,
+            corner_radius=10
+        )
+        t_btn.grid(row=0, column=i, padx=padx, sticky='ew')
+
+    # Restart notice frame (hidden until needed)
+    restart_f = tk.Frame(c0, bg=_blend(_GREEN, 0.08),
+                         highlightbackground=_blend(_GREEN, 0.3), highlightthickness=1)
+
 
     c1 = _card('◈', 'ОТОБРАЖЕНИЕ', _CYAN)
     _zoom_val_lbl = _label_row(c1, 'Масштаб интерфейса', _CYAN)
@@ -242,7 +322,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
     def _on_max():
         hud._settings['start_maximized'] = _max_var.get()
         _save_hud_settings(hud._settings)
-    _max_row = tk.Frame(c1, bg='#0c121c', highlightthickness=1, highlightbackground=_blend(_CYAN, 0.2))
+    _max_row = tk.Frame(c1, bg=_BG, highlightthickness=1, highlightbackground=_blend(_CYAN, 0.2))
     _max_row.pack(fill='x', pady=(8, 12))
     _max_sw = ctk.CTkSwitch(
         _max_row,
@@ -259,7 +339,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
     _max_lbl = tk.Label(
         _max_row,
         text='Запуск во весь экран  ·  Автоматическое открытие HUD на весь основной монитор при старте системы',
-        bg='#0c121c',
+        bg=_BG,
         fg=_TEXT,
         font=(hud._F, _sf(10), 'bold'),
         anchor='nw',

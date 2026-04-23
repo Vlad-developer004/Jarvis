@@ -1,4 +1,4 @@
-import os, json, sys, subprocess, threading, time
+﻿import os, json, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
@@ -185,14 +185,14 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10))).pack(anchor='w')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color='#0c121c', border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
         sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
         sw_all.pack(side='right')
-        lb_frame = tk.Frame(pick_win, bg='#070a10', highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
+        lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
-        lb = tk.Listbox(lb_frame, bg='#0c121c', fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
+        lb = tk.Listbox(lb_frame, bg=_BG, fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
         sb = _HudScrollbar(lb_frame, lb, color=_CYAN)
         lb.config(yscrollcommand=sb.set)
         lb.pack(side='left', fill='both', expand=True, padx=8, pady=8)
@@ -321,7 +321,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             except Exception:
                 pass
         _thresh_save_after[0] = win.after(600, _save)
-    _slider(c4, 30, 1200, 117, _AMBER, _cur_thresh, _on_thresh)
+    thresh_slider = _slider(c4, 30, 1200, 117, _AMBER, _cur_thresh, _on_thresh)
     tk.Frame(c4, bg=_BRD, height=1).pack(fill='x', pady=(10, 0))
     _gain_lbl = _label_row(c4, 'Усиление микрофона (Gain)', _AMBER)
     _gain_lbl.configure(text=f'{_cur_gain:.1f}×')
@@ -344,7 +344,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             except Exception:
                 pass
         _gain_save_after[0] = win.after(600, _save)
-    _slider(c4, 1.0, 6.0, 50, _AMBER, _cur_gain, _on_gain)
+    gain_slider = _slider(c4, 1.0, 6.0, 50, _AMBER, _cur_gain, _on_gain)
     tk.Frame(c4, bg=_BRD, height=1).pack(fill='x', pady=(6, 0))
     tk.Label(
         c4,
@@ -358,22 +358,22 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
               'Микрофон применяется сразу. Вывод (TTS) может потребовать перезапуск.')
     def _load_settings_json() -> dict:
         try:
-            import json
-            from pathlib import Path
-            p = Path('data') / 'jarvis_settings.json'
-            if p.exists():
-                d = json.loads(p.read_text(encoding='utf-8'))
+            from config_pack.config import get_settings_path
+            p = get_settings_path()
+            if os.path.exists(p):
+                with open(p, 'r', encoding='utf-8') as f:
+                    d = json.load(f)
                 return d if isinstance(d, dict) else {}
         except Exception:
             pass
         return {}
     def _save_settings_json(d: dict) -> None:
         try:
-            import json
-            from pathlib import Path
-            p = Path('data') / 'jarvis_settings.json'
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding='utf-8')
+            from config_pack.config import get_settings_path
+            p = get_settings_path()
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, 'w', encoding='utf-8') as f:
+                json.dump(d, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
     _status_f = tk.Frame(c4, bg=_PANEL)
@@ -678,6 +678,8 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                 try:
                     _thresh_lbl.configure(text=str(t))
                     _gain_lbl.configure(text=f'{g:.1f}×')
+                    thresh_slider.set(t)
+                    gain_slider.set(g)
                     _live_params['t'] = t
                     _live_params['g'] = g
                 except Exception:
@@ -829,14 +831,14 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10))).pack(anchor='w')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color='#0c121c', border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
         sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
         sw_all.pack(side='right')
-        lb_frame = tk.Frame(pick_win, bg='#070a10', highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
+        lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
-        lb = tk.Listbox(lb_frame, bg='#0c121c', fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
+        lb = tk.Listbox(lb_frame, bg=_BG, fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
         sb = _HudScrollbar(lb_frame, lb, color=_CYAN)
         lb.config(yscrollcommand=sb.set)
         lb.pack(side='left', fill='both', expand=True, padx=8, pady=8)

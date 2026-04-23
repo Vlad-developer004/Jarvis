@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import tkinter as tk
 import tkinter.font as _tkfont
 from .hud_constants import _BG, _PANEL, _BRD, _CYAN, _MAG, _TEXT, _DIM, _SEP, _AMBER, _GREEN, _RED, _BRD_I, _WHITE
@@ -9,14 +9,14 @@ from core.system import app_state, autostart_enabled, module_enabled
 def build_header(hud) -> None:
     _hdr_sm = max(9, min(hud._fs(10), 12))
     _hdr_lg = max(10, min(hud._fs(13), 16))
-    hdr = tk.Frame(hud.root, bg='#080910', height=hud._px(40))
+    hdr = tk.Frame(hud.root, bg=_BG, height=hud._px(40))
     hdr.pack(fill='x')
     hdr.pack_propagate(False)
-    hud._hdr_os_lbl = tk.Label(hdr, text='  JARVIS OS  v1.5', bg='#080910', fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
+    hud._hdr_os_lbl = tk.Label(hdr, text='  JARVIS OS  v1.5', bg=_BG, fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
     hud._hdr_os_lbl.pack(side='left', padx=8)
-    hud._hdr_time = tk.Label(hdr, text='', bg='#080910', fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
+    hud._hdr_time = tk.Label(hdr, text='', bg=_BG, fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
     hud._hdr_time.pack(side='right', padx=12)
-    hud._hdr_title_lbl = tk.Label(hdr, text='J.A.R.V.I.S.', bg='#080910', fg=_CYAN, font=(hud._F, _hdr_lg, 'bold'))
+    hud._hdr_title_lbl = tk.Label(hdr, text='J.A.R.V.I.S.', bg=_BG, fg=_CYAN, font=(hud._F, _hdr_lg, 'bold'))
     hud._hdr_title_lbl.pack(fill='both', expand=True)
 def update_header_fonts(hud) -> None:
     _hdr_sm = max(9, min(hud._fs(10), 12))
@@ -117,10 +117,10 @@ def build_left(hud) -> None:
         cam_outer.pack(fill='x', padx=14, pady=(2, 6))
         _cam_w = hud._panel_w - 28
         _cam_h = min(hud._px(220), int(_cam_w * 3 / 4))
-        cam_inner = tk.Frame(cam_outer, bg='#02030a', width=_cam_w, height=_cam_h, highlightthickness=0)
+        cam_inner = tk.Frame(cam_outer, bg=_BG, width=_cam_w, height=_cam_h, highlightthickness=0)
         cam_inner.pack()
         cam_inner.pack_propagate(False)
-        hud._cam_placeholder = tk.Canvas(cam_inner, bg='#02030a', highlightthickness=0)
+        hud._cam_placeholder = tk.Canvas(cam_inner, bg=_BG, highlightthickness=0)
         hud._cam_placeholder.place(relx=0, rely=0, relwidth=1.0, relheight=1.0)
         hud._vis_box = hud._cam_placeholder
         hud._draw_cam_standby()
@@ -181,11 +181,11 @@ def build_center(hud) -> None:
     hud._canvas = tk.Canvas(hud._mid, bg=_BG, highlightthickness=0)
     hud._canvas.pack(fill='both', expand=True)
     hud._canvas.bind('<Configure>', hud._on_resize)
-    strip = tk.Frame(hud._mid, bg='#05060b', height=hud._px(48))
+    strip = tk.Frame(hud._mid, bg=_BG, height=hud._px(48))
     strip.pack(fill='x', side='bottom')
     strip.pack_propagate(False)
     tk.Frame(strip, bg=_BRD_I, height=1).pack(fill='x', side='top')
-    hud._bot_canvas = tk.Canvas(strip, bg='#05060b', highlightthickness=0)
+    hud._bot_canvas = tk.Canvas(strip, bg=_BG, highlightthickness=0)
     hud._bot_canvas.pack(fill='both', expand=True)
     hud._bot_canvas.bind('<Configure>', hud._draw_bot_strip)
     hud._bot_items = []

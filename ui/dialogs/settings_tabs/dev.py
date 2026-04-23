@@ -1,4 +1,4 @@
-import os, json, sys, subprocess, threading, time
+﻿import os, json, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
@@ -138,14 +138,14 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
         tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10))).pack(anchor='w')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color='#0c121c', border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
         sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
         sw_all.pack(side='right')
-        lb_frame = tk.Frame(pick_win, bg='#070a10', highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
+        lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
-        lb = tk.Listbox(lb_frame, bg='#0c121c', fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
+        lb = tk.Listbox(lb_frame, bg=_BG, fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
         sb = _HudScrollbar(lb_frame, lb, color=_CYAN)
         lb.config(yscrollcommand=sb.set)
         lb.pack(side='left', fill='both', expand=True, padx=8, pady=8)
@@ -179,10 +179,10 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     c_context = _card('⬡', 'РАБОЧЕЕ ОКРУЖЕНИЕ (IDE)', _CYAN)
     _hint(c_context, 'Джарвис будет нацелен на папку проекта, когда одно из этих приложений в фокусе.')
     
-    _ctx_apps_lb_shell = tk.Frame(c_context, bg='#070a10', highlightbackground=_blend(_CYAN, 0.15), highlightthickness=1)
+    _ctx_apps_lb_shell = tk.Frame(c_context, bg=_BG, highlightbackground=_blend(_CYAN, 0.15), highlightthickness=1)
     _ctx_apps_lb_shell.pack(fill='x', pady=(6, 10))
     lb_ctx_apps = tk.Listbox(
-        _ctx_apps_lb_shell, font=(hud._F, _sf(11)), bg='#0c121c', fg=_TEXT,
+        _ctx_apps_lb_shell, font=(hud._F, _sf(11)), bg=_BG, fg=_TEXT,
         selectbackground=_blend(_CYAN, 0.3), height=1, borderwidth=0, highlightthickness=0, activestyle='none'
     )
     lb_ctx_apps.pack(fill='x', padx=6, pady=6)
@@ -214,7 +214,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     _add_app_row.pack(fill='x', pady=(4, 8))
     ent_app_exe = ctk.CTkEntry(
         _add_app_row, placeholder_text='Имя процесса (например: notepad.exe)',
-        font=(hud._F, _sf(10)), fg_color='#0c121c', border_color=_blend(_CYAN, 0.35),
+        font=(hud._F, _sf(10)), fg_color=_BG, border_color=_blend(_CYAN, 0.35),
         height=hud._px(40), corner_radius=10 # Reduced from 44
     )
     ent_app_exe.pack(fill='x', padx=4) # Reduced from 12
@@ -283,10 +283,10 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
         font=(hud._F, _sf(9), 'bold'),
         anchor='w',
     ).pack(fill='x', padx=12, pady=(10, 6))
-    _ext_lb_shell = tk.Frame(_ext_well, bg='#070a10', highlightbackground=_blend(_CYAN, 0.15), highlightthickness=1)
+    _ext_lb_shell = tk.Frame(_ext_well, bg=_BG, highlightbackground=_blend(_CYAN, 0.15), highlightthickness=1)
     _ext_lb_shell.pack(fill='x', pady=(0, 10), padx=4) # Added padx=4
     lb_code_ext = tk.Listbox(
-        _ext_lb_shell, font=(hud._F, _sf(11)), bg='#0c121c', fg=_TEXT,
+        _ext_lb_shell, font=(hud._F, _sf(11)), bg=_BG, fg=_TEXT,
         selectbackground=_blend(_CYAN, 0.3), height=1, borderwidth=0, highlightthickness=0, activestyle='none'
     )
     lb_code_ext.pack(fill='x', padx=6, pady=6)
@@ -331,7 +331,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
             _refresh_prog_ext_lb()
     ent_code_ext = ctk.CTkEntry(
         _ext_well, placeholder_text='py, tsx, rs или .py',
-        font=(hud._F, _sf(10)), fg_color='#0c121c', border_color=_blend(_CYAN, 0.35),
+        font=(hud._F, _sf(10)), fg_color=_BG, border_color=_blend(_CYAN, 0.35),
         height=hud._px(40), corner_radius=10 # Reduced from 44
     )
     ent_code_ext.pack(fill='x', pady=(4, 8), padx=4) # Reduced from 12

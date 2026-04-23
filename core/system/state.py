@@ -5,6 +5,8 @@ class AppState:
         self.dictation_mode: bool = False
         self.game_mode: bool = False
         self.game_profile: str = ''
+        self.detected_game: str = '' # Game profile stem detected in focus
+        self.detected_exe: str = ''  # EXE name in focus
         self.interactive_state = None
         self.interactive_data: dict = {}
         self.ignore_mode: bool = False

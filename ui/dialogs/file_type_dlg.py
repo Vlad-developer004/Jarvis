@@ -3,6 +3,7 @@ import threading
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _BRD, _CYAN, _DIM, _PANEL, _TEXT, _WHITE
+from ui.hud_utils import _blend
 _FONT_UI = ("Segoe UI", 11)
 _FONT_UI_SM = ("Segoe UI", 10)
 _FONT_TITLE = ("Segoe UI Semibold", 12)
@@ -24,8 +25,19 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     for k in sorted(CREATE_BY_KIND.keys()):
         if k not in _seen:
             _rows.append((k, f".{k}"))
-    W, H = 520, 420
-    win.geometry(f"{W}x{H}+{(win.winfo_screenwidth() - W) // 2}+{(win.winfo_screenheight() - H) // 2}")
+    from ui.hud_themes import get_current_theme_name
+    _theme = get_current_theme_name()
+    ctk.set_appearance_mode("Light" if _theme == "light" else "Dark")
+    
+    _sw_scr = win.winfo_screenwidth()
+    _sh_scr = win.winfo_screenheight()
+    # Use underlying tk.Toplevel method to avoid CTK's empty string parsing crash
+    tk.Toplevel.geometry(win, "")
+    
+    def _recenter():
+        win.update_idletasks()
+        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
+        win.geometry(f"{rw}x{rh}+{(_sw_scr-rw)//2}+{(_sh_scr-rh)//2}")
     if isinstance(win, tk.Toplevel) or isinstance(win, tk.Tk):
         win.overrideredirect(True)
     win.configure(bg=_BRD)
@@ -79,23 +91,23 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
         placeholder_text="Начните вводить: py, word, json…",
         height=34,
         font=_FONT_UI,
-        fg_color="#121520",
-        border_color="#2a3150",
-        text_color=_WHITE,
+        fg_color=_BG,
+        border_color=_blend(_CYAN, 0.3),
+        text_color=_TEXT,
         placeholder_text_color=_DIM,
     )
     entry.pack(fill="x", pady=(0, 8))
-    body = tk.Frame(content, bg="#0e111a", highlightbackground="#1e2540", highlightthickness=1)
+    body = tk.Frame(content, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
     body.pack(fill="both", expand=True)
-    scroll = tk.Scrollbar(body, elementborderwidth=0, bg="#121520", troughcolor=_BG, width=12)
+    scroll = tk.Scrollbar(body, elementborderwidth=0, bg=_PANEL, troughcolor=_BG, width=12)
     scroll.pack(side="right", fill="y")
     lb = tk.Listbox(
         body,
         font=_FONT_UI,
         fg=_TEXT,
-        bg="#0e111a",
-        selectbackground="#1e3a5f",
-        selectforeground=_WHITE,
+        bg=_BG,
+        selectbackground=_blend(_CYAN, 0.3),
+        selectforeground=_TEXT,
         activestyle="none",
         borderwidth=0,
         highlightthickness=0,
@@ -144,9 +156,9 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
         text="Создать",
         width=140,
         height=36,
-        fg_color="#1a3050",
-        hover_color="#254060",
-        text_color=_WHITE,
+        fg_color=_blend(_CYAN, 0.15),
+        hover_color=_blend(_CYAN, 0.25),
+        text_color=_CYAN,
         font=_FONT_UI,
         corner_radius=6,
         command=_confirm_sel,
@@ -157,10 +169,10 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
         width=120,
         height=36,
         fg_color="transparent",
-        border_color="#3a4158",
+        border_color=_DIM,
         border_width=1,
         text_color=_DIM,
-        hover_color="#151822",
+        hover_color=_blend(_WHITE, 0.1),
         font=_FONT_UI,
         corner_radius=6,
         command=_cancel,
@@ -176,6 +188,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     win.lift()
     win.focus_force()
     entry.focus_set()
+    _recenter()
     _fade()
     if master_wait is not None:
         master_wait.wait_window(win)

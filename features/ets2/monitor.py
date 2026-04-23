@@ -80,10 +80,12 @@ def _monitor_loop() -> None:
     route_snapshot_dist: float = 0.0
     route_snapshot_time: float = 0.0
     fired_diverge: bool = False
+    fired_fuel_shortage: bool = False
     idle_start_time: float = 0.0
     idle_warned: bool = False
     last_speed_abs: float = 0.0
     last_auto_limit_snapped: float = 0.0
+    last_auto_lights: float = 0.0
     global _last_auto_limit_snapped
     while not _stop_event.is_set():
 
@@ -116,6 +118,7 @@ def _monitor_loop() -> None:
             idle_warned = False
             last_speed_abs = 0.0
             last_auto_limit_snapped = 0.0
+            fired_fuel_shortage = False
             continue
         engine_on: bool = bool(data.get("engineEnabled", False))
         if last_engine_on is False and engine_on is True:
@@ -126,6 +129,7 @@ def _monitor_loop() -> None:
         current_fuel: float = float(data.get("fuel", 0))
         if last_fuel is not None and current_fuel > last_fuel + 5.0:
             fired_fuel.clear()
+            fired_fuel_shortage = False
         last_fuel = current_fuel
         fuel_range: float = float(data.get("fuelRange", 0))
         if fuel_range > 0:
@@ -135,35 +139,51 @@ def _monitor_loop() -> None:
                     fired_fuel.add(threshold)
                     _speak(_fuel_phrase(fuel_range))
                     break
+            
+            # Distance vs Fuel Range check
+            route_dist_m = float(data.get("routeDistance", 0))
+            if route_dist_m > 2000: # Only if route is significant
+                route_km = route_dist_m / 1000.0
+                if fuel_range < route_km:
+                    if not fired_fuel_shortage:
+                        fired_fuel_shortage = True
+                        _speak(f"Сэр, запас хода {int(fuel_range)} километров, а до цели — {int(route_km)}. Топлива может не хватить до конца пути. Рекомендую заправиться.")
+                elif fuel_range > route_km + 40: # Buffer to reset if refueled
+                    fired_fuel_shortage = False
         speed_kmh = float(data.get("speed", 0)) * 3.6
         limit_kmh = float(data.get("speedLimit", 0)) * 3.6
         if limit_kmh > 0:
             over = speed_kmh - limit_kmh
             now = time.monotonic()
+            
+            # 2. Cruise Control Support (Selective)
+            cruise_active = False
+            if _auto_cruise and speed_kmh >= 30.0:
+                from actions.ets2_telemetry import get_cruise_active
+                cruise_active = bool(get_cruise_active())
+
             # 1. Over speed warning
             if over >= SPEED_OVER_LIMIT:
                 if not speed_was_over and (now - last_speed_warn >= SPEED_COOLDOWN):
                     speed_was_over = True
                     last_speed_warn = now
-                    _speak(f"Сэр, превышение скорости. Лимит {int(round(limit_kmh))}, ваша скорость {int(round(speed_kmh))}.")
+                    # Skip verbal warning if auto-cruise is handling the situation
+                    if not cruise_active:
+                        _speak(f"Сэр, превышение скорости. Лимит {int(round(limit_kmh))}, ваша скорость {int(round(speed_kmh))}.")
             else:
                 speed_was_over = False
 
-            # 2. Cruise Control Support (Selective)
-            if _auto_cruise and speed_kmh >= 30.0:
-                from actions.ets2_telemetry import get_cruise_active
-                if get_cruise_active():
-                    new_snapped = round(limit_kmh / 5.0) * 5.0
-                    if new_snapped != _last_auto_limit_snapped:
-                        # Only speak if it's a real change, not the first activation
-                        if _last_auto_limit_snapped != 0.0:
-                            _speak(f"Лимит {int(new_snapped)}. Корректирую круиз.")
-                        _last_auto_limit_snapped = new_snapped
-                        from actions.game_input_parts.driving import cruise_set_speed
-                        cruise_set_speed(int(new_snapped), speed_kmh, auto_mode=True)
-                elif _last_auto_limit_snapped != 0.0:
-                    # User manually turned it off, reset memory to allow sync when turned back on
-                    _last_auto_limit_snapped = 0.0
+            if cruise_active:
+                new_snapped = round(limit_kmh / 5.0) * 5.0
+                if new_snapped != _last_auto_limit_snapped:
+                    # User requested to skip redundant verbal limit adjustment when auto-cruise is active.
+                    # _speak(f"Лимит {int(new_snapped)}. Корректирую круиз.")
+                    _last_auto_limit_snapped = new_snapped
+                    from actions.game_input_parts.driving import cruise_set_speed
+                    cruise_set_speed(int(new_snapped), speed_kmh, auto_mode=True)
+            elif _last_auto_limit_snapped != 0.0:
+                # User manually turned it off, reset memory to allow sync when turned back on
+                _last_auto_limit_snapped = 0.0
         if not engine_on: continue
         if not startup_wear_spoken:
             try:
@@ -283,17 +303,30 @@ def _monitor_loop() -> None:
             if cur_aux_roof == 0: _speak("Люстра выключена.")
             else: _speak("Люстра включена.")
         last_aux_roof = cur_aux_roof
+        # Adaptive Lights (Night auto-on)
+        game_time = int(data.get("time", 0))
+        hour = (game_time % 1440) // 60
+        is_night = (hour >= 20 or hour < 7)
+        lights_low = bool(data.get("lightsBeamLow", False))
+        
+        if is_night and not lights_low and engine_on:
+            now_ts = time.monotonic()
+            if now_ts - last_auto_lights >= 15.0:
+                last_auto_lights = now_ts
+                try:
+                    from actions.game_input import press_robust, get_binding as _gb
+                    # Press 'L' (lights) until low beam is on
+                    l_key = _gb('lights', 'l')
+                    press_robust(l_key)
+                    time.sleep(0.2)
+                    data_check = get()
+                    if data_check and not data_check.get("lightsBeamLow"):
+                        press_robust(l_key)
+                except Exception:
+                    pass
+
         now_ts, rd = time.monotonic(), float(data.get("routeDistance", 0))
-        if on_job and rd > 500:
-            if route_snapshot_dist == 0.0 or rd > route_snapshot_dist + 5000:
-                route_snapshot_dist, route_snapshot_time, fired_diverge = rd, now_ts, False
-            elif not fired_diverge and (now_ts - route_snapshot_time) >= ROUTE_DIVERGE_WINDOW:
-                if rd > route_snapshot_dist + ROUTE_DIVERGE_DELTA:
-                    fired_diverge = True
-                    _speak("Сэр, вы удаляетесь от пункта назначения. Возможно, вы поехали не туда.")
-                else: route_snapshot_dist, route_snapshot_time = rd, now_ts
-        else:
-            route_snapshot_dist, route_snapshot_time, fired_diverge = 0.0, 0.0, False
+        route_snapshot_dist, route_snapshot_time, fired_diverge = 0.0, 0.0, False
         cur_speed = abs(float(data.get("speed", 0)) * 3.6)
         park_brake = bool(data.get("parkBrake", False))
         is_standing = cur_speed < 1.0 and engine_on and not park_brake and on_job

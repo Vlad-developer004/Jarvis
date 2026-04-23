@@ -5,7 +5,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _BRD, _SEP, _CYAN, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM
-from ..hud_utils import _blend, _set_dark_title_bar
+from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
 from .extensions import _bind_ctk_entry_clipboard
 def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
     dlg = tk.Toplevel(parent)
@@ -14,7 +14,7 @@ def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
     dlg.transient(parent)
     dlg.grab_set()
     _set_dark_title_bar(dlg)
-    dlg.after(100, lambda: _set_dark_title_bar(dlg))
+    _apply_window_icon(dlg, hud)
     sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
     W, H = 540, 180
     dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw - int(W*hud.zoom_factor)) // 2}+{(sh - int(H*hud.zoom_factor)) // 2}')
@@ -98,17 +98,13 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
     _set_dark_title_bar(dlg)
     dlg.after(100, lambda: _set_dark_title_bar(dlg))
     dlg.configure(bg=_BG)
-    try:
-        if hasattr(hud, '_ico_path'):
-            dlg.iconbitmap(hud._ico_path)
-    except Exception:
-        pass
+    _apply_window_icon(dlg, hud)
     sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
     W = int(min(720, sw * 0.85 / hud.zoom_factor))
     H = int(min(620, sh * 0.85 / hud.zoom_factor))
     dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw - int(W*hud.zoom_factor)) // 2}+{(sh - int(H*hud.zoom_factor)) // 2}')
     dlg.minsize(520, 440)
-    _card_bg = '#080b14'
+    _card_bg = _BG
     _field_border = _blend(_CYAN, 0.35)
     top = tk.Frame(dlg, bg=_BG)
     top.pack(fill='x', padx=20, pady=(16, 12))
@@ -297,13 +293,10 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     hud._track_subwin('mail', win, lambda: open_mail_client(hud, reopen=True))
     win.configure(bg=_BG)
     win.overrideredirect(True)
-    try:
-        if hasattr(hud, '_ico_path'):
-            win.iconbitmap(hud._ico_path)
-    except Exception:
-        pass
+    _apply_window_icon(win, hud)
     sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
     win.geometry(f'{sw}x{sh}+0+0')
+    W = int(sw / hud.zoom_factor)
     from actions.mail_client import (
         delete_message_by_uid,
         fetch_message_body,
@@ -324,17 +317,25 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         fg_color=_blend(_GREEN, 0.22), hover_color=_blend(_GREEN, 0.4), text_color=_GREEN,
         command=_open_compose,
     ).pack(side='left', padx=(24, 0))
+    
+    # Close button for full-screen mode
+    ctk.CTkButton(
+        top, text='✕', width=48, height=44,
+        font=(hud._F, _sf(14), 'bold'),
+        fg_color="transparent", hover_color=_blend(_RED, 0.2), text_color=_RED,
+        command=win.destroy,
+    ).pack(side='right', padx=(10, 0))
     status = tk.Label(
         top,
         text='',
         bg=_BG,
         fg=_DIM,
         font=(hud._F, _sf(9, hud.zoom_factor), 'bold'),
-        wraplength=int(max(500, sw/hud.zoom_factor - 400) * hud.zoom_factor),
-        justify='left',
-        anchor='w'
+        wraplength=int(max(400, sw/hud.zoom_factor - 550) * hud.zoom_factor),
+        justify='right', # Change to right to keep it away from buttons
+        anchor='e'
     )
-    status.pack(side='left', fill='x', expand=True, padx=(20, 0))
+    status.pack(side='right', fill='x', expand=True, padx=(20, 10))
     if not cfg:
         tk.Label(
             win,
@@ -362,7 +363,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     right = tk.Frame(pan, bg=_BG)
     pan.add(left, minsize=int(260 * hud.zoom_factor))
     pan.add(right, minsize=int(400 * hud.zoom_factor))
-    _LB = '#080b14'
+    _LB = _BG
     _CARD_IDLE = _blend(_CYAN, 0.08)
     _CARD_HOVER = _blend(_CYAN, 0.16)
     _CARD_SEL = _blend(_CYAN, 0.22)
@@ -548,7 +549,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     right_inner.grid_rowconfigure(0, weight=4, minsize=hud._px(260))
     right_inner.grid_rowconfigure(1, weight=1, minsize=hud._px(140))
     right_inner.grid_rowconfigure(2, weight=0)
-    _card_bg = '#080b14'
+    _card_bg = _BG
     _txt_common = {
         'bg': _card_bg,
         'fg': _TEXT,
@@ -669,6 +670,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         'height': 44,
         'fg_color': _blend(_CYAN, 0.12),
         'hover_color': _blend(_CYAN, 0.24),
+        'text_color': _TEXT,
     }
     ctk.CTkButton(tool, text='Файл…', width=92, command=_pick_files, **bt_kw).pack(side='left', padx=(0, 6))
     ctk.CTkButton(tool, text='Фото…', width=92, command=_pick_images, **bt_kw).pack(side='left', padx=(0, 6))
@@ -707,7 +709,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         dlg.transient(win)
         dlg.grab_set()
         _set_dark_title_bar(dlg)
-        dlg.after(80, lambda: _set_dark_title_bar(dlg))
+        _apply_window_icon(dlg, hud)
         dw = 460
         dlg.geometry(f'{int(dw*hud.zoom_factor)}x{int(132*hud.zoom_factor)}')
         dlg.minsize(380, 110)
@@ -905,6 +907,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
         fg_color=_blend(_CYAN, 0.12),
         hover_color=_blend(_CYAN, 0.22),
+        text_color=_CYAN,
         command=load_list,
     ).pack(side='left', padx=8)
     body_txt.insert('1.0', 'Выберите письмо в списке слева — текст отобразится здесь.')

@@ -47,26 +47,33 @@ def cruise_set_speed(target_kmh: int, current_kmh: float) -> tuple[bool, int]:
     except Exception:
         return (False, int(target_snapped))
 def set_gear(target: int, current: int) -> tuple[bool, int]:
-    if target < -1:
-        target = -1
-    if target > 18:
-        target = 18
-    if current < -1:
-        current = -1
-    if current > 18:
-        current = 18
-    if target == current:
-        return (True, target)
+    if target < -1: target = -1
+    if target > 18: target = 18
+    if current < -1: current = -1
+    if current > 18: current = 18
+    if target == current: return (True, target)
+
     up_key = get_binding('gear_up', 'shift')
     down_key = get_binding('gear_down', 'ctrl')
-    steps = abs(target - current)
-    if steps > 25:
-        return (False, current)
-    key = up_key if target > current else down_key
+    
     try:
+        steps = abs(target - current)
+        if steps > 25: return (False, current)
+        
+        is_up = target > current
+        key = up_key if is_up else down_key
+        
+        c = current
         for _ in range(steps):
-            press_robust(key)
-            time.sleep(0.06)
+            # Special pause if crossing Neutral (0)
+            next_g = c + 1 if is_up else c - 1
+            if next_g == 0 or c == 0:
+                time.sleep(0.15)
+                
+            press_robust(key, duration=0.12)
+            c = next_g
+            time.sleep(0.1)
+            
         return (True, target)
     except Exception:
         return (False, current)

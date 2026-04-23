@@ -5,7 +5,7 @@ import customtkinter as ctk
 from typing import Optional
 from ..hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ..hud_state import HudState, STATE, set_mode
-from ..hud_utils import _blend, _bar_color, _set_dark_title_bar
+from ..hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ..hud_widgets import _HudScrollbar
 from ..hud_commands import _COMMANDS
 from core.extensions import ExtensionManager
@@ -20,6 +20,7 @@ def open_deck(hud, reopen: bool = False) -> None:
     hud._track_subwin('deck', win, lambda: open_deck(hud, reopen=True))
     win.title('COMMAND INDEX — J.A.R.V.I.S.')
     win.configure(bg=_BG)
+    _apply_window_icon(win, hud)
     _sw = hud.root.winfo_screenwidth()
     _sh = hud.root.winfo_screenheight()
     _dw = int(min(1100, _sw * 0.85 / hud.zoom_factor) * hud.zoom_factor)

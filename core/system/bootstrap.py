@@ -4,7 +4,6 @@ import ctypes
 import threading
 import time
 import random
-from config_pack.config import RATE
 def bootstrap():
     if getattr(sys, 'frozen', False):
         os.chdir(os.path.dirname(sys.executable))

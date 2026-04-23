@@ -213,12 +213,14 @@ def _open_commands_help(parent, hud, meta: dict) -> None:
         ny = dlg.winfo_y() + (e.y - dlg._drag_y)
         dlg.geometry(f"+{nx}+{ny}")
 
-    header = tk.Frame(dlg, bg="#0d0f1e", height=60); header.pack(fill='x')
+    from ui.hud_themes import get_current_theme_name
+    _theme = get_current_theme_name()
+    header = tk.Frame(dlg, bg=_PANEL, height=60); header.pack(fill='x')
     header.bind("<Button-1>", _start_move)
     header.bind("<B1-Motion>", _do_move)
     
-    tk.Label(header, text="◈", bg="#0d0f1e", fg=_CYAN, font=(hud._F, hud._fs(18))).pack(side='left', padx=(20, 8))
-    lb_title = tk.Label(header, text=f'СПИСОК КОМАНД: {meta.get("name", "").upper()}', bg="#0d0f1e", fg=_CYAN, font=(hud._F, hud._fs(13), 'bold'))
+    tk.Label(header, text="◈", bg=_PANEL, fg=_CYAN, font=(hud._F, hud._fs(18))).pack(side='left', padx=(20, 8))
+    lb_title = tk.Label(header, text=f'СПИСОК КОМАНД: {meta.get("name", "").upper()}', bg=_PANEL, fg=_CYAN, font=(hud._F, hud._fs(13), 'bold'))
     lb_title.pack(side='left')
     lb_title.bind("<Button-1>", _start_move); lb_title.bind("<B1-Motion>", _do_move)
     
@@ -250,8 +252,8 @@ def _open_commands_help(parent, hud, meta: dict) -> None:
         accent.pack(side='left', fill='y')
         
         # Consistent row background
-        row_bg = "#0d1117"
-        hover_bg = "#1a222d" # Deeper, more distinct highlight
+        row_bg = _BG
+        hover_bg = _blend(_CYAN, 0.1) if _theme == 'light' else "#1a222d"
         
         row = tk.Frame(row_outer, bg=row_bg)
         row.pack(side='left', fill='both', expand=True)
@@ -352,10 +354,16 @@ def open_extensions(hud, reopen: bool = False) -> None:
 
     win.iconbitmap(hud._ico_path) if hasattr(hud, '_ico_path') else None
     win.configure(bg=_BG); win.after(150, lambda: _set_dark_title_bar(win))
-    _W = int(min(740, win.winfo_screenwidth() * 0.95 / hud.zoom_factor))
-    _H = int(min(680, win.winfo_screenheight() * 0.92 / hud.zoom_factor))
-    win.geometry(f'{int(_W*hud.zoom_factor)}x{int(_H*hud.zoom_factor)}+110+70')
+    _sw_scr = win.winfo_screenwidth()
+    _sh_scr = win.winfo_screenheight()
+    win.geometry("")
     win.resizable(False, True)
+    
+    def _recenter():
+        win.update_idletasks()
+        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
+        win.geometry(f"{rw}x{rh}+110+70") # Extensions often stick to side
+    win._recenter = _recenter
     tk.Frame(win, bg=_CYAN, height=2).pack(fill='x')
     header_area = tk.Frame(win, bg=_BG)
     header_area.pack(fill='x', padx=24, pady=(16, 0))
@@ -482,7 +490,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
             btn_w = 160 if (installed and eid == 'game_ets2') else 220
             ctk.CTkButton(
                 inner_row, text="◈  КОМАНДЫ", width=btn_w, font=(hud._F, hud._fs(10), "bold"), height=48,
-                fg_color="#0d0f1e", hover_color=_blend(_CYAN, 0.2), text_color=_CYAN,
+                fg_color=_PANEL, hover_color=_blend(_CYAN, 0.2), text_color=_CYAN,
                 border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_show_cmds,
             ).pack(side="left", padx=8)
 
@@ -492,16 +500,16 @@ def open_extensions(hud, reopen: bool = False) -> None:
 
             ctk.CTkButton(
                 inner_row, text='🗑  УДАЛИТЬ', width=160, font=(hud._F, hud._fs(11), 'bold'), height=48,
-                fg_color="#0d0f1e", hover_color=_blend(_RED, 0.2), text_color=_RED,
+                fg_color=_PANEL, hover_color=_blend(_RED, 0.2), text_color=_RED,
                 border_color=_blend(_RED, 0.4), border_width=2, corner_radius=12, command=_do_uninstall
             ).pack(side="left", padx=8)
             
             if eid == 'feature_calendar_ics':
                 def _reconfig_cal(): _ask_calendar_setup(win, hud, _refresh_cards)
-                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=48, fg_color="#0d0f1e", hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_reconfig_cal).pack(side="left", padx=8)
+                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=48, fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_reconfig_cal).pack(side="left", padx=8)
             elif eid == 'feature_mail_client':
                 def _reconfig_mail(): _ask_mail_setup(win, hud, _refresh_cards)
-                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=48, fg_color="#0d0f1e", hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_reconfig_mail).pack(side="left", padx=8)
+                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=48, fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_reconfig_mail).pack(side="left", padx=8)
             elif eid == 'game_ets2':
                 try:
                     from actions.ets2_telemetry_installer import is_telemetry_installed
@@ -521,7 +529,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
                 ctk.CTkButton(
                     inner_row, text=t_text, 
                     width=160, font=(hud._F, hud._fs(9), 'bold'), height=48, 
-                    fg_color="#0d0f1e", hover_color=_blend(t_col, 0.2), text_color=t_col,
+                    fg_color=_PANEL, hover_color=_blend(t_col, 0.2), text_color=t_col,
                     border_color=_blend(t_col, 0.4), border_width=2, corner_radius=12, 
                     command=_do_dll_install
                 ).pack(side="left", padx=8)
@@ -550,7 +558,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
                     ext_mgr.install(e); _refresh_cards()
             ctk.CTkButton(
                 inner_row, text='⬇  УСТАНОВИТЬ', width=220, font=(hud._F, hud._fs(10), 'bold'), height=48, 
-                fg_color="#0d0f1e", hover_color=_blend(_CYAN, 0.2), text_color=_CYAN, 
+                fg_color=_PANEL, hover_color=_blend(_CYAN, 0.2), text_color=_CYAN, 
                 border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=12, command=_do_install
             ).pack(side="left", padx=8)
         else:
@@ -569,10 +577,11 @@ def open_extensions(hud, reopen: bool = False) -> None:
                 threading.Thread(target=_thread, daemon=True).start()
             ctk.CTkButton(
                 inner_row, text='☁  СИНХРОНИЗАЦИЯ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=44, 
-                fg_color="#0d0f1e", hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, 
+                fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, 
                 border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=10, command=_do_download
             ).pack(side='left', padx=5)
     _build_cards()
     _bind_wheel(inner)
+    _recenter()
     win.after(20, _update_scroll)
     tk.Frame(win, bg=_GREEN, height=2).pack(fill='x', side='bottom')

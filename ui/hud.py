@@ -33,7 +33,9 @@ class JarvisHUD:
         if self.zoom_factor <= 0.0: self.zoom_factor = 1.0
 
         # Framework scaling MUST be set before or during root creation
-        ctk.set_appearance_mode('dark')
+        from .hud_themes import get_current_theme_name
+        _theme = get_current_theme_name()
+        ctk.set_appearance_mode('light' if _theme == 'light' else 'dark')
         ctk.set_default_color_theme('dark-blue')
         ctk.set_widget_scaling(self.zoom_factor)
         ctk.set_window_scaling(self.zoom_factor)

@@ -4,8 +4,13 @@ import threading as _threading
 import time
 import pyaudio
 from typing import Optional
-from core.system import bootstrap, play_early_greeting, app_state, module_enabled, active_module_profile
+
+# 1. First, bootstrap the system paths and CWD - MUST be before any internal imports
+from core.system.bootstrap import bootstrap
 bootstrap()
+
+# 2. Now safe to import other internal modules
+from core.system import play_early_greeting, app_state, module_enabled, active_module_profile
 from core.audio_utils import open_input_stream
 from config_pack.config import (
     MODEL_PATH, SILERO_VAD_PATH, RATE, CHUNK_MS,

@@ -8,7 +8,7 @@ from ..hud_constants import (
     _CYAN, _MAG, _GREEN, _AMBER, _RED,
     _TEXT, _DIM, _WHITE,
 )
-from ..hud_utils import _blend, _set_dark_title_bar
+from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
 
 _SETTINGS_PATH = os.path.join('data', 'jarvis_settings.json')
 
@@ -48,6 +48,7 @@ def open_welcome(hud, force: bool = False) -> None:
     win = ctk.CTkToplevel(hud.root)
     hud._welcome_win = win
     _set_dark_title_bar(win)
+    _apply_window_icon(win, hud)
     win.after(160, lambda: _set_dark_title_bar(win))
     
     win.title('J.A.R.V.I.S. — Руководство пользователя')
@@ -132,7 +133,7 @@ def open_welcome(hud, force: bool = False) -> None:
     # Simplified, shorter card texts for first-time users
     CARDS = [
         (_CYAN,  '◎  ГОЛОСОВАЯ АКТИВАЦИЯ',
-         'Скажите «Джарвис» — система услышит вас мгновенно. Нейросеть фильтрует фоновые звуки, поэтому команды работают даже в шумной обстановке.'),
+         'Скажите «Джарвис» — система услышит вас. Вы можете свернуть интерфейс фразой «Скрой худ» и вернуть его командой «Открой худ» из системного трея.'),
         (_GREEN, '🖥  КОНТРОЛЬ WINDOWS',
          'Открывайте программы, управляйте окнами, папками и файлами голосом. «Открой браузер», «создай папку на рабочем столе» — всё это без мыши.'),
         (_MAG,   '📝  ДИКТОВКА',

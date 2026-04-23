@@ -12,15 +12,15 @@ from pathlib import Path
 import numpy as np
 _CLEANUP_RE = re.compile(r'<\|.*?\|>')
 def _get_base_models_path() -> Path:
-    if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent / 'models'
-    return Path('models')
+    from config_pack.config import get_project_root
+    return Path(get_project_root()) / 'models'
 def _onnx_threads() -> int:
     try:
-        from pathlib import Path
-        p = Path('data') / 'jarvis_settings.json'
-        if p.exists():
-            data = json.loads(p.read_text(encoding='utf-8'))
+        from config_pack.config import get_settings_path
+        p_str = get_settings_path()
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             val = int(data.get('onnx_threads', 0))
             if val > 0:
                 return max(1, min(val, (os.cpu_count() or 2)))

@@ -25,9 +25,10 @@ if errorlevel 1 (
 )
 
 :: --- Clean previous build ---
-echo Cleaning previous build...
+echo Cleaning previous build and cache...
 if exist build rmdir /S /Q build
 if exist dist\Jarvis rmdir /S /Q dist\Jarvis
+for /d /r . %%d in (__pycache__) do @if exist "%%d" rd /s /q "%%d"
 
 :: --- Build ---
 :: Suppress pygame/pkg_resources deprecation noise on stderr (optional).
@@ -56,7 +57,7 @@ echo Copying assets...
 if exist audio    robocopy audio    dist\Jarvis\audio    /E /NFL /NDL /NJH /NJS /XD __pycache__
 if exist assets   robocopy assets   dist\Jarvis\assets   /E /NFL /NDL /NJH /NJS /XD __pycache__
 if exist models   robocopy models   dist\Jarvis\models   /E /NFL /NDL /NJH /NJS /XD __pycache__
-if exist config_pack robocopy config_pack dist\Jarvis\config_pack /E /NFL /NDL /NJH /NJS /XD __pycache__
+if exist config_pack robocopy config_pack dist\Jarvis\config_pack /E /NFL /NDL /NJH /NJS /XD __pycache__ /XF .env secrets.env
 
 :: --- Copy selective data files (only static defaults) ---
 echo Preparing data directory...
@@ -66,6 +67,20 @@ if exist data\game_profiles (
 )
 if exist data\extensions_catalog.json copy /Y data\extensions_catalog.json dist\Jarvis\data\ >nul
 if exist data\jarvis_settings.example.json copy /Y data\jarvis_settings.example.json dist\Jarvis\data\ >nul
+
+:: --- Final Cleanup (Ensure dist is clean of personal data) ---
+echo Finalizing clean state...
+del /F /Q "dist\Jarvis\data\*.json" 2>nul
+:: Restore ONLY the safe files we just copied
+if exist data\extensions_catalog.json copy /Y data\extensions_catalog.json dist\Jarvis\data\ >nul
+if exist data\jarvis_settings.example.json copy /Y data\jarvis_settings.example.json dist\Jarvis\data\ >nul
+
+del /F /S /Q "dist\Jarvis\*.log" 2>nul
+del /F /Q "dist\Jarvis\.env" 2>nul
+del /F /Q "dist\Jarvis\secrets.env" 2>nul
+del /F /Q "dist\Jarvis\config_pack\.env" 2>nul
+del /F /Q "dist\Jarvis\config_pack\secrets.env" 2>nul
+del /F /Q "dist\Jarvis\logs\*" 2>nul
 
 :: --- Handle .env (Do NOT copy local personal .env to dist by default) ---
 if exist .env (

@@ -565,11 +565,11 @@ def state_tick(hud) -> None:
         state = item['state']
         is_active = state == mode
         col = item['col']
-        bc = col if is_active else '#1a3a3a'
-        tc = _WHITE if is_active else '#506080'
-        dot_c = col if is_active else '#506080'
+        bc = col if is_active else _blend(col, 0.3)
+        tc = _WHITE if is_active else _DIM
+        dot_c = col if is_active else _DIM
         thick = 2 if is_active else 1
-        bg_col = '#0d1f1f' if state == HudState.IDLE else '#141f0d' if state == HudState.LISTENING else '#1f0d1f'
+        bg_col = _blend(col, 0.1)
         ids = item['ids']
         hud._bot_canvas.itemconfig(ids[0], fill=bg_col if is_active else '')
         for i in range(1, 5):

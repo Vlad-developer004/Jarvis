@@ -8,7 +8,7 @@
     "ram": true,
     "camera": false,
     "sysinfo": true,
-    "gamemode": false,
+    "gamemode": true,
     "meetings_btn": true,
     "videos_btn": false,
     "sunrise": true,
@@ -65,5 +65,6 @@
   "ai_model": "llama-3.3-70b-versatile",
   "start_maximized": true,
   "tts_unload_timeout": 0.0,
-  "best_sample_rate": 16000
+  "best_sample_rate": 16000,
+  "theme": "cyber"
 }

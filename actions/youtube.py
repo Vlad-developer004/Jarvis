@@ -176,14 +176,16 @@ def _get_current_url() -> str | None:
 def _open_youtube_url(url: str):
     import subprocess
     from pathlib import Path
-    brave_paths = [
+    browser_paths = [
         Path(r'C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe'),
-        Path(r'C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe'),
+        Path(r'C:\Program Files\Google\Chrome\Application\chrome.exe'),
+        Path(r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'),
         Path.home() / r'AppData\Local\BraveSoftware\Brave-Browser\Application\brave.exe',
+        Path.home() / r'AppData\Local\Google\Chrome\Application\chrome.exe',
     ]
-    brave_exe = next((str(p) for p in brave_paths if p.exists()), None)
-    if brave_exe:
-        subprocess.Popen([brave_exe, '--new-tab', url])
+    browser_exe = next((str(p) for p in browser_paths if p.exists()), None)
+    if browser_exe:
+        subprocess.Popen([browser_exe, '--new-tab', url])
     else:
         import webbrowser
         webbrowser.open(url)

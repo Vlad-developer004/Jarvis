@@ -143,40 +143,70 @@ def match_command(text: str, threshold: float = 0.75) -> tuple[dict, float] | No
         from rapidfuzz import fuzz as _fuzz
     except ImportError:
         _fuzz = None
+    
     text_lower = text.lower().strip()
     if not text_lower:
         return None
+        
+    text_words = text_lower.split()
+    tlen = len(text_words)
+    
+    # 1. Exact or very close nospace match (Highest priority)
     text_nospace = text_lower.replace(' ', '')
     for variant, entry in _flat:
         if text_lower == variant:
             return (entry, 1.0)
-        if variant in text_lower and len(variant) > 4:
-            return (entry, 1.0)
-        variant_nospace = variant.replace(' ', '')
-        if text_nospace == variant_nospace and len(variant_nospace) > 5:
-            return (entry, 0.95)
-        if len(variant_nospace) > 6 and variant_nospace in text_nospace:
-            return (entry, 0.9)
+        v_nospace = variant.replace(' ', '')
+        if text_nospace == v_nospace and len(v_nospace) > 4:
+            return (entry, 0.98)
+
+    if not _fuzz:
+        # Simple fallback if rapidfuzz is missing
+        for variant, entry in _flat:
+            if variant == text_lower: return (entry, 1.0)
+        return None
+
     best_score = 0.0
     best_entry = None
-    if _fuzz:
-        for variant, entry in _flat:
-            ratio = _fuzz.ratio(text_lower, variant) / 100.0
-            partial = _fuzz.partial_ratio(text_lower, variant) / 100.0
-            token_set = _fuzz.token_set_ratio(text_lower, variant) / 100.0
-            score = (ratio + partial + token_set) / 3.0
-            if score > best_score:
-                best_score = score
-                best_entry = entry
-    else:
-        for variant, entry in _flat:
-            if variant in text_lower or text_lower in variant:
-                score = min(len(variant), len(text_lower)) / max(len(variant), len(text_lower))
-                if score > best_score:
-                    best_score = score
-                    best_entry = entry
+    
+    for variant, entry in _flat:
+        v_words = variant.split()
+        vlen = len(v_words)
+        
+        # Base fuzzy scores
+        ratio = _fuzz.ratio(text_lower, variant) / 100.0
+        sort_ratio = _fuzz.token_sort_ratio(text_lower, variant) / 100.0
+        
+        if vlen > 1:
+            score = (ratio * 0.4) + (sort_ratio * 0.6)
+        else:
+            score = ratio
+
+        # STRICT LENGTH FILTER
+        # If the command is short (1-2 words), we don't allow too much "noise" around it.
+        # This prevents "двигатель" from matching "зачем ты выключил двигатель?"
+        if vlen <= 2 and tlen > vlen + 1:
+            score -= 0.4 # Heavy penalty for extra words in short commands
+        
+        # Word count penalty (standard)
+        if tlen != vlen:
+            diff = abs(tlen - vlen)
+            penalty = 0.08 * diff
+            if tlen > vlen and vlen == 1:
+                penalty = 0.15 * diff
+            score -= penalty
+
+        # Strictness for very short variants (1-3 chars)
+        if len(variant) <= 3 and score < 0.98:
+            score -= 0.3
+            
+        if score > best_score:
+            best_score = score
+            best_entry = entry
+
     if best_entry and best_score >= threshold:
         return (best_entry, best_score)
+        
     return None
 def get_command_list() -> str:
     if not _entries:

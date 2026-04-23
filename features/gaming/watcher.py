@@ -62,33 +62,51 @@ def start_game_watcher(handler=None):
     def _watch():
         from core.system import get_foreground_process_name, app_state
         while not _watcher_stop.is_set():
-            if app_state.game_mode:
-                if _watcher_stop.wait(timeout=10): break
-                continue
-            if _watcher_stop.wait(timeout=3): break
             fg_name = get_foreground_process_name()
-            if not fg_name: continue
+            
+            # Continuous tracking of detected game
+            if fg_name in _GAME_EXE_MAP:
+                profile_stem = _GAME_EXE_MAP[fg_name][0]
+                app_state.detected_game = profile_stem
+                app_state.detected_exe = fg_name
+            else:
+                app_state.detected_game = ''
+                app_state.detected_exe = ''
+
+            if app_state.game_mode:
+                if _watcher_stop.wait(timeout=5): break
+                continue
+                
+            if not fg_name:
+                if _watcher_stop.wait(timeout=3): break
+                continue
+                
             if fg_name in _GAME_EXE_MAP:
                 game = _GAME_EXE_MAP[fg_name]
                 profile_stem, display_name, alias = game
+                
+                # Suggestions logic (only once per game session)
                 with _suggestion_lock:
-                    if profile_stem in _suggested_profiles: continue
-                if not is_profile_installed(profile_stem): continue
-                with _suggestion_lock:
-                    if profile_stem in _suggested_profiles: continue
-                    _suggested_profiles.add(profile_stem)
-                try:
-                    if handler:
-                        handler._set_interactive('game_watcher_suggest', {'profile': profile_stem, 'name': display_name})
-                        handler.asr.reset()
-                        handler.speak(f'Сэр, я обнаружил, что вы запустили {display_name}. Желаете активировать профиль?')
-                    else:
-                        from core.speech import speak
-                        speak(f'Обнаружена {display_name}. Желаете включить голосовое управление?')
-                except Exception: pass
-                if profile_stem == 'euro_truck_simulator_2':
+                    is_new = profile_stem not in _suggested_profiles
+                
+                if is_new and is_profile_installed(profile_stem):
+                    with _suggestion_lock:
+                        _suggested_profiles.add(profile_stem)
                     try:
-                        from actions.ets2_telemetry import start_background_poll
-                        start_background_poll()
+                        if handler:
+                            handler._set_interactive('game_watcher_suggest', {'profile': profile_stem, 'name': display_name})
+                            handler.asr.reset()
+                            handler.speak(f'Сэр, я обнаружил, что вы запустили {display_name}. Желаете активировать профиль?')
+                        else:
+                            from core.speech import speak
+                            speak(f'Обнаружена {display_name}. Желаете включить голосовое управление?')
                     except Exception: pass
+                    
+                    if profile_stem == 'euro_truck_simulator_2':
+                        try:
+                            from actions.ets2_telemetry import start_background_poll
+                            start_background_poll()
+                        except Exception: pass
+            
+            if _watcher_stop.wait(timeout=3): break
     threading.Thread(target=_watch, daemon=True, name="Game-Watcher").start()

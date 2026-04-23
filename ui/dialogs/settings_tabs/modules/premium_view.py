@@ -315,7 +315,14 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             _stat_ctx.set(f"📚 {stats['ctx']}"); _stat_rpm.set(f"🏃 {stats['rpm']}/мин"); _stat_rpd.set(f"📅 {stats['rpd']} зап/день")
             _stat_alias.set(f"➜ {stats['alias']}")
             _ai_ent.delete(0, 'end'); _ai_ent.insert(0, _rd_key(p)); _save_hud_settings(_settings)
-            for k, b in _btn_refs.items(): b.configure(fg_color=_blend(_CYAN, 0.22) if k == p else _blend(_CYAN, 0.04), border_color=_CYAN if k == p else _blend(_CYAN, 0.2))
+            from ui.hud_themes import get_current_theme_name
+            _theme = get_current_theme_name()
+            for k, b in _btn_refs.items():
+                is_p = (k == p)
+                unsel_alpha = 0.12 if _theme == 'light' else 0.04
+                b.configure(fg_color=_blend(_CYAN, 0.22) if is_p else _blend(_CYAN, unsel_alpha),
+                            border_color=_CYAN if is_p else _blend(_CYAN, 0.2),
+                            text_color=_TEXT)
 
         # Centered Rows Logic
         _p_ids = list(_prov_meta.keys())
@@ -351,7 +358,7 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         _ai_model_menu.frame.pack(fill='x', pady=(4, 12))
 
         # --- KEY & ACTIONS ---
-        _ai_ent = ctk.CTkEntry(c_ai, placeholder_text='Вставьте ваш ключ API здесь...', font=(hud._F, _sf(11)), show='•', height=hud._px(48), fg_color='#0b0e14', border_color=_blend(_CYAN, 0.3), corner_radius=10); _ai_ent.pack(fill='x', pady=(0,10))
+        _ai_ent = ctk.CTkEntry(c_ai, placeholder_text='Вставьте ваш ключ API здесь...', font=(hud._F, _sf(11)), show='•', height=hud._px(48), fg_color=_BG, border_color=_blend(_CYAN, 0.3), corner_radius=10); _ai_ent.pack(fill='x', pady=(0,10))
         _add_context_menu(win, _ai_ent, hud, _sf)
 
         btn_g = tk.Frame(c_ai, bg=_PANEL); btn_g.pack(fill='x')

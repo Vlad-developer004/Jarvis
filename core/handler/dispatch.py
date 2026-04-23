@@ -233,13 +233,29 @@ class CommandHandler(BaseHandler):
             except Exception as e:
                 print(f'[dispatch] show_help error: {e}', flush=True)
                 self.speak('Не удалось открыть руководство.')
-        elif cmd == 'show_hud':
+        elif cmd in ('show_hud', 'open_settings', 'open_keybinds', 'open_extensions', 'open_perf'):
             try:
-                from ui.hud import show_hud
-                show_hud()
-                self.play_response()
+                from ui import hud
+                h = getattr(hud, '_hud', None)
+                if not h:
+                    from ui.hud import show_hud
+                    show_hud()
+                    h = getattr(hud, '_hud', None)
+                
+                if h:
+                    if cmd == 'show_hud':
+                        from ui.hud import show_hud
+                        show_hud()
+                    elif cmd == 'open_settings': h._open_settings()
+                    elif cmd == 'open_keybinds': h._open_keybind_editor()
+                    elif cmd == 'open_extensions': h._open_extensions()
+                    elif cmd == 'open_perf': h._open_perf_monitor()
+                    self.play_response()
+                else:
+                    self.speak('Интерфейс не запущен.')
             except Exception as e:
-                print(f'[dispatch] show_hud error: {e}', flush=True)
+                print(f'[dispatch] interface command error: {e}', flush=True)
+                self.speak('Ошибка при управлении интерфейсом.')
     def _launch_game_engine(self, game_info):
         from .commands.game import launch_game_engine
         launch_game_engine(self, game_info)

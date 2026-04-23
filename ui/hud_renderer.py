@@ -281,7 +281,7 @@ def draw_top_strip(hud, evt=None) -> None:
     c.create_text(bx0, label_y, text=l_week, anchor='nw', fill=_tcol, font=(hud._F, fs_bar, 'bold'))
     c.create_text(cx, label_y, text=hud._top_pct_str, anchor='n', fill=_TEXT, font=(hud._F, fs_bar, 'bold'))
     c.create_text(bx1, label_y, text=l_day, anchor='ne', fill=_tcol, font=(hud._F, fs_bar, 'bold'))
-    c.create_rectangle(bx0, bar_y, bx1, bar_y + bar_h, fill='#121528', outline='', width=0)
+    c.create_rectangle(bx0, bar_y, bx1, bar_y + bar_h, fill=_GRID, outline='', width=0)
     fill1 = int((bx1 - bx0) * max(0.0, min(1.0, hud._top_pct)))
     if fill1 > 0:
         c.create_rectangle(bx0, bar_y, bx0 + fill1, bar_y + bar_h, fill=_tcol, outline='', width=0)
@@ -334,9 +334,9 @@ def draw_bot_strip(hud, evt=None) -> None:
     for i, (state, text) in enumerate(states):
         is_active = state == mode
         col = active_col.get(state, _CYAN)
-        bc = col if is_active else '#1a3a3a'
-        tc = _WHITE if is_active else '#506080'
-        dot_c = col if is_active else '#506080'
+        bc = col if is_active else _blend(col, 0.3)
+        tc = _WHITE if is_active else _DIM
+        dot_c = col if is_active else _DIM
         bx_w, th = boxes[i]
         bx_h = th + box_pad_y * 2
         target_cx = (i + 1) * (W // 4)
@@ -347,7 +347,7 @@ def draw_bot_strip(hud, evt=None) -> None:
         cl = max(4, int(6 * s))
         thick = 2 if is_active else 1
         ids = []
-        bg_col = '#0a1a1a' if state == HudState.IDLE else '#1a1a0f' if state == HudState.LISTENING else '#1a0a1a'
+        bg_col = _blend(col, 0.1)
         bg_id = c.create_rectangle(x0 + 2, y0 + 2, x1 - 2, y1 - 2, fill=bg_col if is_active else '', outline='')
         ids.append(bg_id)
         brd_col = bc if is_active else ''

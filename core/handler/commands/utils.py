@@ -50,8 +50,17 @@ def handle_utils(handler, cmd, text_lower):
         name = text_lower.replace('выполни', '').replace('команду', '').strip()
         if get_command(name): handler.play_response()
     elif cmd == 'command_delete':
+        from ui.dialogs.name_dlg import ask_text
         name = text_lower.replace('удали', '').replace('команду', '').replace('сотри', '').strip()
-        if delete_command(name): handler.play_response()
+        if not name:
+            name = ask_text(
+                title="УДАЛЕНИЕ МАКРОСА",
+                header="КАКУЮ КОМАНДУ УДАЛИТЬ?",
+                ok_text="УДАЛИТЬ",
+                placeholder="Назовите имя макроса..."
+            )
+        if name:
+            if delete_command(name): handler.play_response()
     elif cmd == 'git_commit':
         from actions.git_commit import detect_repo_and_status, git_commit_push
         import win32gui

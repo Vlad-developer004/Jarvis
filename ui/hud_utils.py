@@ -2,7 +2,7 @@ from __future__ import annotations
 import math, subprocess, time, os, sys, json
 from datetime import datetime
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Union
 import tkinter as tk
 from . import hud_constants as _hud_c
 from .hud_constants import _BG, _CYAN, _GREEN, _AMBER, _RED, _DYN
@@ -124,8 +124,14 @@ def _bar_color(pct: float) -> str:
 def _blend(hex_col: str, alpha: float) -> str:
     alpha = round(alpha, 2)
     r, g, b = (int(hex_col[1:3], 16), int(hex_col[3:5], 16), int(hex_col[5:7], 16))
-    br, bg_, bb = (10, 11, 16)
-    return '#{:02x}{:02x}{:02x}'.format(int(br + (r - br) * alpha), int(bg_ + (g - bg_) * alpha), int(bb + (b - bb) * alpha))
+    # Read live BG from module object so theme changes propagate instantly
+    bg_col = _hud_c._BG
+    br, bg_, bb = (int(bg_col[1:3], 16), int(bg_col[3:5], 16), int(bg_col[5:7], 16))
+    return '#{:02x}{:02x}{:02x}'.format(
+        max(0, min(255, int(br + (r - br) * alpha))),
+        max(0, min(255, int(bg_ + (g - bg_) * alpha))),
+        max(0, min(255, int(bb + (b - bb) * alpha)))
+    )
 def _glow_arc(c: tk.Canvas, x0, y0, x1, y1, start, extent, color, width=2) -> None:
     _layers = ((14, 0.03), (6, 0.15), (0, 1.0)) if _hud_c._LOW_PERF_MODE else ((14, 0.03), (10, 0.07), (6, 0.15), (3, 0.3), (1, 0.6), (0, 1.0))
     for dw, a in _layers:
@@ -237,15 +243,61 @@ def _set_dark_title_bar(window: tk.Toplevel | tk.Tk) -> None:
         hwnd_tk = window.winfo_id()
         hwnd = ctypes.windll.user32.GetAncestor(hwnd_tk, 2)
         if not hwnd: hwnd = hwnd_tk
+        
+        # Check current theme
+        from .hud_themes import get_current_theme_name
+        is_light = get_current_theme_name() == 'light'
+        
         on = ctypes.c_int(1)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 19, ctypes.byref(on), 4)
-        caption_col = ctypes.c_int(0x00301C1A)
-        text_col = ctypes.c_int(0x00FFFFFF)
+        
+        if is_light:
+            # Light theme: Light grey/white title bar, dark text
+            caption_col = ctypes.c_int(0x00FAFAF4) # BGR: f4fafc -> f4fafc
+            text_col = ctypes.c_int(0x002E1A1A)    # BGR: 1a1a2e -> 2e1a1a
+        else:
+            # Dark theme: Deep dark title bar, white text
+            caption_col = ctypes.c_int(0x001A1C30) # BGR: 0a0b10 -> 301c1a
+            text_col = ctypes.c_int(0x00FFFFFF)
+            
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption_col), 4)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text_col), 4)
     except Exception:
         pass
+
+def _apply_window_icon(window: tk.Toplevel | tk.Tk, hud) -> None:
+    """Applies the Jarvis icon to a window with a delay for reliability on Windows."""
+    def _apply():
+        try:
+            _p = getattr(hud, '_ico_path', None)
+            if not _p:
+                import sys as _sys
+                if getattr(_sys, 'frozen', False):
+                    _bp = os.path.dirname(_sys.executable)
+                else:
+                    _bp = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                _p = os.path.join(_bp, 'assets', 'icon.ico')
+            
+            if _p and os.path.exists(_p):
+                # Try iconbitmap first (classic)
+                try:
+                    window.iconbitmap(_p)
+                except:
+                    pass
+                # Backup: set iconphoto for better compatibility
+                try:
+                    from PIL import Image, ImageTk
+                    img = Image.open(_p)
+                    photo = ImageTk.PhotoImage(img)
+                    window.wm_iconphoto(True, photo)
+                    # Keep a reference to prevent garbage collection
+                    window._icon_photo = photo
+                except:
+                    pass
+        except Exception:
+            pass
+    window.after(250, _apply)
 def _draw_hex_grid(c: tk.Canvas, w: int, h: int, col: str, size: int = 32, tags='grid'):
     c.delete(tags)
     _col = _blend(col, 0.05)

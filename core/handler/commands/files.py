@@ -122,6 +122,8 @@ def handle_files(handler, cmd, text_lower):
         query = re.sub(r'^(удали(ть)?|сотри(ть)?)\s+(файл|документ)\s*', '', text_lower).strip()
         if not query or query == text_lower:
             query = re.sub(r'^(удали(ть)?|сотри(ть)?)\s*', '', text_lower).strip()
+        
+        query = normalize_folder_voice_query(query)
             
         res = ask_text(
             title='УДАЛЕНИЕ — J.A.R.V.I.S.',
@@ -131,6 +133,7 @@ def handle_files(handler, cmd, text_lower):
             placeholder='Имя файла (без расширения)',
             hint_voice='Голосом: «удали» / «отмена»  ·  Enter / Esc',
             initial_path=base_path,
+            initial_value=query,
         )
         name = res[1] if isinstance(res, tuple) else res
         

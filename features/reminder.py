@@ -79,6 +79,10 @@ def _show_reminder_window(message: str, master=None):
     from ui.hud_constants import _AMBER, _BG, _CYAN, _DIM, _PANEL, _TEXT, _WHITE, _RED
     from ui.hud_utils import _blend
     
+    from ui.hud_themes import get_current_theme_name
+    _theme = get_current_theme_name()
+    ctk.set_appearance_mode("Light" if _theme == "light" else "Dark")
+    
     _ACCENT = _CYAN
     root = tk.Toplevel(master) if master else tk.Tk()
     root.withdraw()
@@ -178,7 +182,7 @@ def _show_reminder_window(message: str, master=None):
     def _pulse():
         if not root.winfo_exists():
             return
-        color = _CYAN if _pulse_state[0] else "#006666"
+        color = _CYAN if _pulse_state[0] else _blend(_CYAN, 0.4)
         hdr.configure(bg=color)
         lbl_bell.configure(fg=color)
         _pulse_state[0] = not _pulse_state[0]
