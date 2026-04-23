@@ -160,7 +160,9 @@ def _monitor_loop() -> None:
             cruise_active = False
             if _auto_cruise and speed_kmh >= 30.0:
                 from actions.ets2_telemetry import get_cruise_active
-                cruise_active = bool(get_cruise_active())
+                # We try to use auto-cruise even if not currently active, 
+                # cruise_set_speed will handle engagement.
+                cruise_active = True 
 
             # 1. Over speed warning
             if over >= SPEED_OVER_LIMIT:
@@ -175,9 +177,9 @@ def _monitor_loop() -> None:
 
             if cruise_active:
                 new_snapped = round(limit_kmh / 5.0) * 5.0
-                if new_snapped != _last_auto_limit_snapped:
-                    # User requested to skip redundant verbal limit adjustment when auto-cruise is active.
-                    # _speak(f"Лимит {int(new_snapped)}. Корректирую круиз.")
+                if new_snapped != last_auto_limit_snapped:
+                    # Sync local and global memory
+                    last_auto_limit_snapped = new_snapped
                     _last_auto_limit_snapped = new_snapped
                     from actions.game_input_parts.driving import cruise_set_speed
                     cruise_set_speed(int(new_snapped), speed_kmh, auto_mode=True)

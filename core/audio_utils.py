@@ -50,7 +50,7 @@ def is_current_output_headphones() -> bool:
             return False
         
         name = str(dev.GetFriendlyName() or "").lower()
-        keywords = ['headphone', 'headset', 'phone', 'наушники', 'гарнитура', 'kopfhörer']
+        keywords = ['headphone', 'headset', 'phone', 'наушники', 'гарнитура', 'kopfhörer', 'ear', 'pod', 'bt', 'blue', 'hands-free', 'wireless']
         _last_hp_res = any(k in name for k in keywords)
     except Exception:
         _last_hp_res = False
@@ -76,7 +76,7 @@ def is_jarvis_output_headphones() -> bool:
         d = _load_audio_settings()
         dev_name = str(d.get('audio_output_device_name') or '').lower()
         if dev_name:
-            keywords = ['headphone', 'headset', 'kopfhörer', 'наушники', 'гарнитура', 'phone']
+            keywords = ['headphone', 'headset', 'kopfhörer', 'наушники', 'гарнитура', 'phone', 'ear', 'pod', 'bt', 'blue', 'hands-free', 'wireless']
             _last_jarvis_hp_res = any(k in dev_name for k in keywords)
             return _last_jarvis_hp_res
     except Exception:

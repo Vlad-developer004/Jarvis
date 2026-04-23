@@ -70,15 +70,16 @@ def open_welcome(hud, force: bool = False) -> None:
     # --- Centered geometry, respects taskbar ---
     def _center_win():
         win.update_idletasks()
-        sw = win.winfo_screenwidth()
-        sh = win.winfo_screenheight()
+        zf = hud.zoom_factor if hud else 1.0
+        sw = int(win.winfo_screenwidth() / zf)
+        sh = int(win.winfo_screenheight() / zf)
         W = min(1040, sw - 60)
         H = min(700, sh - 100)
         x = (sw - W) // 2
         y = max(0, (sh - H) // 2 - 30)
         win.geometry(f'{W}x{H}+{x}+{y}')
     win.after(50, _center_win)
-    # Initial rough size so window doesn't flash huge
+    # Initial rough size
     win.geometry(f'1040x700')
 
     F = getattr(hud, '_F', 'Consolas')

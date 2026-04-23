@@ -8,6 +8,7 @@ from actions.game_input_parts.profile import (
     CAST_COOLDOWN,
     match_command,
     press_robust,
+    get_command_list,
 )
 _wiper_state: int = 0
 def _switch_panel(target: int):
@@ -83,14 +84,21 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
     wiper_target = entry.get('wiper_target')
     lights_target = entry.get('lights_target')
     lights_target_raw = lights_target
+    # Common response handler (before we might return early)
+    def _trigger_response():
+        if response:
+            threading.Thread(target=_speak_response, args=(response,), daemon=True).start()
+
     if wiper_target is not None or lights_target:
         now = time.time()
         if now - _last_cast.get(name, 0) < CAST_COOLDOWN:
             return (False, '')
         _last_cast[name] = now
+        
         if sequence:
             _execute_sequence(sequence)
-            sequence = None
+            sequence = None # Don't execute twice
+            
         if wiper_target is not None:
             target = int(wiper_target)
             from actions.ets2_telemetry import get_wipers as _get_w_on
@@ -100,18 +108,19 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
             if target == 0:
                 max_tries = 3
                 while _get_w_on() is True and max_tries > 0:
-                    press_robust(key or 'p')
+                    press_robust(key if (key and key != 'MACRO') else 'p')
                     time.sleep(0.15)
                     max_tries -= 1
                 _wiper_state = 0
             else:
                 presses = (target - _wiper_state) % 4
-                wiper_key = key or 'p'
+                wiper_key = key if (key and key != 'MACRO') else 'p'
                 for i in range(presses):
                     if i > 0:
                         time.sleep(0.12)
                     press_robust(wiper_key)
                 _wiper_state = target
+                
         if lights_target:
             if wiper_target is not None:
                 time.sleep(0.2)
@@ -154,24 +163,39 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
             elif lights_target == 'high_off':
                 if h_on:
                     press_robust('k')
-        if response:
-            threading.Thread(target=_speak_response, args=(response,), daemon=True).start()
-        if not (key or keys or mouse or sequence):
+        
+        _trigger_response()
+        if not (key or keys or mouse or sequence) or key == 'MACRO':
             return (True, name)
-    if not key and (not keys) and (not mouse) and (not sequence):
-        return (False, '')
+
+    binding_name = entry.get('binding')
+    if binding_name and (not key or key == 'MACRO'):
+        # Resolve from bindings with a reasonable default if possible
+        # We don't have the defaults here, but get_binding handles 'MACRO' -> default
+        key = get_binding(binding_name, key) # Keep 'MACRO' if no better
+    
+    has_keys = keys and len(keys) > 0
+    has_key = key and key != 'MACRO'
+    telemetry = entry.get('telemetry_action')
+    
+    if not has_key and not has_keys and not mouse and not sequence and not telemetry and not response and not binding_name:
+        # If we already did wiper/lights, we returned above or continue here
+        return (False, '') if not (wiper_target is not None or lights_target) else (True, name)
+
     now = time.time()
     if now - _last_cast.get(name, 0) < CAST_COOLDOWN:
         return (False, '')
     _last_cast[name] = now
+    
     try:
         if sequence:
             _execute_sequence(sequence)
-            if response:
-                threading.Thread(target=_speak_response, args=(response,), daemon=True).start()
+            _trigger_response()
             return (True, name)
+        
         if target_set:
             _switch_panel(target_set)
+            
         if mouse == 'left':
             _input.click()
         elif mouse == 'right':
@@ -183,8 +207,10 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
                 _input.press(k)
                 time.sleep(0.05)
             _input.keyUp(keys[0])
-        else:
+        elif has_key:
             press_robust(key)
+            
+        _trigger_response()
         return (True, name)
     except Exception:
         return (False, '')
@@ -196,7 +222,9 @@ def execute_by_name(name: str) -> bool:
     keys = entry.get('keys')
     mouse = entry.get('mouse')
     target_set = entry.get('set')
-    if not key and (not keys) and (not mouse):
+    
+    has_key = key and key != 'MACRO'
+    if not has_key and (not keys) and (not mouse):
         return False
     now = time.time()
     if now - _last_cast.get(name, 0) < CAST_COOLDOWN:
@@ -216,9 +244,10 @@ def execute_by_name(name: str) -> bool:
                 _input.press(k)
                 time.sleep(0.05)
             _input.keyUp(keys[0])
-        else:
+        elif has_key:
             press_robust(key)
         return True
     except Exception:
         return False
 cast_spell = cast_command
+get_spell_list = get_command_list

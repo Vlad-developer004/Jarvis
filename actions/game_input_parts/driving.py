@@ -6,10 +6,11 @@ def cruise_set_speed(target_kmh: int, current_kmh: float, auto_mode: bool = Fals
     active = get_cruise_active()
     
     if active is False:
-        if auto_mode:
-            # Respect manual OFF in auto-cruise mode
+        # If auto_mode, only engage if speed is sufficient
+        if auto_mode and current_kmh < 30.0:
             return (False, 0)
-        # Enable cruise if not active and called manually
+        
+        # Enable cruise
         press_robust(get_binding('cruise', 'c'))
         time.sleep(0.12)
         # Refresh state
@@ -66,7 +67,7 @@ def set_gear(target: int, current: int) -> tuple[bool, int]:
             is_final_critical = (i == steps - 1) and (target <= 0)
             
             if is_final_critical:
-                press_robust(key, duration_ms=200)
+                press_robust(key, duration=0.2)
             else:
                 press_robust(key)
                 

@@ -122,7 +122,7 @@ class JarvisEngine:
                 _tts_blocks = self.handler.is_tts_audio_playing
                 if _tts_blocks and (not self.handler.interactive_state):
                     from core.audio_utils import is_jarvis_output_headphones
-                    if not is_jarvis_output_headphones():
+                    if not is_jarvis_output_headphones() and not app_state.game_mode:
                         try:
                             from ui import hud as _hud
                             if _hud.STATE and _hud.STATE.mode != _hud.HudState.SPEAKING:

@@ -227,17 +227,23 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
     elif action == 'gear_set':
         import re as _re
         from core.nlp.commands import normalize_numbers as _nn
+        # The 'text' argument now contains the clean text_for_game
         t = _nn(text.lower())
-        nums = _re.findall(r'\d+', t)
+        
         want: int | None = None
-        if any(w in t for w in ('нейтрал', 'нейтраль', 'neutral')):
+        
+        # Check for specific words first (more robust than numbers)
+        if any(w in t for w in ('нейтрал', 'neutral')):
             want = 0
-        elif any(w in t for w in ('задний', 'заднюю', 'задняя', 'реверс', 'reverse', 'назад', 'реверсивный', 'задка')):
+        elif any(w in t for w in ('задн', 'реверс', 'reverse', 'назад', 'задка')):
             want = -1
-        elif nums:
-            want = int(nums[0])
+        else:
+            nums = _re.findall(r'\d+', t)
+            if nums:
+                want = int(nums[0])
+        
         if want is None:
-            _speak('Скажите номер передачи, например: поставь двенадцатую передачу, или скажите: задний ход.')
+            _speak('Скажите номер передачи или режим (нейтраль, задний ход).')
             return
         try:
             from actions.ets2_telemetry import get_gear as _get_gear
@@ -425,7 +431,11 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 if _REFUEL_STOP.is_set():
                     _speak(f'Заправка остановлена. Бак {int(pct)} процентов.')
                 elif pct >= 99.0:
-                    _speak('Бак полный. Заправка завершена.')
+                    _speak('Бак полный. Заправка завершена. Запускаю все системы.')
+                    _time.sleep(0.5)
+                    # Start engine and prepare truck
+                    from actions.game_input import cast_command as _cc
+                    _cc('подготовь тягач', fuzzy_threshold=0.9)
                 else:
                     _speak(f'Заправка прервана. Бак {int(pct)} процентов.')
             except Exception as _re:
@@ -529,7 +539,6 @@ def handle_recognized_text(text: str, handler):
     except Exception:
         pass
     if app_state.game_mode:
-        app_state.jarvis_active = True
         app_state.last_command_time = time.time()
     if handler.interactive_state:
         if handler.is_speaking: stop_speaking(); time.sleep(0.1)
@@ -541,18 +550,25 @@ def handle_recognized_text(text: str, handler):
         if _is_game_mode_off_phrase(text_norm):
             handler.handle('game_mode_off', text); return
         
+        # Strip wake word if present to improve matching accuracy in game mode
+        text_for_game = _WAKE_RE.sub('', text_norm, count=1).strip() if _WAKE_RE.search(text_norm) else text_norm
+        
         from actions.game_input import cast_command, match_command as _gi_match
-        _fuzzy = 0.80
-        ok, _ = cast_command(text, fuzzy_threshold=_fuzzy)
-        print(f'[GAME_MODE] text={text!r} cast_ok={ok}', flush=True)
+        _fuzzy = 0.75
+        ok, _ = cast_command(text_for_game, fuzzy_threshold=_fuzzy)
+        print(f'[GAME_MODE] text_raw={text!r} text_game={text_for_game!r} cast_ok={ok}', flush=True)
         if ok:
-            match = _gi_match(text, threshold=_fuzzy)
+            match = _gi_match(text_for_game, threshold=_fuzzy)
             if match and match[0].get('telemetry_action'):
-                _handle_telemetry_action(match[0]['telemetry_action'], handler, text=text)
+                # Pass text_for_game to avoid wake-word interference in telemetry handlers
+                _handle_telemetry_action(match[0]['telemetry_action'], handler, text=text_for_game)
             return
         
         if _is_game_mode_on_phrase(text_norm):
             handler.handle('game_mode_on', text); return
+            
+        # STRICT GAME MODE: If in game mode and no game command matched, do not process global commands.
+        return
     else:
         # BACKGROUND MACRO SUPPORT
         # If not in game mode, but a game is detected in focus

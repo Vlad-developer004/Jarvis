@@ -43,7 +43,20 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     active_profile_name = getattr(_main, '_game_profile', '') if _main else ''
     current_game = next((g for g in sorted_games if g == active_profile_name), sorted_games[0])
 
-    _KEYSYM_MAP = {'Return': 'enter', 'space': 'space', 'BackSpace': 'backspace', 'Delete': 'delete', 'Escape': 'escape', 'Tab': 'tab', 'Shift_L': 'shift', 'Shift_R': 'shift', 'Control_L': 'ctrl', 'Control_R': 'ctrl', 'Alt_L': 'alt', 'Alt_R': 'alt', 'Up': 'up', 'Down': 'down', 'Left': 'left', 'Right': 'right', 'Prior': 'pageup', 'Next': 'pagedown', 'Home': 'home', 'End': 'end', 'Insert': 'insert', 'KP_Add': 'add', 'KP_Subtract': 'subtract', 'KP_Divide': 'divide', 'KP_Multiply': 'multiply', 'KP_Enter': 'numpadenter', 'KP_0': 'numpad0', 'KP_1': 'numpad1', 'KP_2': 'numpad2', 'KP_3': 'numpad3', 'KP_4': 'numpad4', 'KP_5': 'numpad5', 'KP_6': 'numpad6', 'KP_7': 'numpad7', 'KP_8': 'numpad8', 'KP_9': 'numpad9', 'KP_Decimal': 'decimal', 'bracketleft': '[', 'bracketright': ']', 'semicolon': ';', 'apostrophe': "'", 'grave': '`', 'minus': '-', 'equal': '=', 'backslash': '\\', 'comma': ',', 'period': '.', 'slash': '/', 'F1': 'f1', 'F2': 'f2', 'F3': 'f3', 'F4': 'f4', 'F5': 'f5', 'F6': 'f6', 'F7': 'f7', 'F8': 'f8', 'F9': 'f9', 'F10': 'f10', 'F11': 'f11', 'F12': 'f12', 'Print': 'printscreen', 'Pause': 'pause', 'Caps_Lock': 'capslock', 'Num_Lock': 'numlock', 'Scroll_Lock': 'scrolllock'}
+    _KEYSYM_MAP = {
+        'Return': 'enter', 'space': 'space', 'BackSpace': 'backspace', 'Delete': 'delete', 'Escape': 'escape', 'Tab': 'tab',
+        'Shift_L': 'shift', 'Shift_R': 'shift', 'Control_L': 'ctrl', 'Control_R': 'ctrl', 'Alt_L': 'alt', 'Alt_R': 'alt',
+        'Up': 'up', 'Down': 'down', 'Left': 'left', 'Right': 'right', 'Prior': 'pageup', 'Next': 'pagedown', 'Home': 'home', 'End': 'end', 'Insert': 'insert',
+        'KP_Add': 'add', 'KP_Subtract': 'subtract', 'KP_Divide': 'divide', 'KP_Multiply': 'multiply', 'KP_Enter': 'numpadenter',
+        'KP_0': 'numpad0', 'KP_1': 'numpad1', 'KP_2': 'numpad2', 'KP_3': 'numpad3', 'KP_4': 'numpad4', 'KP_5': 'numpad5', 'KP_6': 'numpad6', 'KP_7': 'numpad7', 'KP_8': 'numpad8', 'KP_9': 'numpad9',
+        'KP_Decimal': 'decimal', 'bracketleft': '[', 'bracketright': ']', 'semicolon': ';', 'apostrophe': "'", 'grave': '`', 'minus': '-', 'equal': '=', 'backslash': '\\', 'comma': ',', 'period': '.', 'slash': '/',
+        'F1': 'f1', 'F2': 'f2', 'F3': 'f3', 'F4': 'f4', 'F5': 'f5', 'F6': 'f6', 'F7': 'f7', 'F8': 'f8', 'F9': 'f9', 'F10': 'f10', 'F11': 'f11', 'F12': 'f12',
+        'Print': 'printscreen', 'Pause': 'pause', 'Caps_Lock': 'capslock', 'Num_Lock': 'numlock', 'Scroll_Lock': 'scrolllock'
+    }
+    
+    _CYR_MAP = {
+        'Cyrillic_a': 'f', 'Cyrillic_be': 'comma', 'Cyrillic_ve': 'd', 'Cyrillic_ge': 'u', 'Cyrillic_de': 'l', 'Cyrillic_ie': 't', 'Cyrillic_io': '`', 'Cyrillic_zhe': 'semicolon', 'Cyrillic_ze': 'p', 'Cyrillic_i': 'b', 'Cyrillic_shorti': 'q', 'Cyrillic_ka': 'r', 'Cyrillic_el': 'k', 'Cyrillic_em': 'v', 'Cyrillic_en': 'y', 'Cyrillic_o': 'j', 'Cyrillic_pe': 'g', 'Cyrillic_er': 'h', 'Cyrillic_es': 'c', 'Cyrillic_te': 'n', 'Cyrillic_u': 'e', 'Cyrillic_ef': 'a', 'Cyrillic_ha': '[', 'Cyrillic_tse': 'w', 'Cyrillic_che': 'x', 'Cyrillic_sha': 'i', 'Cyrillic_shcha': 'o', 'Cyrillic_hardsign': ']', 'Cyrillic_yeru': 's', 'Cyrillic_softsign': 'm', 'Cyrillic_e': "'", 'Cyrillic_yu': 'period', 'Cyrillic_ya': 'z'
+    }
     
     _RU_LABELS = {
         'engine': 'Двигатель', 'handbrake': 'Стояночный тормоз', 'cruise': 'Круиз-контроль', 
@@ -70,7 +83,12 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
 
     def _norm_key(sym: str) -> str:
         if sym in _KEYSYM_MAP: return _KEYSYM_MAP[sym]
-        return sym.lower() if len(sym) == 1 else sym.lower()
+        if sym in _CYR_MAP: return _CYR_MAP[sym]
+        # Handle cases like Cyrillic_A (uppercase)
+        if sym.startswith('Cyrillic_'):
+            low_sym = 'Cyrillic_' + sym[9:].lower()
+            if low_sym in _CYR_MAP: return _CYR_MAP[low_sym]
+        return sym.lower()
 
     win = tk.Toplevel(hud.root)
     hud._keybind_win = win
@@ -470,7 +488,14 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         for spell in data.get('spells', []):
             s_id = f"spell_{spell.get('name')}"
             if s_id in current_vars:
-                spell['key'] = current_vars[s_id]
+                val = current_vars[s_id]
+                spell['key'] = val
+                # If user manually set a real key, we should usually remove the macro sequence
+                # to prevent conflicts and ensure the new key is what actually works.
+                if val and val != 'MACRO' and 'sequence' in spell:
+                    # Keep only if it's a "dummy" sequence (wait only) or telemetry
+                    if not spell.get('telemetry_action'):
+                        spell.pop('sequence', None)
         
         profile_files[game_name].write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
         
@@ -568,7 +593,18 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
             # Show if it has any functional trigger (key, keys, sequence, telemetry, or binding)
             if (spell.get('key') or spell.get('keys') or spell.get('sequence') or spell.get('telemetry_action') or spell.get('binding')) and not spell.get('mouse'):
                 s_id = f"spell_{spell.get('name')}"
-                key_disp = spell.get('key') or (','.join(spell.get('keys')) if spell.get('keys') else (spell.get('binding') if spell.get('binding') else 'MACRO'))
+                
+                # Resolve key display: prefer explicit key, then keys, then binding resolved to key, then fallback to 'MACRO'
+                if spell.get('key'):
+                    key_disp = spell.get('key')
+                elif spell.get('keys'):
+                    key_disp = ','.join(spell.get('keys'))
+                elif spell.get('binding'):
+                    # Resolve technical binding name to the actual key assigned in this profile
+                    key_disp = data.get('bindings', {}).get(spell.get('binding'), 'MACRO')
+                else:
+                    key_disp = 'MACRO'
+                    
                 items_to_show.append((s_id, spell.get('name'), key_disp, False, spell))
 
         for i, (bid, label_text, key_val, is_bind, entry) in enumerate(items_to_show):
@@ -600,9 +636,16 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
             ctrl_f.pack_propagate(False) 
             
             # Type-based Badge
-            if isinstance(key_val, str) and len(key_val) <= 3 and key_val != '—' and key_val != 'MACRO' and key_val != 'ИНФО':
-                disp = key_val.upper()
-                current_vars[bid] = key_val
+            known_long_keys = {'space', 'enter', 'shift', 'ctrl', 'alt', 'backspace', 'delete', 'escape', 'tab', 'pageup', 'pagedown', 'home', 'end', 'insert', 'printscreen', 'pause', 'capslock', 'numlock', 'scrolllock'}
+            
+            if isinstance(key_val, str) and key_val != '—' and key_val != 'MACRO' and key_val != 'ИНФО':
+                low_val = key_val.lower()
+                if len(key_val) <= 4 or low_val in known_long_keys or low_val.startswith('f') or low_val.startswith('numpad'):
+                    disp = key_val.upper()
+                    current_vars[bid] = key_val
+                else:
+                    disp = 'MACRO'
+                    current_vars[bid] = 'MACRO'
             elif is_pure_telemetry:
                 disp = 'ИНФО'
                 current_vars[bid] = 'ИНФО'

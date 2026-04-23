@@ -74,9 +74,11 @@ def _install_modal_content(
 
     def _recenter():
         win.update_idletasks()
-        rw = win.winfo_reqwidth()
-        rh = win.winfo_reqheight()
-        win.geometry(f"{rw}x{rh}+{(sw - rw) // 2}+{hud._px(110)}")
+        # Account for CustomTkinter's window scaling to prevent double-zoom gaps
+        zf = hud.zoom_factor if hud else 1.0
+        rw = int(main_frame.winfo_reqwidth() / zf)
+        rh = int(main_frame.winfo_reqheight() / zf)
+        win.geometry(f"{rw}x{rh}+{(sw - rw) // 2}+{hud._px(110) if hud else 110}")
 
     def start_move(event):
         win.drag_data["x"] = event.x
@@ -114,7 +116,7 @@ def _install_modal_content(
     content.pack(fill="x", padx=32, pady=(32, 10))
     
     tk.Label(content, text=header.upper(), font=F_HDR, fg=_ACCENT, bg=_BG, anchor="w").pack(fill="x")
-    tk.Label(content, text=hint_voice, font=F_HINT, fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(4, 15))
+    tk.Label(content, text=hint_voice, font=F_HINT, fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(2, 8))
     
     is_file_op = "ФАЙЛ" in header.upper() or "ДОКУМЕНТ" in header.upper() or show_extension_field
     entry_path = None
@@ -145,7 +147,7 @@ def _install_modal_content(
         ).pack(side="right")
         
         nav_wrap = tk.Frame(content, bg=_BG)
-        nav_wrap.pack(fill="x", pady=(0, 16))
+        nav_wrap.pack(fill="x", pady=(0, 8))
         nav_scroll = tk.Frame(nav_wrap, bg=_BG)
         nav_scroll.pack()
         
@@ -205,7 +207,7 @@ def _install_modal_content(
     combo_ext = None
     if initial_path and show_extension_field:
         from actions.programming_extensions import get_programming_extensions
-        tk.Label(content, text="ИМЯ ФАЙЛА (БЕЗ РАСШИРЕНИЯ):", font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(4, 2))
+        tk.Label(content, text="ИМЯ ФАЙЛА (БЕЗ РАСШИРЕНИЯ):", font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, 2))
         _name_ph = (placeholder or "").strip() or "например utils или readme"
         entry_name = ctk.CTkEntry(
             content, height=52, font=("Consolas", hud._fs(16)),
@@ -213,7 +215,7 @@ def _install_modal_content(
             placeholder_text=_name_ph, placeholder_text_color=_blend(_WHITE, 0.25),
             border_width=2, corner_radius=12,
         )
-        entry_name.pack(fill="x", pady=(0, 12))
+        entry_name.pack(fill="x", pady=(0, 8))
         if initial_value: entry_name.insert(0, initial_value)
         
         tk.Label(content, text="ТИП / РАСШИРЕНИЕ (НАПР. VUE, RS):", font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, 2))
@@ -227,7 +229,7 @@ def _install_modal_content(
         ext0 = (default_extension or "txt").strip().lower().lstrip(".") or "txt"
         ext_var = tk.StringVar(value=_CORE_DESC.get(ext0, f"Файл .{ext0}  (.{ext0})"))
         combo_ext = _HUDDropdown(hud, content, vals, ext_var, accent=_CYAN)
-        combo_ext.frame.pack(fill="x", pady=(0, 24))
+        combo_ext.frame.pack(fill="x", pady=(0, 12))
         entry_name.focus_set()
     else:
         if initial_path:
@@ -238,7 +240,7 @@ def _install_modal_content(
         entry.focus_set()
     
     btn_wrap = tk.Frame(content, bg=_BG)
-    btn_wrap.pack(fill="x", pady=(0, 15))
+    btn_wrap.pack(fill="x", pady=(10, 20))
     btn_inner = tk.Frame(btn_wrap, bg=_BG)
     btn_inner.pack(anchor="center")
     
@@ -287,6 +289,7 @@ def _install_modal_content(
         if alpha < 0.98: win.after(10, lambda: _fade(alpha))
 
     win.deiconify(); win.lift(); win.focus_force()
+    win.update_idletasks() # Ensure sizes are calculated
     _recenter()
     _fade()
 

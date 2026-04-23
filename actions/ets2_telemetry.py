@@ -105,19 +105,23 @@ def _read_raw() -> Optional[dict]:
 def get() -> Optional[dict]:
     global _cache, _last_read
     
-    # Auto-start background polling on first get() to ensure responsiveness
+    if not _AVAILABLE:
+        return None
+
+    # Ensure background polling is running
     if not (_poll_thread and _poll_thread.is_alive()):
         start_background_poll()
         
-    now = time.monotonic()
+    # Return cache if available. If background poll is active, we don't block.
+    # If not active (starting), we might do a quick check.
     with _lock:
-        if now - _last_read < _CACHE_TTL and _cache is not None:
+        if _cache is not None:
             return _cache
-    data = _read_raw()
-    with _lock:
-        _cache = data
-        _last_read = now
-    return data
+    
+    # Very first call while poll is starting? We can wait a tiny bit or just return None.
+    # Returning None is safer than blocking for 10 seconds.
+    return None
+
 def start_background_poll():
     global _poll_thread
     if not _AVAILABLE:
@@ -126,9 +130,12 @@ def start_background_poll():
         return
     _poll_stop.clear()
     def _loop():
+        # Initialize here to avoid blocking the caller of start_background_poll
+        _read_raw_into_cache() 
         while not _poll_stop.is_set():
-            _read_raw_into_cache()
             _poll_stop.wait(_POLL_INTERVAL)
+            if _poll_stop.is_set(): break
+            _read_raw_into_cache()
     _poll_thread = threading.Thread(target=_loop, daemon=True, name="ets2_telem_poll")
     _poll_thread.start()
 def stop_background_poll():

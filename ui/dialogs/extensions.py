@@ -361,7 +361,8 @@ def open_extensions(hud, reopen: bool = False) -> None:
     
     def _recenter():
         win.update_idletasks()
-        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
+        zf = hud.zoom_factor if hud else 1.0
+        rw, rh = int(win.winfo_reqwidth() / zf), int(win.winfo_reqheight() / zf)
         win.geometry(f"{rw}x{rh}+110+70") # Extensions often stick to side
     win._recenter = _recenter
     tk.Frame(win, bg=_CYAN, height=2).pack(fill='x')

@@ -226,7 +226,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         names = {'cyber': 'CYBER NEON', 'dark': 'PURE DARK', 'light': 'PURE LIGHT'}
         tk.Label(
             restart_f,
-            text=f'✓  Тема «{names.get(name, name)}» збережена. Потрібен перезапуск.',
+            text=f'✓  Тема «{names.get(name, name)}» сохранена. Требуется перезапуск.',
             bg=_blend(_GREEN, 0.08), fg=_GREEN,
             font=(hud._F, _sf(9), 'bold'), anchor='w'
         ).pack(side='left', fill='x', expand=True, padx=12, pady=8)
@@ -235,7 +235,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             subprocess.Popen([sys.executable] + sys.argv)
             win.after(200, lambda: __import__('os')._exit(0))
         ctk.CTkButton(
-            restart_f, text='↺  ПЕРЕЗАПУСТИТИ', command=_restart,
+            restart_f, text='↺  ПЕРЕЗАПУСТИТЬ', command=_restart,
             height=hud._px(34), font=(hud._F, _sf(9), 'bold'),
             fg_color=_blend(_GREEN, 0.15), hover_color=_blend(_GREEN, 0.25),
             text_color=_GREEN, border_color=_blend(_GREEN, 0.5),
@@ -244,7 +244,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         restart_f.pack(fill='x', pady=(6, 0))
 
     c0 = _card('◐', 'ЦВЕТ. ТЕМА (перезапуск)', _CYAN)
-    _hint(c0, 'Тема застосовується повністю після перезапуску. Обрана зберігається автоматично.')
+    _hint(c0, 'Тема применяется полностью после перезапуска. Выбранная сохраняется автоматически.')
 
     curr_theme = hud._settings.get('theme', 'cyber')
 

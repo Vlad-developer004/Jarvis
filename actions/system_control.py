@@ -69,7 +69,11 @@ def cancel_shutdown() -> tuple[bool, str]:
 def _toggle_wifi_worker(enabled: bool):
     try:
         import asyncio
-        from winsdk.windows.devices import radios
+        try:
+            import winrt.windows.devices.radios as radios
+        except ImportError:
+            from winsdk.windows.devices import radios
+
         async def _wifi_toggle():
             radios_list = await radios.Radio.get_radios_async()
             found = False
@@ -93,7 +97,11 @@ def toggle_wifi(enabled: bool) -> tuple[bool, str]:
 def _toggle_bluetooth_worker(enabled: bool):
     try:
         import asyncio
-        from winsdk.windows.devices import radios
+        try:
+            import winrt.windows.devices.radios as radios
+        except ImportError:
+            from winsdk.windows.devices import radios
+
         async def _bt_toggle():
             radios_list = await radios.Radio.get_radios_async()
             found = False

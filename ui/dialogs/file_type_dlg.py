@@ -36,7 +36,9 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     
     def _recenter():
         win.update_idletasks()
-        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
+        hud, _ = _hud_root()
+        zf = hud.zoom_factor if hud else 1.0
+        rw, rh = int(win.winfo_reqwidth() / zf), int(win.winfo_reqheight() / zf)
         win.geometry(f"{rw}x{rh}+{(_sw_scr-rw)//2}+{(_sh_scr-rh)//2}")
     if isinstance(win, tk.Toplevel) or isinstance(win, tk.Tk):
         win.overrideredirect(True)

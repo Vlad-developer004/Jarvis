@@ -27,14 +27,17 @@ def open_settings(hud, reopen: bool = False) -> None:
     win.update_idletasks()
     _sw_scr = win.winfo_screenwidth()
     _sh_scr = win.winfo_screenheight()
-    win.geometry("")
-    win.minsize(int(520 * hud.zoom_factor), int(400 * hud.zoom_factor))
+    # Calculate a comfortable "full height" (screen height minus some margin for taskbar/header)
+    _target_h = _sh_scr - int(100 * hud.zoom_factor)
+    win.minsize(int(850 * hud.zoom_factor), int(450 * hud.zoom_factor))
+    win.geometry(f"{int(850 * hud.zoom_factor)}x{_target_h}")
     win.resizable(True, True)
     
     def _recenter():
         win.update_idletasks()
-        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
-        win.geometry(f"{rw}x{rh}+{(_sw_scr-rw)//2}+{(_sh_scr-rh)//2}")
+        rw, rh = win.winfo_width(), win.winfo_height()
+        # Position at the top with a small margin
+        win.geometry(f"{rw}x{rh}+{(_sw_scr-rw)//2}+20")
     win._recenter = _recenter
     win.lift()
     win.focus_force()
@@ -93,7 +96,7 @@ def open_settings(hud, reopen: bool = False) -> None:
             canvas_w = tab_canvas.winfo_width()
             
             if total_w < canvas_w:
-                # Center tabs if they fit
+                # Center tabs if they fit, but add some deadzone to prevent jitter
                 tab_canvas.itemconfig(tcw, anchor='n')
                 tab_canvas.coords(tcw, canvas_w // 2, 0)
             else:
@@ -150,8 +153,8 @@ def open_settings(hud, reopen: bool = False) -> None:
                 win.update_idletasks()
                 bx = btn.winfo_x()
                 bw = btn.winfo_width()
-                # Place indicator at the bottom of the active button
-                indicator.place(x=bx + 4, y=int(40 * hud.zoom_factor), width=bw - 8)
+                # Place indicator at the bottom of the active button, lower it to avoid overlap
+                indicator.place(x=bx + 6, y=int(46 * hud.zoom_factor), width=bw - 12)
                 indicator.lift()
             except Exception: pass
         
@@ -256,11 +259,14 @@ def open_settings(hud, reopen: bool = False) -> None:
                 bx = btn.winfo_x()
                 bw = btn.winfo_width()
                 
-                tab_bar.update_idletasks()
                 total_w = tab_bar.winfo_width()
-                if total_w <= 0: return
-                
                 canvas_w = tab_canvas.winfo_width()
+                if total_w <= 0 or canvas_w <= 0: return
+                
+                # If everything fits, don't scroll/move at all, let _upd_tab_scroll handle centering
+                if total_w < canvas_w: 
+                    return
+
                 if bw >= canvas_w: 
                     tab_canvas.xview_moveto(bx / total_w)
                     return

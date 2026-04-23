@@ -1,6 +1,7 @@
 import json
 import re
 import time
+from core.nlp.commands import normalize_numbers as _nn
 from pathlib import Path
 try:
     import pydirectinput as _input
@@ -31,7 +32,8 @@ def press_robust(key: str, duration: float = 0.15):
         except Exception:
             pass
 def get_binding(name: str, default: str = '') -> str:
-    return _bindings.get(name, default)
+    val = _bindings.get(name, default)
+    return default if val == 'MACRO' else val
 CAST_COOLDOWN = 1.0
 def _telem_wiper_state() -> int | None:
     try:
@@ -95,47 +97,59 @@ def load_profile(profile_name: str) -> tuple[bool, str]:
         raw_text = path.read_text(encoding='utf-8')
         clean_text = _strip_json_comments(raw_text)
         data = json.loads(clean_text)
-        bindings: dict = data.get('bindings', {})
-        _bindings = dict(bindings)
-        _entries = data.get('spells', [])
+        bindings = data.get('bindings', {})
+        _bindings.clear()
+        _bindings.update(bindings)
+        
+        _entries.clear()
+        _entries.extend(data.get('spells', []))
+        
         def _resolve(entry: dict) -> dict:
             e = dict(entry)
-            if 'binding' in e and (not e.get('key')) and (not e.get('keys')):
-                e['key'] = bindings.get(e['binding'], '')
+            # Treat 'MACRO' string as empty/placeholder to allow resolving from binding
+            has_no_key = (not e.get('key')) or (e.get('key') == 'MACRO')
+            if 'binding' in e and has_no_key and (not e.get('keys')):
+                e['key'] = _bindings.get(e['binding'], '')
+            
             if 'sequence' in e:
                 resolved_seq = []
                 for step in e['sequence']:
                     s = dict(step)
-                    if 'binding' in s and (not s.get('key')) and (not s.get('keys')):
-                        s['key'] = bindings.get(s['binding'], '')
+                    step_has_no_key = (not s.get('key')) or (s.get('key') == 'MACRO')
+                    if 'binding' in s and step_has_no_key and (not s.get('keys')):
+                        s['key'] = _bindings.get(s['binding'], '')
                     resolved_seq.append(s)
                 e['sequence'] = resolved_seq
             return e
-        _flat = []
+            
+        _flat.clear()
         skipped = 0
         for raw_entry in _entries:
             entry = _resolve(raw_entry)
             has_action = (
                 entry.get('key') or entry.get('keys') or entry.get('mouse') or
                 entry.get('sequence') or entry.get('lights_target') or
-                entry.get('wiper_target') or entry.get('response')
+                entry.get('wiper_target') or entry.get('response') or
+                entry.get('telemetry_action') or entry.get('binding')
             )
             if not has_action:
                 skipped += 1
                 continue
             for variant in entry.get('variants', [entry['name']]):
-                _flat.append((variant.lower().strip(), entry))
+                v_norm = _nn(variant.lower().strip())
+                _flat.append((v_norm, entry))
+        
         _flat.sort(key=lambda x: len(x[0]), reverse=True)
         _profile_name = data.get('game', profile_name)
         return (True, _profile_name)
     except Exception as e:
         return (False, f'Ошибка загрузки профиля: {e}')
 def unload_profile():
-    global _profile_name, _entries, _flat, _bindings
+    global _profile_name
     _profile_name = ''
-    _entries = []
-    _flat = []
-    _bindings = {}
+    _entries.clear()
+    _flat.clear()
+    _bindings.clear()
 def match_command(text: str, threshold: float = 0.75) -> tuple[dict, float] | None:
     if not _flat:
         return None
@@ -144,7 +158,7 @@ def match_command(text: str, threshold: float = 0.75) -> tuple[dict, float] | No
     except ImportError:
         _fuzz = None
     
-    text_lower = text.lower().strip()
+    text_lower = _nn(text.lower().strip())
     if not text_lower:
         return None
         
@@ -211,7 +225,7 @@ def match_command(text: str, threshold: float = 0.75) -> tuple[dict, float] | No
 def get_command_list() -> str:
     if not _entries:
         return 'Профиль не загружен.'
-    active = [e['name'] for e in _entries if e.get('key') or e.get('keys') or e.get('sequence')]
+    active = [e['name'] for e in _entries if (e.get('key') and e.get('key') != 'MACRO') or e.get('keys') or e.get('sequence')]
     preview = ', '.join(active[:8])
     more = '...' if len(active) > 8 else ''
     return f'Доступно {len(active)} команд: {preview}{more}.'

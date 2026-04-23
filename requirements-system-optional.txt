@@ -1,2 +1,3 @@
 pystray==0.19.5
 winsdk==1.0.0b10
+winrt-Windows.Devices.Radios>=3.2.1
