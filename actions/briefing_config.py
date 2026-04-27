@@ -2,7 +2,8 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from pathlib import Path
-_SETTINGS_PATH = Path('data') / 'jarvis_settings.json'
+from config_pack.config import get_settings_path
+_SETTINGS_PATH = Path(get_settings_path())
 _DEFAULT = {
     'include_greeting': True,
     'include_time': True,

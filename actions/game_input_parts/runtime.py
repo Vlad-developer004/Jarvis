@@ -215,7 +215,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
     except Exception:
         return (False, '')
 def execute_by_name(name: str) -> bool:
-    entry = next((e for _, e in _flat if e['name'] == name), None)
+    entry = next((e for _, e, _, _ in _flat if e['name'] == name), None)
     if not entry:
         return False
     key = entry.get('key', '')

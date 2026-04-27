@@ -18,8 +18,9 @@ def cruise_set_speed(target_kmh: int, current_kmh: float, auto_mode: bool = Fals
 
     # Use actual cruise speed from telemetry if available, otherwise fallback to current speed
     telem_cruise = get_cruise_speed_kmh()
-    base_speed = telem_cruise if telem_cruise and telem_cruise > 0 else current_kmh
+    base_speed = telem_cruise if (telem_cruise is not None and telem_cruise > 0) else current_kmh
     
+    # We round both to 5-kmh steps because ETS2 keys change speed by 5 kmh
     current_snapped = round(base_speed / 5.0) * 5.0
     target_snapped = round(target_kmh / 5.0) * 5.0
     
@@ -27,6 +28,7 @@ def cruise_set_speed(target_kmh: int, current_kmh: float, auto_mode: bool = Fals
     presses = abs(diff) // 5
     
     if presses == 0:
+        # Even if 0 presses needed, return success as we are close enough
         return (True, int(target_snapped))
     
     key_name = 'cruise_up' if diff > 0 else 'cruise_down'
@@ -36,8 +38,8 @@ def cruise_set_speed(target_kmh: int, current_kmh: float, auto_mode: bool = Fals
         _pdi.PAUSE = 0
         for i in range(presses):
             press_robust(key)
-            if presses > 1:
-                time.sleep(0.1)  # Slightly slower for better registration
+            # Sleep after every press to ensure ETS2 registers multiple taps
+            time.sleep(0.12)
         return (True, int(target_snapped))
     except Exception:
         return (False, int(target_snapped))

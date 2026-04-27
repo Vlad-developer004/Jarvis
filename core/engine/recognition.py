@@ -52,6 +52,8 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
         from actions.ets2_telemetry import get as _tget
         data = _tget()
     except ImportError: return
+    
+    print(f"[RECOGNITION] Executing telemetry action: {action!r} (Source text: {text!r})", flush=True)
     if action == 'telemetry_diag':
         from actions.ets2_telemetry import is_available as _ia, _read_raw as _rr
         if not _ia():
@@ -466,7 +468,13 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
             from actions.game_input import press_robust
             try:
                 if not bool(data.get('parkBrake')):
-                    press_robust(hb_key)
+                    print(f"[INPUT] Pressing key: {hb_key!r} (duration=0.1s)", flush=True)
+                    try:
+                        _input.keyDown(hb_key)
+                        time.sleep(0.1)
+                        _input.keyUp(hb_key)
+                    except Exception as e:
+                        print(f"[INPUT] Error pressing {hb_key!r}: {e}", flush=True)
                     time.sleep(0.25)
             except Exception:
                 pass
@@ -521,8 +529,10 @@ def handle_recognized_text(text: str, handler):
     from core.speech import stop_speaking, is_speaking
     from core.nlp import extract_all_commands, _normalize_stt
     
-    # Only interrupt if we are NOT in interactive state AND we heard a wake word or a command
     text_low = text.lower().strip()
+    print(f"[RECOGNITION] Jarvis heard: {text!r}", flush=True)
+    
+    # Only interrupt if we are NOT in interactive state AND we heard a wake word or a command
     is_wake = bool(_WAKE_RE.search(text_low))
     parsed_cmds = None
     
@@ -551,18 +561,26 @@ def handle_recognized_text(text: str, handler):
             handler.handle('game_mode_off', text); return
         
         # Strip wake word if present to improve matching accuracy in game mode
-        text_for_game = _WAKE_RE.sub('', text_norm, count=1).strip() if _WAKE_RE.search(text_norm) else text_norm
+        is_wake_present = bool(_WAKE_RE.search(text_norm))
+        text_for_game = _WAKE_RE.sub('', text_norm, count=1).strip() if is_wake_present else text_norm
         
+        print(f"[RECOGNITION] Game Mode Input: raw={text!r}, norm={text_norm!r}, clean={text_for_game!r}, is_wake={is_wake_present}", flush=True)
+
         from actions.game_input import cast_command, match_command as _gi_match
         _fuzzy = 0.75
-        ok, _ = cast_command(text_for_game, fuzzy_threshold=_fuzzy)
-        print(f'[GAME_MODE] text_raw={text!r} text_game={text_for_game!r} cast_ok={ok}', flush=True)
+        ok, matched_name = cast_command(text_for_game, fuzzy_threshold=_fuzzy)
+        
         if ok:
+            print(f"[RECOGNITION] Game Command Matched: {matched_name!r}", flush=True)
             match = _gi_match(text_for_game, threshold=_fuzzy)
             if match and match[0].get('telemetry_action'):
+                act = match[0]['telemetry_action']
+                print(f"[RECOGNITION] Dispatching Telemetry Action: {act!r}", flush=True)
                 # Pass text_for_game to avoid wake-word interference in telemetry handlers
-                _handle_telemetry_action(match[0]['telemetry_action'], handler, text=text_for_game)
+                _handle_telemetry_action(act, handler, text=text_for_game)
             return
+        else:
+            print(f"[RECOGNITION] No Game Command Match for: {text_for_game!r}", flush=True)
         
         if _is_game_mode_on_phrase(text_norm):
             handler.handle('game_mode_on', text); return
@@ -604,7 +622,7 @@ def handle_recognized_text(text: str, handler):
         is_wake = any((c == 'wake' for c, _ in parsed_cmds))
     if not app_state.jarvis_active:
         cmds_early = parsed_cmds if parsed_cmds is not None else extract_all_commands(text)
-        early_allowed = {'show_hud', 'show_help', 'mail_compose'}
+        early_allowed = {'show_hud', 'show_help', 'mail_compose', 'qa_search'}
         early = [(c, s) for c, s in cmds_early if c in early_allowed]
         if early:
             app_state.jarvis_active = True
@@ -636,9 +654,15 @@ def handle_recognized_text(text: str, handler):
             if not real:
                 if getattr(app_state, 'ignore_mode', False):
                     return
+                
+                # FALLBACK: If there was text after the wake word but no local command matched,
+                # we no longer send it to AI automatically to avoid false triggers.
+                # AI activation is now strictly tied to the 'qa_search' command (e.g. "скажи").
+                print(f"[RECOGNITION] Wake word heard, no immediate command. Speaking 'Yes sir'.", flush=True)
                 handler.handle('wake', 'джарвис')
             else:
                 handler.silent_mode = len(real) > 1
+                print(f"[RECOGNITION] Global commands matched: {[c for c, _ in real]}", flush=True)
                 for c, seg in real:
                     handler.handle(c, seg); time.sleep(0.1)
                 if handler.silent_mode:
@@ -661,18 +685,36 @@ def handle_recognized_text(text: str, handler):
                 return
         if cmds:
             app_state.last_command_time = time.time()
+            try:
+                from config_pack.config import WAKE_WORD_MODE
+                mode = WAKE_WORD_MODE
+            except Exception:
+                mode = 'single'
+                
             has_real = any((c != 'wake' for c, _ in cmds))
-            filtered = [(c, seg) for c, seg in cmds if not (has_real and c == 'wake')]
+            if mode == 'single':
+                # 'single' response mode: ignore repeated wake words while already active to prevent spam
+                filtered = [(c, seg) for c, seg in cmds if c != 'wake']
+            else:
+                # 'continuous' response mode: always answer 'Yes sir' on wake word even if already active
+                filtered = [(c, seg) for c, seg in cmds if not (has_real and c == 'wake')]
+                
             handler.silent_mode = len(filtered) > 1
             for c, seg in filtered:
                 if c == 'dictation_on':
                     from actions.dictation import start_dictation
                     start_dictation(); app_state.dictation_mode = True
                     if not handler.silent_mode: handler.play_response()
-                else: handler.handle(c, seg)
+                else:
+                    print(f"[RECOGNITION] Executing global command: action={c!r}, segment={seg!r}", flush=True)
+                    handler.handle(c, seg)
                 time.sleep(0.1)
             if handler.silent_mode:
                 handler.silent_mode = False; handler.play_response('confirm', override_silent=True)
+        else:
+            # ACTIVE FALLBACK: No command matched while already active.
+            # Automatic fallback to AI is disabled per user request.
+            pass
 def flush_final(asr, handler, transcribe_queue: _queue_mod.Queue):
     from config_pack.config import RATE as _RATE
     audio = bytes(asr._audio_buffer)

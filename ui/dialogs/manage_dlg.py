@@ -1,32 +1,37 @@
 from __future__ import annotations
+from ui.hud_style import JStyle
 import os
 import threading
 import tkinter as tk
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _CYAN, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM
-from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
+from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon, _center_window
 from ..hud_widgets import _HudScrollbar, make_dlg_btn
-def _base_win(hud, title: str, w: int = 620, h: int = 560) -> tk.Toplevel:
+def _base_win(hud, title: str, w: int = 980, h: int = 780) -> tk.Toplevel:
     win = tk.Toplevel(hud.root)
     _set_dark_title_bar(win)
     win.after(150, lambda: _set_dark_title_bar(win))
     win.title(title)
     win.configure(bg=_BG)
     _apply_window_icon(win, hud)
-    sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-    win.geometry("")
-    win.minsize(400, 300)
+    
+    # Set initial geometry immediately to prevent shrinking
+    _center_window(win, w, h)
+    
+    win.minsize(hud._px(800), hud._px(550))
     win.resizable(True, True)
     
     def _recenter():
         win.update_idletasks()
-        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
-        win.geometry(f"{rw}x{rh}+{(sw-rw)//2}+{(sh-rh)//2}")
+        rw, rh = win.winfo_width(), win.winfo_height()
+        # Ensure we don't center a 1x1 window
+        if rw < 100: rw, rh = w, h
+        _center_window(win, rw, rh)
     win._recenter = _recenter
     
     return win
 def _add_context_menu(win, entry, _hud, accent):
-    menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=accent, activeforeground=_BG, font=(_hud._F, _hud._fs(12)))
+    menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=accent, activeforeground=_BG, font=(_hud._F, JStyle.TEXT_BODY))
     def _paste():
         try:
             import pyperclip
@@ -86,7 +91,7 @@ def _meeting_icon(url: str) -> str:
     if 'moodle' in u:            return '📚'
     return '🔗'
 def open_meetings_manager(hud) -> None:
-    win = _base_win(hud, 'БЫСТРЫЕ ССЫЛКИ — управление', w=620, h=540)
+    win = _base_win(hud, 'БЫСТРЫЕ ССЫЛКИ — управление', w=820, h=640)
     inner = _scrollable(win, hud, _GREEN)
     _sf = lambda n: hud._fs(n + 6)
     from actions.meetings import get_meetings, save_meetings
@@ -111,16 +116,18 @@ def open_meetings_manager(hud) -> None:
                      font=(hud._F, _sf(10))).pack(pady=20)
             return
         for i, m in enumerate(meetings):
-            card = tk.Frame(cards_frame, bg=_PANEL,
-                            highlightbackground=_blend(_GREEN, 0.18), highlightthickness=1)
-            card.pack(fill='x', pady=4)
-            tk.Frame(card, bg=_GREEN, width=3).pack(side='left', fill='y')
+            card = ctk.CTkFrame(cards_frame, fg_color=_PANEL, border_color=_blend(_GREEN, 0.22), border_width=1, corner_radius=JStyle.RAD_PANEL)
+            card.pack(fill='x', pady=6)
+            
+            # Left accent bar
+            bar = tk.Frame(card, bg=_GREEN, width=4)
+            bar.pack(side='left', fill='y')
             if _editing[0] == i:
                 body = tk.Frame(card, bg=_PANEL)
                 body.pack(side='left', fill='both', expand=True, padx=12, pady=10)
-                _ekw = dict(font=(hud._F, _sf(9)), fg_color=_BG, text_color=_WHITE,
+                _ekw = dict(font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, text_color=_WHITE,
                             border_color=_blend(_GREEN, 0.25), border_width=2,
-                            corner_radius=8, height=36,
+                            corner_radius=JStyle.RAD_BTN, height=JStyle.H_NORM,
                             placeholder_text_color=_blend(_WHITE, 0.3))
                 _lkw = dict(bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8)), anchor='w')
                 tk.Label(body, text='Голосовая фраза', **_lkw).pack(fill='x')
@@ -155,8 +162,8 @@ def open_meetings_manager(hud) -> None:
                 def _cancel():
                     _editing[0] = None
                     _rebuild()
-                make_dlg_btn(hud, br, 'СОХРАНИТЬ', '✓', _GREEN, _save, height=36, width=118).pack(side='left', padx=(0, 6))
-                make_dlg_btn(hud, br, 'ОТМЕНА', '✕', _DIM, _cancel, height=36, width=88).pack(side='left')
+                make_dlg_btn(hud, br, 'СОХРАНИТЬ', '✓', _GREEN, _save, height=JStyle.H_NORM, width=118).pack(side='left', padx=(0, 6))
+                make_dlg_btn(hud, br, 'ОТМЕНА', '✕', _DIM, _cancel, height=JStyle.H_NORM, width=88).pack(side='left')
             else:
                 btn_col = tk.Frame(card, bg=_PANEL)
                 btn_col.pack(side='right', padx=14, pady=14)
@@ -169,17 +176,16 @@ def open_meetings_manager(hud) -> None:
                     _editing[0] = None
                     status_lbl.configure(text='Удалено.', fg=_AMBER)
                     _rebuild()
-                make_dlg_btn(hud, btn_col, 'ИЗМЕНИТЬ', '◈', _CYAN, _edit, height=44, width=136).pack(fill='x', pady=(0, 6))
-                make_dlg_btn(hud, btn_col, 'УДАЛИТЬ', '✕', _RED, _delete, height=44, width=136).pack(fill='x')
+                make_dlg_btn(hud, btn_col, 'ИЗМЕНИТЬ', '◈', _CYAN, _edit, height=JStyle.H_LARGE, width=136).pack(fill='x', pady=(0, 6))
+                make_dlg_btn(hud, btn_col, 'УДАЛИТЬ', '✕', _RED, _delete, height=JStyle.H_LARGE, width=136).pack(fill='x')
                 body = tk.Frame(card, bg=_PANEL)
                 body.pack(side='left', fill='both', expand=True, padx=14, pady=14)
                 name_row = tk.Frame(body, bg=_PANEL)
                 name_row.pack(fill='x')
                 raw_url = m.get('url', '')
                 svc_icon = _meeting_icon(raw_url)
-                if svc_icon:
-                    tk.Label(name_row, text=svc_icon, bg=_PANEL, fg=_GREEN,
-                             font=(hud._F, _sf(10))).pack(side='left', padx=(0, 4))
+                tk.Label(name_row, text=svc_icon, bg=_PANEL, fg=_GREEN,
+                         font=(hud._F, _sf(12))).pack(side='left', padx=(0, 6))
                 tk.Label(name_row, text=m.get('name', m.get('phrase', '')), bg=_PANEL, fg=_GREEN,
                          font=(hud._F, _sf(10), 'bold'), anchor='w').pack(side='left', fill='x', expand=True)
                 tk.Label(body, text=f'«{m.get("phrase", "")}»', bg=_PANEL, fg=_TEXT,
@@ -187,11 +193,11 @@ def open_meetings_manager(hud) -> None:
                 url_lbl = tk.Label(body, text=raw_url, bg=_PANEL,
                                    fg=_blend(_GREEN, 0.45),
                                    font=(hud._F, _sf(7)), anchor='w',
-                                   justify='left', wraplength=1, cursor='hand2')
+                                   justify='left', cursor='hand2')
                 url_lbl.pack(fill='x', pady=(2, 0))
                 url_lbl.bind('<Button-1>', lambda e, u=raw_url: __import__('webbrowser').open(u))
                 def _upd_url_wrap(e, l=url_lbl):
-                    l.configure(wraplength=max(60, e.width - 4))
+                    l.configure(wraplength=max(hud._px(200), e.width - 4))
                 body.bind('<Configure>', _upd_url_wrap, add='+')
     _rebuild()
     win.lift()
@@ -260,52 +266,100 @@ def _fetch_yt_meta(video_id: str) -> dict:
 def _open_url(url: str) -> None:
     from actions.youtube import _open_youtube_url
     _open_youtube_url(url)
-def _load_thumb(url: str):
+def _load_thumb(url: str, w: int, h: int):
     try:
         import urllib.request, io
         from PIL import Image, ImageTk
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=5) as r:
             data = r.read()
-        img = Image.open(io.BytesIO(data)).convert('RGB').resize((112, 63), Image.LANCZOS)
+        # Increased size to fill the frame
+        img = Image.open(io.BytesIO(data)).convert('RGB').resize((w, h), Image.LANCZOS)
         return ImageTk.PhotoImage(img)
     except Exception:
         return None
 def open_videos_manager(hud) -> None:
-    win = _base_win(hud, 'СОХРАНЁННЫЕ ВИДЕО — управление', w=680, h=580)
+    win = _base_win(hud, 'СОХРАНЁННЫЕ ВИДЕО — управление', w=1100, h=820)
     inner = _scrollable(win, hud, _CYAN)
     _sf = lambda n: hud._fs(n + 6)
     videos: list[dict] = list(reversed(_parse_saved_videos()))
     hdr = tk.Frame(inner, bg=_BG)
     hdr.pack(fill='x', padx=20, pady=(16, 4))
-    tk.Label(hdr, text='▶  СОХРАНЁННЫЕ ВИДЕО', bg=_BG, fg=_CYAN,
+    tk.Label(hdr, text='▶', bg=_BG, fg=_CYAN,
+             font=(hud._F, _sf(18))).pack(side='left', padx=(0, 12))
+    tk.Label(hdr, text='СОХРАНЁННЫЕ ВИДЕО', bg=_BG, fg=_CYAN,
              font=(hud._F, _sf(13), 'bold')).pack(side='left')
     count_lbl = tk.Label(hdr, text='', bg=_BG, fg=_DIM, font=(hud._F, _sf(9)))
     count_lbl.pack(side='right')
     status_lbl = tk.Label(inner, text='', bg=_BG, fg=_DIM, font=(hud._F, _sf(8)))
     status_lbl.pack(anchor='w', padx=20, pady=(0, 6))
+    
+    search_wrap = tk.Frame(inner, bg=_BG)
+    search_wrap.pack(fill='x', padx=20, pady=(4, 10))
+    
+    search_pill = ctk.CTkEntry(
+        search_wrap,
+        placeholder_text='ПОИСК ПО НАЗВАНИЮ ИЛИ АВТОРУ...', 
+        placeholder_text_color=_blend(_CYAN, 0.7),
+        fg_color=_PANEL,
+        text_color=_CYAN,
+        border_color=_blend(_CYAN, 0.35),
+        border_width=1,
+        corner_radius=JStyle.RAD_PANEL,
+        font=(hud._F, JStyle.TEXT_BODY),
+        height=JStyle.H_NORM,
+    )
+    search_pill.pack(fill='x')
+    
+    def _on_search(*_):
+        _rebuild()
+    search_pill.bind('<KeyRelease>', _on_search)
+
     cards_frame = tk.Frame(inner, bg=_BG)
     cards_frame.pack(fill='x', padx=20, pady=(0, 16))
     _meta_cache: dict[str, dict] = {}
     _thumb_refs: dict[str, object] = {}
+    
+    # Pre-calculate scaled dimensions
+    thumb_w = hud._px(160)
+    thumb_h = hud._px(90)
+
     def _rebuild():
         for w in cards_frame.winfo_children():
             w.destroy()
-        count_lbl.configure(text=f'{len(videos)} видео')
-        if not videos:
-            tk.Label(cards_frame, text='Нет сохранённых видео', bg=_BG, fg=_DIM,
+            
+        q = search_pill.get().strip().lower()
+        filtered = []
+        for v in videos:
+            vid_id = _yt_id(v['url'])
+            meta = _meta_cache.get(vid_id or '', {})
+            title = meta.get('title', '')
+            author = meta.get('author', '')
+            if q:
+                if q not in title.lower() and q not in author.lower() and q not in v['url'].lower():
+                    continue
+            filtered.append(v)
+
+        count_lbl.configure(text=f'{len(filtered)} video')
+        if not filtered:
+            msg = 'Ничего не найдено' if q else 'Нет сохранённых видео'
+            tk.Label(cards_frame, text=msg, bg=_BG, fg=_DIM,
                      font=(hud._F, _sf(10))).pack(pady=20)
             return
-        for i, v in enumerate(videos):
+            
+        for i, v in enumerate(filtered):
             vid_id = _yt_id(v['url'])
             meta = _meta_cache.get(vid_id or '', {})
             title = meta.get('title', '') or '...'
             author = meta.get('author', '')
             duration = meta.get('duration', '')
-            card = tk.Frame(cards_frame, bg=_PANEL,
-                            highlightbackground=_blend(_CYAN, 0.18), highlightthickness=1)
-            card.pack(fill='x', pady=4)
-            tk.Frame(card, bg=_CYAN, width=3).pack(side='left', fill='y')
+            
+            card = ctk.CTkFrame(cards_frame, fg_color=_PANEL, border_color=_blend(_CYAN, 0.22), border_width=1, corner_radius=JStyle.RAD_PANEL)
+            card.pack(fill='x', pady=6)
+            
+            # Left accent bar
+            bar = tk.Frame(card, bg=_CYAN, width=4)
+            bar.pack(side='left', fill='y')
             btn_col = tk.Frame(card, bg=_PANEL)
             btn_col.pack(side='right', padx=14, pady=14)
             def _open(url=v['url']):
@@ -315,12 +369,11 @@ def open_videos_manager(hud) -> None:
                 _save_videos(list(reversed(videos)))
                 status_lbl.configure(text='Удалено.', fg=_AMBER)
                 _rebuild()
-            make_dlg_btn(hud, btn_col, 'ОТКРЫТЬ', '▶', _CYAN, _open, height=44, width=128).pack(fill='x', pady=(0, 6))
-            make_dlg_btn(hud, btn_col, 'УДАЛИТЬ', '🗑', _RED, _del, height=44, width=128).pack(fill='x')
-            thumb_w = hud._px(112)
-            thumb_h = hud._px(63)
+            make_dlg_btn(hud, btn_col, 'ОТКРЫТЬ', '▶', _CYAN, _open, height=JStyle.H_LARGE, width=128).pack(fill='x', pady=(0, 6))
+            make_dlg_btn(hud, btn_col, 'УДАЛИТЬ', '🗑', _RED, _del, height=JStyle.H_LARGE, width=128).pack(fill='x')
+            
             thumb_frame = tk.Frame(card, bg=_BG, width=thumb_w, height=thumb_h)
-            thumb_frame.pack(side='left', padx=(10, 0), pady=14)
+            thumb_frame.pack(side='left', padx=(10, 0), pady=12)
             thumb_frame.pack_propagate(False)
             thumb_lbl = tk.Label(thumb_frame, bg=_BG, text='▶',
                                  fg=_blend(_CYAN, 0.4), font=(hud._F, _sf(20)))
@@ -330,24 +383,39 @@ def open_videos_manager(hud) -> None:
                 thumb_lbl.configure(image=img, text='')
                 thumb_lbl.image = img
             if duration:
-                dur_lbl = tk.Label(thumb_frame, text=duration, bg='#000000',
-                                   fg='white', font=(hud._F, hud._fs(8), 'bold'))
-                dur_lbl.place(relx=1.0, rely=1.0, anchor='se', x=-3, y=-3)
+                dur_lbl = ctk.CTkLabel(thumb_frame, text=duration, 
+                                       fg_color='#000000', 
+                                       text_color='#FFFFFF',
+                                       font=(hud._F, JStyle.TEXT_SMALL, 'bold'),
+                                       height=24, corner_radius=4,
+                                       padx=8)
+                dur_lbl.place(relx=1.0, rely=1.0, anchor='se', x=-5, y=-5)
             body = tk.Frame(card, bg=_PANEL)
-            body.pack(side='left', fill='both', expand=True, padx=12, pady=14)
-            title_lbl = tk.Label(body, text=title, bg=_PANEL, fg=_WHITE,
+            body.pack(side='left', fill='both', expand=True, padx=12, pady=10)
+            
+            # Inner container to center text vertically
+            txt_cont = tk.Frame(body, bg=_PANEL)
+            txt_cont.pack(expand=True, fill='x')
+            title_lbl = tk.Label(txt_cont, text=title or '...', bg=_PANEL, fg=_WHITE,
                                  font=(hud._F, _sf(9), 'bold'), anchor='w',
-                                 justify='left', wraplength=300)
+                                 justify='left')
             title_lbl.pack(fill='x')
-            def _upd_wrap(e, l=title_lbl):
-                l.configure(wraplength=max(60, e.width - 4))
-            body.bind('<Configure>', _upd_wrap, add='+')
+            
+            author_lbl = None
             if author:
-                tk.Label(body, text=author, bg=_PANEL, fg=_DIM,
-                         font=(hud._F, _sf(8)), anchor='w').pack(fill='x')
-            date_str = _fmt_date(v['ts'])
-            tk.Label(body, text=date_str, bg=_PANEL, fg=_blend(_CYAN, 0.45),
-                     font=(hud._F, _sf(7)), anchor='w').pack(fill='x', pady=(2, 0))
+                author_lbl = tk.Label(txt_cont, text=author, bg=_PANEL, fg=_DIM,
+                                      font=(hud._F, _sf(8)), anchor='w', justify='left')
+                author_lbl.pack(fill='x')
+            
+            date_lbl = tk.Label(txt_cont, text=_fmt_date(v['ts']), bg=_PANEL, fg=_blend(_CYAN, 0.45),
+                                font=(hud._F, _sf(7)), anchor='w')
+            date_lbl.pack(fill='x', pady=(2, 0))
+
+            def _upd_wrap(e, l1=title_lbl, l2=author_lbl):
+                w_lim = max(hud._px(300), e.width - 10)
+                l1.configure(wraplength=w_lim)
+                if l2: l2.configure(wraplength=w_lim)
+            txt_cont.bind('<Configure>', _upd_wrap, add='+')
     _rebuild()
     def _load_meta():
         for v in videos:
@@ -357,7 +425,7 @@ def open_videos_manager(hud) -> None:
             meta = _fetch_yt_meta(vid_id)
             _meta_cache[vid_id] = meta
             if meta.get('thumb'):
-                img = _load_thumb(meta['thumb'])
+                img = _load_thumb(meta['thumb'], thumb_w, thumb_h)
                 if img:
                     _thumb_refs[vid_id] = img
             try:

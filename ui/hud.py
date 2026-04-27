@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ui.hud_style import JStyle
 import os
 import queue as _q_mod
 import threading
@@ -11,7 +12,7 @@ from core.system import module_enabled
 from . import hud_constants as _c
 from .hud_constants import _BG, _CYAN, _PANEL, _BRD, _STA
 from .hud_state import STATE, HudState
-from .hud_utils import _load_hud_settings, _save_hud_settings, _set_dark_title_bar
+from .hud_utils import _load_hud_settings, _save_hud_settings, _set_dark_title_bar, _blend
 from . import hud_layout as layout
 from . import hud_renderer as renderer
 from . import hud_monitoring as monitoring
@@ -25,12 +26,16 @@ def show_hud() -> None:
         return
     _hud._hud_queue.put(_hud.root.deiconify)
     _hud._hud_queue.put(_hud.root.lift)
-    _hud._hud_queue.put(_hud.root.focus_force)
+    _hud._hud_queue.put(_hud.root.focus_set)
 class JarvisHUD:
     def __init__(self) -> None:
         self._settings = _load_hud_settings()
-        self.zoom_factor: float = float(self._settings.get('zoom_factor', 1.0))
+        if 'zoom_factor' not in self._settings:
+            self.zoom_factor = self._auto_detect_zoom()
+        else:
+            self.zoom_factor = float(self._settings.get('zoom_factor', 1.0))
         if self.zoom_factor <= 0.0: self.zoom_factor = 1.0
+        self._font_scale: float = 1.0
 
         # Framework scaling MUST be set before or during root creation
         from .hud_themes import get_current_theme_name
@@ -84,8 +89,8 @@ class JarvisHUD:
         self._widget_vis: dict = {**_c._DEFAULT_VIS, **self._settings.get('widget_vis', {})}
         self._panel_w = self._calc_panel_w()
         self._last_weather_data = None
-        self._cx = self._cy = 300
         self._tick = 0
+        self._resize_timer: Optional[str] = None
         self._cam_run = False
         _cpu_phys = psutil.cpu_count(logical=False) or 2
         _low_perf = _cpu_phys <= 2
@@ -105,10 +110,11 @@ class JarvisHUD:
         self._top_day = '...'
         self._top_pct_str = '0%'
         self._weather_city = '...'
+        self._cx, self._cy = 0, 0
         import collections
         self._perf_history = {k: collections.deque(maxlen=180) for k in [
             'cpu', 'ram', 'dsk_util', 'dsk_read', 'dsk_write',
-            'net_up', 'net_dn', 'gpu_util', 'gpu_mem', 'gpu_temp', 'cpu_temp'
+            'net_up', 'net_dn', 'gpu_util', 'gpu_mem', 'gpu_temp', 'cpu_temp', 'latency'
         ]}
         import tkinter.font as _tkfont
         _avail = set(_tkfont.families())
@@ -118,12 +124,39 @@ class JarvisHUD:
         layout.build_header(self)
         body = tk.Frame(self.root, bg=_BG)
         body.pack(fill='both', expand=True)
-        self._left = layout.glass_panel(self, body, 'left', self._panel_w)
-        tk.Frame(body, bg=_BRD, width=1).pack(side='left', fill='y')
-        self._right = layout.glass_panel(self, body, 'right', self._panel_w)
-        tk.Frame(body, bg=_BRD, width=1).pack(side='right', fill='y')
+        
+        # Left Sidebar Container
+        self._left_outer = tk.Frame(body, bg=_BG)
+        self._left_outer.pack(side='left', fill='y')
+        self._left = layout.glass_panel(self, self._left_outer, 'left', self._panel_w)
+        self._left_sep = tk.Frame(self._left_outer, bg=_BRD, width=1)
+        self._left_sep.pack(side='left', fill='y')
+        
+        # Right Sidebar Container
+        self._right_outer = tk.Frame(body, bg=_BG)
+        self._right_outer.pack(side='right', fill='y')
+        self._right = layout.glass_panel(self, self._right_outer, 'right', self._panel_w)
+        self._right_sep = tk.Frame(self._right_outer, bg=_BRD, width=1)
+        self._right_sep.pack(side='right', fill='y')
+        
+        # Center Area
         self._mid = tk.Frame(body, bg=_BG)
         self._mid.pack(side='left', fill='both', expand=True)
+
+        # Sidebar Toggle Buttons (Managed in layout to avoid overlap)
+        _btn_style = dict(
+            fg_color='transparent', 
+            text_color=_CYAN, 
+            hover_color=_blend(_CYAN, 0.2),
+            border_color=_CYAN, 
+            border_width=1, 
+            corner_radius=4, 
+            width=30, 
+            height=JStyle.H_TOOL, 
+            font=(self._F, 12, 'bold')
+        )
+        self._left_toggle = ctk.CTkButton(self.root, text='«', command=self._toggle_left, **_btn_style)
+        self._right_toggle = ctk.CTkButton(self.root, text='»', command=self._toggle_right, **_btn_style)
         layout.build_left(self)
         layout.build_center(self)
         layout.build_right(self)
@@ -152,15 +185,19 @@ class JarvisHUD:
         return int(n * self.zoom_factor)
     def _fs(self, n: int) -> int:
         # Standard tk.Labels need font scaling as CTK doesn't auto-scale them.
-        return max(6, int(n * self.zoom_factor))
+        # Use negative values so Tkinter treats them as pixels. 
+        # We use a 1.33 factor to match the standard point-to-pixel ratio (96/72) 
+        # so that base sizes (like 11) look natural on standard screens.
+        return -max(6, int(n * 1.33 * self.zoom_factor * self._font_scale))
     def _auto_detect_zoom(self) -> float:
         try:
-            sw = self.root.winfo_screenwidth()
-            # On 4K, sw is usually 3840 (if DPI is 1.0) or logical (~1920 with 2x DPI)
-            # Since CTK handles DPI, winfo_screenwidth() returns logical pixels.
-            if sw >= 3000: return 2.0
-            if sw >= 2000: return 1.5
-            if sw >= 1600: return 1.25
+            import ctypes
+            # Get physical screen width directly from Windows API
+            sw = ctypes.windll.user32.GetSystemMetrics(0)
+            if sw >= 3800: return 2.0   # 4K
+            if sw >= 2500: return 1.5   # 2K / QHD
+            if sw >= 1900: return 1.2   # Full HD (slight boost)
+            if sw >= 1600: return 1.1
             return 1.0
         except Exception:
             return 1.0
@@ -170,48 +207,51 @@ class JarvisHUD:
     def _calc_panel_w(self) -> int:
         import tkinter.font as _tf
         try:
-            _f10  = _tf.Font(family=self._F, size=self._fs(10), weight='bold')
-            _f11  = _tf.Font(family=self._F, size=self._fs(11), weight='bold')
-            _f_ico = _tf.Font(family=self._F, size=self._fs(22), weight='bold')
-            _btn_texts = [
-                'АВТОЗАПУСК СИСТЕМЫ', 'ЦЕНТР РАСШИРЕНИЙ',
-                'НАСТРОЙКИ СИСТЕМЫ',  'МОНИТОР СИСТЕМЫ',
-            ]
-            _ico_w   = _f_ico.measure('▦')
-            _btn_w   = max(_f10.measure(t) for t in _btn_texts)
-            _btn_total = 8*2 + self._px(14) + _ico_w + self._px(8) + _btn_w + self._px(8)
+            # Measure with base size 11 and current zoom
+            _test_fs = int(11 * self.zoom_factor)
+            _f_test = _tf.Font(family=self._F, size=_test_fs, weight='bold')
             _hdr_texts = [
                 'КОМАНДЫ И УПРАВЛЕНИЕ', 'СИСТЕМНЫЕ ПРОФИЛИ',
                 'АНАЛИТИКА ДАННЫХ',     'СЕТЕВАЯ СТАТИСТИКА',
+                '✧ МИКРОФОН / ЧУВСТВИТЕЛЬНОСТЬ'
             ]
-            _hdr_total = 8*2 + max(_f11.measure('  ◈ ' + t) for t in _hdr_texts)
-            _bar_lbls = ['УРОВЕНЬ ЗАРЯДА БАТАРЕИ', 'ПАМЯТЬ (RAM)', 'ТЕМПЕРАТУРА ВИДЕОКАРТЫ']
-            _bar_total = 16*2 + max(_f10.measure(t) for t in _bar_lbls) + self._px(44)
-            _key_w = _f10.measure('ЛОКАЛЬНЫЙ IP ')
-            _val_w = _f11.measure('000.000.000.000')
-            _kv_total = 16*2 + _key_w + _val_w + self._px(8)
-            _mic_total = (self._px(14)*2 + 4 + self._px(12)*2 +
-                          _f10.measure('✧ МИКРОФОН / ЧУВСТВИТЕЛЬНОСТЬ') + self._px(10))
-            _content_w = max(_btn_total, _hdr_total, _kv_total, _mic_total, _bar_total)
+            _max_text_w = max(_f_test.measure(t) for t in _hdr_texts)
+            _content_w = _max_text_w + self._px(64) # text + icon + margins
         except Exception:
-            _content_w = self._px(280)
+            _content_w = self._px(300)
+
         sw = self.root.winfo_screenwidth()
-        _max_pct = 0.38
+        # Max % of screen for sidebars
+        _max_pct = 0.36
         if sw >= 1920: _max_pct = 0.32
-        if sw >= 2560: _max_pct = 0.26
-        if sw >= 3840: _max_pct = 0.20
-        if self.zoom_factor >= 1.8: _max_pct += 0.05
+        if sw >= 2560: _max_pct = 0.24
+        if sw >= 3840: _max_pct = 0.18
         
-        _w = max(self._px(230), min(_content_w + 30, int(sw * _max_pct)))
-        # Hard cap for 4K to prevent half-screen buttons
+        _limit_w = int(sw * _max_pct)
+        _min_w   = self._px(230)
+        
+        # Calculate scaling factor if content overflows
+        self._font_scale = 1.0
+        if _content_w > _limit_w:
+            # Shrink font proportionally to fit the limit
+            self._font_scale = max(0.65, _limit_w / _content_w)
+            _w = _limit_w
+        else:
+            _w = max(_min_w, _content_w)
+            
         return min(_w, self._px(550))
     def _poll_hud_queue(self):
         try:
             while not self._hud_queue.empty():
                 callback = self._hud_queue.get_nowait()
                 if callable(callback):
-                    callback()
-        except: pass
+                    try:
+                        callback()
+                    except Exception:
+                        import traceback
+                        traceback.print_exc()
+        except Exception:
+            pass
         _poll_ms = 100 if _c._LOW_PERF_MODE else 50
         self.root.after(_poll_ms, self._poll_hud_queue)
     def _route_wheel(self, e):
@@ -225,10 +265,23 @@ class JarvisHUD:
                     return
             except: pass
     def _on_resize(self, evt: tk.Event) -> None:
-        if evt.width // 2 != self._cx or evt.height // 2 != self._cy:
-            self._cx, self._cy = evt.width // 2, evt.height // 2
+        # 🚀 ДЕБАУНСИНГ: Не перерисовываем радар при каждом пикселе движения
+        if self._resize_timer:
+            self.root.after_cancel(self._resize_timer)
+        
+        # Ждем 150мс после последнего изменения размера, прежде чем пересчитывать центр
+        self._resize_timer = self.root.after(150, lambda: self._on_resize_actual(evt))
+
+    def _on_resize_actual(self, evt: tk.Event) -> None:
+        if not hasattr(self, '_canvas') or not self._canvas.winfo_exists():
+            return
+        # Обновляем координаты центра
+        cw, ch = self._canvas.winfo_width(), self._canvas.winfo_height()
+        if cw // 2 != self._cx or ch // 2 != self._cy:
+            self._cx, self._cy = cw // 2, ch // 2
             renderer.draw_static(self)
             renderer.init_anim_objects(self)
+        self._resize_timer = None
     def _zoom_step(self, delta: float) -> None:
         self.zoom_factor = round(max(0.6, min(2.5, self.zoom_factor + delta)), 1)
         self._settings['zoom_factor'] = self.zoom_factor
@@ -240,19 +293,79 @@ class JarvisHUD:
         _save_hud_settings(self._settings)
         self._apply_zoom_rebuild()
     def _apply_zoom_rebuild(self) -> None:
+        ctk.set_widget_scaling(self.zoom_factor)
+        ctk.set_window_scaling(self.zoom_factor)
         self.root.update_idletasks()
         self._panel_w = self._calc_panel_w()
+        
+        # Ensure bottom bar order is preserved during zoom
+        try:
+            self._left_toggle.pack_forget()
+            self._right_toggle.pack_forget()
+            self._bot_canvas.pack_forget()
+            self._left_toggle.pack(in_=self._bot_strip, side='left', padx=(10, 5))
+            self._right_toggle.pack(in_=self._bot_strip, side='right', padx=(5, 10))
+            self._bot_canvas.pack(in_=self._bot_strip, side='left', fill='both', expand=True)
+        except: pass
+
         if hasattr(self._left, 'outer'): self._left.outer.configure(width=self._panel_w)
         if hasattr(self._right, 'outer'): self._right.outer.configure(width=self._panel_w)
+        
         self.root.update()
         layout.rebuild_left(self)
         layout.rebuild_right(self)
         layout.update_header_fonts(self)
+        
+        # 🔥 ИСПРАВЛЕНИЕ: Принудительный пересчет центральной графики
+        # Имитируем событие Configure для центрального холста
+        _w = self._canvas.winfo_width()
+        _h = self._canvas.winfo_height()
+        if _w > 1 and _h > 1:
+            self._cx, self._cy = _w // 2, _h // 2
+        
+        # Полностью перерисовываем статику и анимацию центра
+        renderer.draw_static(self)
+        renderer.init_anim_objects(self)
+        
+        renderer.draw_bot_strip(self)
+        renderer.draw_top_strip(self)
+        
+        # FORCED SCROLL REFRESH after UI stabilizes
+        def _force_scroll():
+            try:
+                self.root.update_idletasks()
+                if hasattr(self, '_left_scroll') and self._left_scroll.winfo_exists():
+                    self._left_scroll.event_generate('<Configure>')
+                if hasattr(self, '_right_scroll') and self._right_scroll.winfo_exists():
+                    self._right_scroll.event_generate('<Configure>')
+            except: pass
+        self.root.after(350, _force_scroll)
+        
+        # REFRESH ALL ACTIVE SUB-WINDOWS (Dialogs)
+        for reopen_fn in list(self._sub_wins.values()):
+            try: 
+                # Use reopen=True logic where supported to prevent stacking
+                reopen_fn() 
+            except: pass
+
+    def _toggle_left(self):
+        if self._left_outer.winfo_ismapped():
+            self._left_outer.pack_forget()
+            self._left_toggle.configure(text='»')
+        else:
+            self._left_outer.pack(side='left', fill='y', before=self._mid)
+            self._left_toggle.configure(text='«')
+            
+    def _toggle_right(self):
+        if self._right_outer.winfo_ismapped():
+            self._right_outer.pack_forget()
+            self._right_toggle.configure(text='«')
+        else:
+            # Re-pack to ensure it's on the right of center
+            self._right_outer.pack(side='right', fill='y', after=self._mid)
+            self._right_toggle.configure(text='»')
         renderer.draw_top_strip(self)
         renderer.draw_bot_strip(self)
-        for reopen_fn in list(self._sub_wins.values()):
-            try: reopen_fn()
-            except: pass
     def _apply_widget_visibility(self) -> None:
         layout.apply_widget_visibility(self)
     def show_msg(self, text: str, color: str = _c._CYAN, duration: int = 3000):

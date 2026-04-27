@@ -1,8 +1,9 @@
+from ui.hud_style import JStyle
 import os, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
-from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar
+from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ui.hud_widgets import _HudScrollbar, _HUDDropdown
 
 def _add_context_menu(win, entry, hud, _sf):
@@ -34,9 +35,13 @@ def _add_context_menu(win, entry, hud, _sf):
 
 def _card(parent, icon: str, title: str, accent: str, hud):
     _sf = lambda n: hud._fs(n + 6)
-    outer = tk.Frame(parent, bg=_PANEL, highlightbackground=_blend(accent, 0.2), highlightthickness=1)
+    outer = ctk.CTkFrame(parent, fg_color=_PANEL, border_color=_blend(accent, 0.25), border_width=1, corner_radius=JStyle.RAD_PANEL)
     outer.pack(fill='x', padx=20, pady=(14, 0))
-    tk.Frame(outer, bg=accent, width=3).pack(side='left', fill='y')
+    
+    # Left accent bar
+    bar_f = tk.Frame(outer, bg=accent, width=3)
+    bar_f.pack(side='left', fill='y', padx=(0, 0))
+    
     body = tk.Frame(outer, bg=_PANEL)
     body.pack(side='left', fill='both', expand=True, padx=(16, 18), pady=(14, 14))
     head = tk.Frame(body, bg=_PANEL)
@@ -88,7 +93,7 @@ def _label_row(parent, label: str, accent: str, hud):
     return val_lbl
 
 def _slider(parent, from_, to, steps, accent, init_val, callback, hud):
-    s = ctk.CTkSlider(parent, from_=from_, to=to, number_of_steps=steps, progress_color=accent, button_color=accent, button_hover_color=_blend(accent, 0.7), fg_color=_BRD_I, height=hud._px(16))
+    s = ctk.CTkSlider(parent, from_=from_, to=to, number_of_steps=steps, progress_color=accent, button_color=accent, button_hover_color=_blend(accent, 0.7), fg_color=_BRD_I, height=16)
     s.set(init_val)
     s.pack(fill='x', pady=(10, 4))
     s.configure(command=callback)
@@ -96,7 +101,7 @@ def _slider(parent, from_, to, steps, accent, init_val, callback, hud):
 
 def _std_action_btn(parent, text: str, command, accent: str, hud, **grid_kw):
     _sf = lambda n: hud._fs(n + 6)
-    b = ctk.CTkButton(parent, text=text, command=command, height=hud._px(44), font=(hud._F, _sf(10), 'bold'), fg_color=_blend(accent, 0.08), hover_color=_blend(accent, 0.18), text_color=accent, border_color=_blend(accent, 0.32), border_width=1, corner_radius=10)
+    b = ctk.CTkButton(parent, text=text, command=command, height=JStyle.H_NORM, font=(hud._F, _sf(10), 'bold'), fg_color=_blend(accent, 0.08), hover_color=_blend(accent, 0.18), text_color=_TEXT, border_color=_blend(accent, 0.32), border_width=1, corner_radius=JStyle.RAD_PANEL)
     if grid_kw:
         b.grid(**grid_kw)
     return b
@@ -104,14 +109,14 @@ def _std_action_btn(parent, text: str, command, accent: str, hud, **grid_kw):
 def _hero_btn(parent, text: str, command, accent: str, hud, **grid_kw):
     _sf = lambda n: hud._fs(n + 6)
     # More prominent button with stronger borders and solid-ish accent on hover
-    b = ctk.CTkButton(parent, text=text, command=command, height=hud._px(50), 
+    b = ctk.CTkButton(parent, text=text, command=command, height=JStyle.H_LARGE, 
                       font=(hud._F, _sf(11), 'bold'), 
                       fg_color=_blend(accent, 0.12), 
                       hover_color=_blend(accent, 0.25), 
-                      text_color=accent, 
+                      text_color=_TEXT, 
                       border_color=accent, 
                       border_width=2, 
-                      corner_radius=12)
+                      corner_radius=JStyle.RAD_PANEL)
     if grid_kw:
         b.grid(**grid_kw)
     return b
@@ -120,17 +125,24 @@ def _pick_app_dialog(win, hud, on_selected):
     from core.system.windows import get_installed_apps
     _sf = lambda n: hud._fs(n + 6)
     apps = get_installed_apps()
-    pick_win = ctk.CTkToplevel(win); pick_win.title("ВЫБОР ПРИЛОЖЕНИЯ"); pick_win.geometry(f"{hud._px(600)}x{hud._px(700)}")
-    pick_win.configure(bg=_BG); _set_dark_title_bar(pick_win); pick_win.attributes("-topmost", True); pick_win.lift()
+    pick_win = ctk.CTkToplevel(win); pick_win.title("ВЫБОР ПРИЛОЖЕНИЯ"); pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
+    from ui.hud_utils import _center_window
+    _center_window(pick_win, 820, 740, hud.zoom_factor)
+    pick_win.configure(bg=_BG); _set_dark_title_bar(pick_win); pick_win.attributes("-topmost", True)
+    _apply_window_icon(pick_win, hud)
+    pick_win.lift()
     top_bar = tk.Frame(pick_win, bg=_BG); top_bar.pack(fill='x', padx=20, pady=(20, 10))
     tk.Label(top_bar, text="◈", bg=_BG, fg=_CYAN, font=(hud._F, _sf(14))).pack(side='left', padx=(0, 10))
-    tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(side='left')
-    tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10))).pack(anchor='w')
+    tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(anchor='w')
+    h_lbl = tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10)), justify='left', anchor='w')
+    h_lbl.pack(fill='x', anchor='w')
+    def _upd_p_wrap(e, l=h_lbl): l.configure(wraplength=e.width)
+    top_bar.bind('<Configure>', _upd_p_wrap, add='+')
     ctrl_f = tk.Frame(pick_win, bg=_BG); ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-    ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
+    ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=JStyle.RAD_PANEL)
     ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
     _show_all_var = tk.BooleanVar(value=False)
-    sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_CYAN, switch_width=hud._px(36), switch_height=hud._px(18))
+    sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_CYAN, switch_width=36, switch_height=18)
     sw_all.pack(side='right')
     lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1); lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
     lb = tk.Listbox(lb_frame, bg=_BG, fg=_TEXT, font=(hud._F, _sf(11)), borderwidth=0, highlightthickness=0, selectbackground=_blend(_CYAN, 0.3), activestyle='none')
@@ -150,4 +162,4 @@ def _pick_app_dialog(win, hud, on_selected):
         if sel:
             app = _f_data[sel[0]]; on_selected(app.get('exe') or app['name']); pick_win.destroy()
     lb.bind('<Double-Button-1>', _on_pick)
-    ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=hud._px(50), font=(hud._F, _sf(12), 'bold'), fg_color=_CYAN, text_color=_BG).pack(fill='x', padx=20, pady=(0, 20))
+    ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=hud._px(44), width=hud._px(280), font=(hud._F, _sf(12), 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))

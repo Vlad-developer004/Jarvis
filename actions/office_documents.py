@@ -329,11 +329,13 @@ def open_file(path: str) -> tuple[bool, str]:
         except Exception as e:
             return (False, str(e))
     if ext not in _IDE_OPEN_EXTS:
+        # Non-code, non-office files: safe to startfile
         try:
             os.startfile(p)
             return (True, p)
         except Exception as e:
             return (False, str(e))
+    # Code/IDE files: NEVER use os.startfile — it would run the interpreter
     try:
         from core.system import get_foreground_process_exe
         iexe = get_foreground_process_exe()
@@ -347,8 +349,9 @@ def open_file(path: str) -> tuple[bool, str]:
         w = shutil.which(cli)
         if w and _popen_quiet([w, p]):
             return (True, p)
+    # Safe fallback: open in Notepad instead of executing
     try:
-        os.startfile(p)
+        _popen_quiet(["notepad.exe", p])
         return (True, p)
     except Exception as e:
         return (False, str(e))

@@ -265,9 +265,18 @@ def open_latest_clipchamp_video() -> tuple[bool, str]:
         return (False, str(e))
 from core.system.windows import get_hwnd_process_name
 
-def send_play_pause_to_video(prefer: str | None = None) -> bool:
+def send_play_pause_to_video(prefer: str | None = None, action: str = 'toggle') -> bool:
     import win32gui
     import win32con
+    
+    # Removed the global pycaw check. It was flawed because Jarvis's own TTS response 
+    # (or background apps like Discord) made it falsely believe media was already playing,
+    # causing explicit 'play' commands to be incorrectly skipped.
+
+    # 14 = Play/Pause toggle, 46 = Play, 47 = Pause
+    cmd_val = 14
+    if action == 'play': cmd_val = 46
+    elif action == 'pause': cmd_val = 47
     
     try:
         import pyautogui
@@ -294,7 +303,8 @@ def send_play_pause_to_video(prefer: str | None = None) -> bool:
         if pyautogui: pyautogui.press('playpause'); return True
         return False
 
-    yt_wins = []
+    yt_pwa_wins = []
+    yt_browser_wins = []
     browser_media_wins = []
     pure_browser_wins = []
     general_media_wins = []
@@ -318,52 +328,51 @@ def send_play_pause_to_video(prefer: str | None = None) -> bool:
             
             is_browser = any(k in tl for k in browsers) or p_name in browser_exes
             is_youtube = 'youtube' in tl or 'ютуб' in tl
+            is_pwa = is_youtube and not any(k in tl for k in browsers)
             is_generic_media = any(k in tl for k in media_kw)
             is_minimized = win32gui.IsIconic(hwnd)
 
-            if is_youtube:
-                yt_wins.append((hwnd, t, p_name, is_minimized))
+            if is_pwa:
+                yt_pwa_wins.append((hwnd, t, p_name, is_minimized, True))
+            elif is_youtube:
+                yt_browser_wins.append((hwnd, t, p_name, is_minimized, True))
             elif is_browser:
                 if is_generic_media:
-                    browser_media_wins.append((hwnd, t, p_name, is_minimized))
+                    browser_media_wins.append((hwnd, t, p_name, is_minimized, False))
                 elif len(t) > 3: # Must have some meaningful title to be a tab
-                    pure_browser_wins.append((hwnd, t, p_name, is_minimized))
+                    pure_browser_wins.append((hwnd, t, p_name, is_minimized, False))
             elif is_generic_media:
-                general_media_wins.append((hwnd, t, p_name, is_minimized))
+                general_media_wins.append((hwnd, t, p_name, is_minimized, False))
         except Exception:
             continue
 
     print(f"[Media] Prefer: {prefer}", flush=True)
-    print(f"[Media] Categorized: YT={len(yt_wins)}, BrowserMedia={len(browser_media_wins)}, PureBrowser={len(pure_browser_wins)}, General={len(general_media_wins)}", flush=True)
+    print(f"[Media] Categorized: YTPWA={len(yt_pwa_wins)}, YTBrowser={len(yt_browser_wins)}, BrowserMedia={len(browser_media_wins)}, PureBrowser={len(pure_browser_wins)}, General={len(general_media_wins)}", flush=True)
 
     # Heuristic: Sort by title length and minimized state
-    # Minimized windows get a huge priority boost when we are looking for 'background' control
     def _rank_and_sort(lst, boost_minimized=False):
-        # Score calculation: 
-        # +1000 for minimized (if boost active)
-        # +title_length for meaningfulness
         def score(item):
             s = len(item[1])
             if boost_minimized and item[3]: # item[3] is is_minimized
                 s += 1000
             return s
-            
         lst.sort(key=score, reverse=True)
         return lst
 
-    # If user asks for 'browser', they likely want the hidden/minimized one
     boost_min = (prefer == 'browser')
-    yt_wins = _rank_and_sort(yt_wins, boost_minimized=boost_min)
+    yt_pwa_wins = _rank_and_sort(yt_pwa_wins, boost_minimized=(prefer == 'youtube'))
+    yt_browser_wins = _rank_and_sort(yt_browser_wins, boost_minimized=boost_min)
     browser_media_wins = _rank_and_sort(browser_media_wins, boost_minimized=boost_min)
     pure_browser_wins = _rank_and_sort(pure_browser_wins, boost_minimized=boost_min)
-    general_media_wins = _rank_and_sort(general_media_wins, boost_minimized=boost_min)
+    general_media_wins = _rank_and_sort(general_media_wins, boost_minimized=False)
 
     if prefer == 'youtube':
-        target_objs = yt_wins or browser_media_wins or pure_browser_wins or general_media_wins
+        target_objs = yt_pwa_wins or yt_browser_wins or browser_media_wins or pure_browser_wins or general_media_wins
     elif prefer == 'browser':
-        target_objs = browser_media_wins or pure_browser_wins or yt_wins or general_media_wins
+        target_objs = yt_browser_wins or browser_media_wins or pure_browser_wins or yt_pwa_wins or general_media_wins
     else:
-        target_objs = yt_wins or browser_media_wins or general_media_wins or pure_browser_wins
+        # Default global fallback priority
+        target_objs = yt_pwa_wins or yt_browser_wins or browser_media_wins or general_media_wins or pure_browser_wins
 
     if not target_objs:
         print("[Media] No targeted windows identified. Global fallback.", flush=True)
@@ -371,12 +380,25 @@ def send_play_pause_to_video(prefer: str | None = None) -> bool:
         return False
 
     success = False
-    for hwnd, title, p_name, is_min in target_objs[:5]:
+    for hwnd, title, p_name, is_min, is_yt in target_objs[:5]:
         try:
             status = "Minimized" if is_min else "Visible"
-            print(f"[Media] Targeting: {title} ({p_name}, {status}, HWND: {hwnd})", flush=True)
-            # APPCOMMAND_MEDIA_PLAY_PAUSE = 14, WM_APPCOMMAND = 0x0319
-            win32gui.SendMessage(hwnd, 0x0319, 0, 14 << 16)
+            print(f"[Media] Targeting: {title} ({p_name}, {status}, HWND: {hwnd}, Action: {action})", flush=True)
+            
+            # Chromium browsers handle WM_APPCOMMAND globally per profile.
+            # If the user explicitly asks for youtube or browser, we bypass the global media
+            # controller by foregrounding the specific window and sending the 'k' key.
+            if prefer in ('youtube', 'browser') and is_yt and pyautogui:
+                if is_min:
+                    win32gui.ShowWindow(hwnd, 9)
+                from core.system import force_foreground
+                force_foreground(hwnd)
+                time.sleep(0.15)
+                pyautogui.press('k')
+            else:
+                root_hwnd = win32gui.GetAncestor(hwnd, 2) 
+                win32gui.PostMessage(root_hwnd, 0x0319, 0, cmd_val << 16)
+            
             success = True
             break 
         except Exception as e:

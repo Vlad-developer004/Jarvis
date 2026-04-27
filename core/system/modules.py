@@ -1,17 +1,8 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-def _get_settings_path() -> Path:
-    import sys
-    import os
-    if getattr(sys, 'frozen', False):
-        base = os.path.dirname(os.path.abspath(sys.executable))
-    else:
-        # Path to root from core/system/modules.py is two levels up
-        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    return Path(base) / "data" / "jarvis_settings.json"
-
-_SETTINGS_PATH = _get_settings_path()
+from config_pack.config import get_settings_path
+_SETTINGS_PATH = Path(get_settings_path())
 _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
     "full": {
         "games": True,

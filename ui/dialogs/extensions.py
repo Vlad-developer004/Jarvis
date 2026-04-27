@@ -1,10 +1,11 @@
 from __future__ import annotations
+from ui.hud_style import JStyle
 import json, os, threading, time
 import tkinter as tk
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ..hud_state import HudState, STATE, set_mode
-from ..hud_utils import _blend, _bar_color, _set_dark_title_bar
+from ..hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon, _center_window
 from ..hud_widgets import _HudScrollbar
 from core.extensions import ExtensionManager
 
@@ -103,48 +104,70 @@ def _load_game_commands(filename: str) -> list[dict]:
 
 def _ask_chat_id(parent, hud, on_confirm):
     dlg = tk.Toplevel(parent); dlg.title('Настройка JARVIS'); dlg.configure(bg=_BG)
+    _set_dark_title_bar(dlg)
+    dlg.after(100, lambda: _set_dark_title_bar(dlg))
+    _apply_window_icon(dlg, hud)
     W, H = 500, 380
     dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+150+110'); dlg.grab_set(); dlg.resizable(False, False)
     tk.Frame(dlg, bg=_CYAN, height=2).pack(fill='x')
-    tk.Label(dlg, text='⦿  ОХРАННАЯ КАМЕРА', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(16), 'bold')).pack(pady=(16, 4))
+    tk.Label(dlg, text='⦿  ОХРАННАЯ КАМЕРА', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(pady=(16, 4))
     tk.Frame(dlg, bg=_SEP, height=1).pack(fill='x', padx=20, pady=(0, 10))
     lines = ['Для получения фото на телефон при обнаружении движения', 'введите ваш личный Telegram Chat ID.', '', 'Как узнать Chat ID:', '1. Найти @userinfobot в Telegram', '2. Нажать /start — бот пришлет ID']
     for line in lines:
         col = _CYAN if 'Как' in line else _TEXT if line else _BG
-        tk.Label(dlg, text=line, bg=_BG, fg=col, font=(hud._F, hud._fs(10), 'bold' if 'Как' in line else '')).pack(anchor='w', padx=28)
+        tk.Label(dlg, text=line, bg=_BG, fg=col, font=(hud._F, JStyle.TEXT_SMALL, 'bold' if 'Как' in line else '')).pack(anchor='w', padx=28)
     tk.Frame(dlg, bg=_SEP, height=1).pack(fill='x', padx=20, pady=(12, 10))
-    entry_var = tk.StringVar(); entry = ctk.CTkEntry(dlg, textvariable=entry_var, placeholder_text='Chat ID', font=(hud._F, hud._fs(11)), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=36)
+    entry_var = tk.StringVar(); entry = ctk.CTkEntry(dlg, textvariable=entry_var, placeholder_text='Chat ID', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
     entry.pack(fill='x', padx=28, pady=(0, 15)); _bind_ctk_entry_clipboard(dlg, entry, hud); entry.focus_set()
     def _confirm():
         cid = entry_var.get().strip()
         if not cid.lstrip('-').isdigit(): entry.configure(border_color=_RED); return
         on_confirm(cid); dlg.destroy()
-    ctk.CTkButton(dlg, text='СОХРАНИТЬ', font=(hud._F, hud._fs(11), 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=28, pady=(0, 6))
-    ctk.CTkButton(dlg, text='ОТМЕНА', font=(hud._F, hud._fs(10)), height=30, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=28)
+    ctk.CTkButton(dlg, text='СОХРАНИТЬ', font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=28, pady=(0, 6))
+    ctk.CTkButton(dlg, text='ОТМЕНА', font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=28)
     dlg.bind('<Return>', lambda _: _confirm())
 
 def _ask_calendar_setup(parent, hud, on_done=None):
     dlg = tk.Toplevel(parent); dlg.title('Настройка календаря'); dlg.configure(bg=_BG)
+    _set_dark_title_bar(dlg)
+    dlg.after(100, lambda: _set_dark_title_bar(dlg))
+    _apply_window_icon(dlg, hud)
     W, H = 560, 520
     dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+150+90'); dlg.grab_set(); dlg.minsize(int(440*hud.zoom_factor), int(400*hud.zoom_factor)); dlg.resizable(True, True)
-    tk.Frame(dlg, bg=_CYAN, height=2).pack(fill='x')
-    tk.Label(dlg, text='📅  НАСТРОЙКА КАЛЕНДАРЯ', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(16), 'bold')).pack(pady=(14, 4))
-    tk.Label(dlg, text='Добавьте файлы (.ics) или ссылки.', bg=_BG, fg=_TEXT, font=(hud._F, hud._fs(10)), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 12))
+    # Use scrollable container
+    canvas_f = tk.Frame(dlg, bg=_BG); canvas_f.pack(fill='both', expand=True)
+    canvas = tk.Canvas(canvas_f, bg=_BG, highlightthickness=0)
+    sb = _HudScrollbar(canvas_f, canvas, color=_CYAN)
+    canvas.configure(yscrollcommand=sb.set); canvas.pack(side='left', fill='both', expand=True)
+    inner = tk.Frame(canvas, bg=_BG)
+    _cwin = canvas.create_window((0, 0), window=inner, anchor='nw', width=int(W*hud.zoom_factor))
+    def _upd_scroll(): 
+        if canvas.winfo_exists():
+            h = inner.winfo_reqheight()
+            ch = canvas.winfo_height()
+            canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), max(h, ch)))
+    inner.bind('<Configure>', lambda e: _upd_scroll())
+    def _on_wheel(e): canvas.yview_scroll(-1*(e.delta//120), 'units')
+    dlg.bind('<MouseWheel>', _on_wheel)
+
+    tk.Frame(inner, bg=_CYAN, height=2).pack(fill='x')
+    tk.Label(inner, text='📅  НАСТРОЙКА КАЛЕНДАРЯ', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(pady=(14, 4))
+    tk.Label(inner, text='Добавьте файлы (.ics) или ссылки.', bg=_BG, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 12))
     s0 = _load_settings(); sources_var = list(s0.get('calendar_sources', []) if isinstance(s0.get('calendar_sources'), list) else [])
-    list_frame = tk.Frame(dlg, bg=_PANEL, highlightthickness=1, highlightbackground=_blend(_CYAN, 0.3)); list_frame.pack(fill='both', expand=True, padx=24, pady=(0, 10))
+    list_frame = tk.Frame(inner, bg=_PANEL, highlightthickness=1, highlightbackground=_blend(_CYAN, 0.3)); list_frame.pack(fill='both', expand=True, padx=24, pady=(0, 10))
     list_inner = tk.Frame(list_frame, bg=_PANEL); list_inner.pack(fill='both', expand=True, padx=8, pady=8)
     def _refresh_list():
         for w in list_inner.winfo_children(): w.destroy()
         for i, src in enumerate(sources_var):
             ref = src.get('url') or src.get('path') or '(пусто)'
             row = tk.Frame(list_inner, bg=_PANEL); row.pack(fill='x', pady=2)
-            tk.Label(row, text=ref, bg=_PANEL, fg=_TEXT, font=(hud._F, hud._fs(9)), anchor='w').pack(side='left', fill='x', expand=True, padx=(6, 6))
-            ctk.CTkButton(row, text='✕', width=28, height=24, font=(hud._F, hud._fs(10)), fg_color=_blend(_RED, 0.12), hover_color=_blend(_RED, 0.3), text_color=_RED, command=lambda idx=i: (sources_var.pop(idx), _refresh_list())).pack(side='right')
+            tk.Label(row, text=ref, bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), anchor='w').pack(side='left', fill='x', expand=True, padx=(6, 6))
+            ctk.CTkButton(row, text='✕', width=28, height=24, font=(hud._F, JStyle.TEXT_SMALL), fg_color=_blend(_RED, 0.12), hover_color=_blend(_RED, 0.3), text_color=_RED, command=lambda idx=i: (sources_var.pop(idx), _refresh_list())).pack(side='right')
     _refresh_list()
-    add_frame = tk.Frame(dlg, bg=_BG); add_frame.pack(fill='x', padx=24, pady=(0, 8))
-    tk.Label(add_frame, text='Ссылка или путь к .ics файлу:', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(10), 'bold')).pack(anchor='w', pady=(0, 4))
+    add_frame = tk.Frame(inner, bg=_BG); add_frame.pack(fill='x', padx=24, pady=(0, 8))
+    tk.Label(add_frame, text='Ссылка или путь к .ics файлу:', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_SMALL, 'bold')).pack(anchor='w', pady=(0, 4))
     entry_row = tk.Frame(add_frame, bg=_BG); entry_row.pack(fill='x')
-    add_ent = ctk.CTkEntry(entry_row, height=34, font=(hud._F, hud._fs(11)), fg_color=_blend(_CYAN, 0.08), border_color=_blend(_CYAN, 0.35), border_width=1, text_color=_WHITE, placeholder_text='https://.../.ics  или  C:\\путь\\...')
+    add_ent = ctk.CTkEntry(entry_row, height=34, font=(hud._F, JStyle.TEXT_BODY), fg_color=_blend(_CYAN, 0.08), border_color=_blend(_CYAN, 0.35), border_width=1, text_color=_WHITE, placeholder_text='https://.../.ics  или  C:\\путь\\...')
     add_ent.pack(side='left', fill='x', expand=True, padx=(0, 8)); _bind_ctk_entry_clipboard(dlg, add_ent, hud)
     def _add_from_entry():
         val = (add_ent.get() or '').strip()
@@ -152,34 +175,53 @@ def _ask_calendar_setup(parent, hud, on_done=None):
         if val.lower().startswith(('http://', 'https://', 'webcal://')): sources_var.append({'url': val})
         else: sources_var.append({'path': val})
         add_ent.delete(0, 'end'); _refresh_list()
-    ctk.CTkButton(entry_row, text='ДОБАВИТЬ', width=110, height=34, font=(hud._F, hud._fs(10), 'bold'), fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.35), text_color=_CYAN, command=_add_from_entry).pack(side='left')
+    ctk.CTkButton(entry_row, text='ДОБАВИТЬ', width=110, height=34, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.35), text_color=_CYAN, command=_add_from_entry).pack(side='left')
     def _confirm():
         s = _load_settings(); s['calendar_sources'] = sources_var; _save_settings(s)
         if on_done: on_done()
         dlg.destroy()
-    ctk.CTkButton(dlg, text='СОХРАНИТЬ', font=(hud._F, hud._fs(11), 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(0, 6))
-    ctk.CTkButton(dlg, text='ОТМЕНА', font=(hud._F, hud._fs(10)), height=30, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
+    ctk.CTkButton(inner, text='СОХРАНИТЬ', font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(0, 6))
+    ctk.CTkButton(inner, text='ОТМЕНА', font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
 
 def _ask_mail_setup(parent, hud, on_done):
     dlg = tk.Toplevel(parent); dlg.title('Подключение почты к JARVIS'); dlg.configure(bg=_BG)
+    _set_dark_title_bar(dlg)
+    dlg.after(100, lambda: _set_dark_title_bar(dlg))
+    _apply_window_icon(dlg, hud)
     W, H = 560, 640
     dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+150+70'); dlg.grab_set(); dlg.minsize(int(480*hud.zoom_factor), int(520*hud.zoom_factor)); dlg.resizable(True, True)
-    tk.Frame(dlg, bg=_CYAN, height=2).pack(fill='x')
-    tk.Label(dlg, text='✉  ПОДКЛЮЧЕНИЕ ПОЧТЫ', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(16), 'bold')).pack(pady=(14, 4))
-    tk.Label(dlg, text='Данные хранятся только на вашем компьютере.', bg=_BG, fg=_TEXT, font=(hud._F, hud._fs(10)), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 12))
+    # Use scrollable container
+    canvas_f = tk.Frame(dlg, bg=_BG); canvas_f.pack(fill='both', expand=True)
+    canvas = tk.Canvas(canvas_f, bg=_BG, highlightthickness=0)
+    sb = _HudScrollbar(canvas_f, canvas, color=_CYAN)
+    canvas.configure(yscrollcommand=sb.set); canvas.pack(side='left', fill='both', expand=True)
+    inner = tk.Frame(canvas, bg=_BG)
+    _cwin = canvas.create_window((0, 0), window=inner, anchor='nw', width=int(W*hud.zoom_factor))
+    def _upd_scroll(): 
+        if canvas.winfo_exists():
+            h = inner.winfo_reqheight()
+            ch = canvas.winfo_height()
+            canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), max(h, ch)))
+    inner.bind('<Configure>', lambda e: _upd_scroll())
+    def _on_wheel(e): canvas.yview_scroll(-1*(e.delta//120), 'units')
+    dlg.bind('<MouseWheel>', _on_wheel)
+
+    tk.Frame(inner, bg=_CYAN, height=2).pack(fill='x')
+    tk.Label(inner, text='✉  ПОДКЛЮЧЕНИЕ ПОЧТЫ', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(pady=(14, 4))
+    tk.Label(inner, text='Данные хранятся только на вашем компьютере.', bg=_BG, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 12))
     s0 = _load_settings(); ma0 = s0.get('mail_account') if isinstance(s0.get('mail_account'), dict) else {}
     email_var, pwd_var = tk.StringVar(value=str(ma0.get('email') or '')), tk.StringVar(value=str(ma0.get('password') or ''))
     imap_var, smtp_var = tk.StringVar(value=str(ma0.get('imap_host') or '')), tk.StringVar(value=str(ma0.get('smtp_host') or ''))
-    tk.Label(dlg, text='1. Адрес почты', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(11), 'bold')).pack(anchor='w', padx=24)
-    ent_email = ctk.CTkEntry(dlg, textvariable=email_var, placeholder_text='name@gmail.com', font=(hud._F, hud._fs(11)), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=36)
+    tk.Label(inner, text='1. Адрес почты', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
+    ent_email = ctk.CTkEntry(inner, textvariable=email_var, placeholder_text='name@gmail.com', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
     ent_email.pack(fill='x', padx=24, pady=(5, 12)); _bind_ctk_entry_clipboard(dlg, ent_email, hud)
-    tk.Label(dlg, text='2. Пароль приложения', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(11), 'bold')).pack(anchor='w', padx=24)
-    ent_pwd = ctk.CTkEntry(dlg, textvariable=pwd_var, placeholder_text='Пароль приложения', show='*', font=(hud._F, hud._fs(11)), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=36)
+    tk.Label(inner, text='2. Пароль приложения', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
+    ent_pwd = ctk.CTkEntry(inner, textvariable=pwd_var, placeholder_text='Пароль приложения', show='*', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
     ent_pwd.pack(fill='x', padx=24, pady=(5, 12)); _bind_ctk_entry_clipboard(dlg, ent_pwd, hud)
-    tk.Label(dlg, text='3. Серверы (если не Gmail)', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(11), 'bold')).pack(anchor='w', padx=24)
-    ent_imap = ctk.CTkEntry(dlg, textvariable=imap_var, placeholder_text='IMAP (imap.yandex.ru)', font=(hud._F, hud._fs(10)), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=32)
+    tk.Label(inner, text='3. Серверы (если не Gmail)', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
+    ent_imap = ctk.CTkEntry(inner, textvariable=imap_var, placeholder_text='IMAP (imap.yandex.ru)', font=(hud._F, JStyle.TEXT_SMALL), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=JStyle.H_TOOL)
     ent_imap.pack(fill='x', padx=24, pady=(4, 6)); _bind_ctk_entry_clipboard(dlg, ent_imap, hud)
-    ent_smtp = ctk.CTkEntry(dlg, textvariable=smtp_var, placeholder_text='SMTP (smtp.yandex.ru)', font=(hud._F, hud._fs(10)), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=32)
+    ent_smtp = ctk.CTkEntry(inner, textvariable=smtp_var, placeholder_text='SMTP (smtp.yandex.ru)', font=(hud._F, JStyle.TEXT_SMALL), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=JStyle.H_TOOL)
     ent_smtp.pack(fill='x', padx=24, pady=(4, 8)); _bind_ctk_entry_clipboard(dlg, ent_smtp, hud)
     def _confirm():
         em, pw, ih, sh = email_var.get().strip(), pwd_var.get().strip(), imap_var.get().strip(), smtp_var.get().strip()
@@ -189,8 +231,8 @@ def _ask_mail_setup(parent, hud, on_done):
             from actions.mail_client import save_mail_account
             save_mail_account(em, pw, ih, sh, 993, 587); on_done(); dlg.destroy()
         except Exception: pass
-    ctk.CTkButton(dlg, text='СОХРАНИТЬ', font=(hud._F, hud._fs(11), 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(10, 6))
-    ctk.CTkButton(dlg, text='ОТМЕНА', font=(hud._F, hud._fs(10)), height=30, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
+    ctk.CTkButton(inner, text='СОХРАНИТЬ', font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(10, 6))
+    ctk.CTkButton(inner, text='ОТМЕНА', font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
 
 def _open_commands_help(parent, hud, meta: dict) -> None:
     dlg = getattr(hud, '_ext_cmd_win', None)
@@ -200,33 +242,20 @@ def _open_commands_help(parent, hud, meta: dict) -> None:
     else:
         dlg = tk.Toplevel(parent); hud._ext_cmd_win = dlg
         W, H = 720, 600
-        dlg.overrideredirect(True)
-        dlg.configure(bg=_BG); 
+        dlg.configure(bg=_BG)
+        _set_dark_title_bar(dlg)
+        dlg.after(100, lambda: _set_dark_title_bar(dlg))
+        _apply_window_icon(dlg, hud)
+        dlg.title(f'СПИСОК КОМАНД: {meta.get("name", "").upper()}')
         x = parent.winfo_rootx() + 50
         y = parent.winfo_rooty() + 50
         dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{x}+{y}')
-
-    # Draggable logic
-    def _start_move(e): dlg._drag_x, dlg._drag_y = e.x, e.y
-    def _do_move(e):
-        nx = dlg.winfo_x() + (e.x - dlg._drag_x)
-        ny = dlg.winfo_y() + (e.y - dlg._drag_y)
-        dlg.geometry(f"+{nx}+{ny}")
+        dlg.resizable(True, True)
 
     from ui.hud_themes import get_current_theme_name
     _theme = get_current_theme_name()
-    header = tk.Frame(dlg, bg=_PANEL, height=60); header.pack(fill='x')
-    header.bind("<Button-1>", _start_move)
-    header.bind("<B1-Motion>", _do_move)
-    
-    tk.Label(header, text="◈", bg=_PANEL, fg=_CYAN, font=(hud._F, hud._fs(18))).pack(side='left', padx=(20, 8))
-    lb_title = tk.Label(header, text=f'СПИСОК КОМАНД: {meta.get("name", "").upper()}', bg=_PANEL, fg=_CYAN, font=(hud._F, hud._fs(13), 'bold'))
-    lb_title.pack(side='left')
-    lb_title.bind("<Button-1>", _start_move); lb_title.bind("<B1-Motion>", _do_move)
-    
-    # Larger, more stylish close button
-    ctk.CTkButton(header, text='✕', width=54, height=54, fg_color="transparent", hover_color=_blend(_RED, 0.4), text_color=_RED, font=(hud._F, hud._fs(15), 'bold'), command=dlg.destroy).pack(side='right', padx=15)
-    tk.Frame(dlg, bg=_CYAN, height=1).pack(fill='x')
+
+    tk.Frame(dlg, bg=_CYAN, height=2).pack(fill='x')
 
     canvas_f = tk.Frame(dlg, bg=_BG); canvas_f.pack(fill='both', expand=True)
     canvas2 = tk.Canvas(canvas_f, bg=_BG, highlightthickness=0); 
@@ -234,8 +263,21 @@ def _open_commands_help(parent, hud, meta: dict) -> None:
     canvas2.configure(yscrollcommand=sb2.set); canvas2.pack(side='left', fill='both', expand=True)
     
     # Absolute fill: Window width is 720, so 720 it is.
-    inner2 = tk.Frame(canvas2, bg=_BG); canvas2.create_window((0, 0), window=inner2, anchor='nw', width=int(720*hud.zoom_factor))
-    def _upd_scroll2(): canvas2.configure(scrollregion=canvas2.bbox('all'))
+    inner2 = tk.Frame(canvas2, bg=_BG); _cwin2 = canvas2.create_window((0, 0), window=inner2, anchor='nw', width=int(720*hud.zoom_factor))
+    def _upd_scroll2(): 
+        if canvas2.winfo_exists():
+            h = inner2.winfo_reqheight()
+            ch = canvas2.winfo_height()
+            canvas2.configure(scrollregion=(0, 0, canvas2.winfo_width(), max(h, ch)))
+            
+    def _on_resize_cmd(e):
+        if not dlg.winfo_exists(): return
+        if e.widget != dlg: return
+        if canvas2.winfo_exists():
+            canvas2.itemconfig(_cwin2, width=e.width - 12)
+            _upd_scroll2()
+            
+    dlg.bind('<Configure>', _on_resize_cmd, add='+')
     inner2.bind('<Configure>', lambda e: _upd_scroll2())
     
     def _on_wheel2(e):
@@ -266,10 +308,11 @@ def _open_commands_help(parent, hud, meta: dict) -> None:
             for c in r.winfo_children(): c.configure(bg=n)
         row.bind('<Enter>', _on_ent_r); row.bind('<Leave>', _on_lev_r)
 
-        tk.Label(row, text=f"«{item.get('say', '')}»", bg=row_bg, fg=_CYAN, font=(hud._F, hud._fs(11), 'bold')).pack(side='left', padx=18, pady=10)
-        tk.Label(row, text=item.get('do', ''), bg=row_bg, fg=_DIM, font=(hud._F, hud._fs(10))).pack(side='right', padx=24, pady=10)
+        tk.Label(row, text=f"«{item.get('say', '')}»", bg=row_bg, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(side='left', padx=18, pady=10)
+        tk.Label(row, text=item.get('do', ''), bg=row_bg, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL)).pack(side='right', padx=24, pady=10)
 
     _bind_wheel2(dlg)
+    dlg.after(200, _upd_scroll2)
 
 ext_mgr = ExtensionManager()
 
@@ -323,7 +366,7 @@ def _bind_ctk_entry_clipboard(parent, entry, hud):
         try: entry.select_range(0, 'end')
         except Exception: pass
         return 'break'
-    menu = tk.Menu(parent, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, hud._fs(11)))
+    menu = tk.Menu(parent, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, JStyle.TEXT_BODY))
     menu.add_command(label='Вставить (Ctrl+V)', command=lambda: _paste())
     menu.add_command(label='Копировать (Ctrl+C)', command=lambda: _copy())
     menu.add_separator()
@@ -340,7 +383,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
         hud._ext_win.destroy()
     win = tk.Toplevel(hud.root)
     hud._ext_win = win
-    win.title('JARVIS 1.4 — Менеджер расширений')
+    win.title('JARVIS 1.5 — Менеджер расширений')
     _set_dark_title_bar(win)
     win.after(100, lambda: _set_dark_title_bar(win))
     hud._track_subwin('extensions', win, lambda: open_extensions(hud, reopen=True))
@@ -356,36 +399,45 @@ def open_extensions(hud, reopen: bool = False) -> None:
     win.configure(bg=_BG); win.after(150, lambda: _set_dark_title_bar(win))
     _sw_scr = win.winfo_screenwidth()
     _sh_scr = win.winfo_screenheight()
-    win.geometry("")
-    win.resizable(False, True)
+    win.maxsize(_sw_scr, _sh_scr)
+    
+    _W = int(min(1100 * hud.zoom_factor, _sw_scr * 0.9))
+    _H = int(min(800 * hud.zoom_factor, _sh_scr * 0.9))
+    win.geometry(f"{_W}x{_H}")
+    win.resizable(True, True)
+    win.minsize(hud._px(820), hud._px(680))
     
     def _recenter():
         win.update_idletasks()
-        zf = hud.zoom_factor if hud else 1.0
-        rw, rh = int(win.winfo_reqwidth() / zf), int(win.winfo_reqheight() / zf)
-        win.geometry(f"{rw}x{rh}+110+70") # Extensions often stick to side
+        rw, rh = win.winfo_width(), win.winfo_height()
+        _center_window(win, rw, rh)
     win._recenter = _recenter
     tk.Frame(win, bg=_CYAN, height=2).pack(fill='x')
     header_area = tk.Frame(win, bg=_BG)
     header_area.pack(fill='x', padx=24, pady=(16, 0))
     title_f = tk.Frame(header_area, bg=_BG)
-    title_f.pack(side='left')
-    tk.Label(title_f, text='⬡  ЦЕНТР РАСШИРЕНИЙ', bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(20), 'bold')).pack(anchor='w')
-    tk.Label(title_f, text='СИСТЕМНАЯ ДИАГНОСТИКА И КОНФИГУРАЦИЯ МОДУЛЕЙ', bg=_BG, fg=_DIM, font=(hud._F, hud._fs(8), 'bold')).pack(anchor='w')
-    search_f = tk.Frame(header_area, bg="#0d0f1e", highlightthickness=1, highlightbackground=_blend(_CYAN, 0.3))
-    search_f.pack(side='right', pady=5)
-    tk.Label(search_f, text='⌕', bg="#0d0f1e", fg=_CYAN, font=(hud._F, hud._fs(13))).pack(side='left', padx=(10, 4))
-    search_entry = tk.Entry(search_f, bg="#0d0f1e", fg=_DIM, font=(hud._F, hud._fs(11)), insertbackground=_CYAN, borderwidth=0, width=22)
-    search_entry.pack(side='left', padx=(0, 12), pady=6)
-    search_entry.insert(0, 'ПОИСК МОДУЛЯ...')
-    def _on_search_focus(e):
-        if search_entry.get() == 'ПОИСК МОДУЛЯ...':
-            search_entry.delete(0, 'end')
-            search_entry.configure(fg=_WHITE)
+    title_f.pack(side='top', fill='x', anchor='w')
+    tk.Label(title_f, text='⬡  ЦЕНТР РАСШИРЕНИЙ', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold')).pack(anchor='w')
+    tk.Label(title_f, text='СИСТЕМНАЯ ДИАГНОСТИКА И КОНФИГУРАЦИЯ МОДУЛЕЙ', bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(anchor='w')
+    
+    search_entry = ctk.CTkEntry(
+        header_area, 
+        placeholder_text='ПОИСК МОДУЛЯ...', 
+        height=34,
+        font=("Consolas", 12),
+        fg_color=_PANEL, 
+        border_color=_blend(_CYAN, 0.3),
+        text_color=_TEXT,
+        placeholder_text_color=_DIM,
+        corner_radius=JStyle.RAD_PANEL,
+        border_width=1
+    )
+    search_entry.pack(side='top', fill='x', pady=(16, 8))
+    
     def _on_search_change(e):
         _refresh_cards(search_entry.get())
-    search_entry.bind('<FocusIn>', _on_search_focus)
     search_entry.bind('<KeyRelease>', _on_search_change)
+
     tk.Frame(win, bg=_SEP, height=1).pack(fill='x', padx=24, pady=(16, 8))
     canvas = tk.Canvas(win, bg=_BG, highlightthickness=0)
     for i in range(0, 800, 40):
@@ -393,19 +445,42 @@ def open_extensions(hud, reopen: bool = False) -> None:
         canvas.create_line(0, i, 800, i, fill=_blend(_BG, 1.1), width=1)
     sb = _HudScrollbar(win, canvas, color=_CYAN)
     canvas.configure(yscrollcommand=sb.set)
-    canvas.pack(side='left', fill='both', expand=True, padx=(24, 0), pady=(0, 20))
+    canvas.pack(side='left', fill='both', expand=True, padx=24, pady=(0, 20))
     inner = tk.Frame(canvas, bg=_BG)
     _cwin = canvas.create_window((0, 0), window=inner, anchor='nw')
     def _update_scroll(*_):
-        canvas.configure(scrollregion=canvas.bbox('all'))
+        try:
+            if canvas.winfo_exists():
+                canvas.configure(scrollregion=canvas.bbox('all'))
+        except (tk.TclError, AttributeError):
+            pass
+    _desc_labels = []
+    _header_mode = None # 'small' or 'large'
     def _on_resize(e):
-        canvas.itemconfig(_cwin, width=e.width)
-        _update_scroll()
-    canvas.bind('<Configure>', _on_resize)
+        try:
+            if not win.winfo_exists(): return
+            if e.widget != win: return
+            
+            # Update canvas item width
+            if canvas.winfo_exists():
+                canvas.itemconfig(_cwin, width=max(10, e.width - 48))
+            
+            # Update wraplength for description labels
+            new_wrap = int(e.width - 120) 
+            for lbl in _desc_labels:
+                if lbl.winfo_exists():
+                    lbl.configure(wraplength=max(200, new_wrap))
+            _update_scroll()
+        except (tk.TclError, AttributeError, ValueError):
+            pass
+    
+    win.bind('<Configure>', _on_resize)
     inner.bind('<Configure>', _update_scroll)
     def _on_wheel(e):
-        if canvas.winfo_exists():
-            canvas.yview_scroll(-1 * (e.delta // 120), 'units')
+        try:
+            if canvas.winfo_exists():
+                canvas.yview_scroll(-1 * (e.delta // 120), 'units')
+        except Exception: pass
     def _bind_wheel(w):
         w.bind('<MouseWheel>', _on_wheel)
         for child in w.winfo_children():
@@ -414,16 +489,17 @@ def open_extensions(hud, reopen: bool = False) -> None:
     canvas.bind('<MouseWheel>', _on_wheel)
     def _refresh_cards(query=None):
         def _do_ref():
-            if not win.winfo_exists(): return
             try:
+                if not win.winfo_exists(): return
                 for w in inner.winfo_children():
                     w.destroy()
                 _build_cards(query if query != 'ПОИСК МОДУЛЯ...' else None)
                 _bind_wheel(inner)
                 win.after(10, _update_scroll)
                 hud._rebuild_left()
-            except Exception: pass
-        win.after(1, _do_ref) # Safe jump to next event loop iteration
+            except (tk.TclError, AttributeError):
+                pass
+        win.after(1, _do_ref)
     def _build_cards(query=None):
         all_exts = ext_mgr.list_all()
         categories: dict[str, list[dict]] = {}
@@ -435,7 +511,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
         for cat_name, items in categories.items():
             cat_f = tk.Frame(inner, bg=_BG)
             cat_f.pack(fill='x', pady=(22, 12))
-            tk.Label(cat_f, text=cat_name.upper(), bg=_BG, fg=_CYAN, font=(hud._F, hud._fs(9), 'bold')).pack(side='left', padx=(4, 10))
+            tk.Label(cat_f, text=cat_name.upper(), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_SMALL, 'bold')).pack(side='left', padx=(4, 10))
             tk.Frame(cat_f, bg=_SEP, height=1).pack(side='left', fill='x', expand=True, pady=4)
             for e_item in items:
                 _make_card(e_item['id'], e_item)
@@ -444,40 +520,53 @@ def open_extensions(hud, reopen: bool = False) -> None:
         bundled = ext_mgr.is_bundled(eid)
         brd_col_idle = _blend(_CYAN, 0.15) if not installed else _blend(_CYAN, 0.4)
         brd_col_active = _CYAN
-        card = tk.Frame(inner, bg=_PANEL, highlightthickness=1, highlightbackground=brd_col_idle)
-        card.pack(fill='x', pady=8, padx=(0, 16))
+        card = ctk.CTkFrame(inner, fg_color=_PANEL, border_color=brd_col_idle, border_width=1, corner_radius=JStyle.RAD_PANEL)
+        card.pack(fill='x', pady=10, padx=10)
+        
         strip_f = tk.Frame(card, bg=_BG, width=4)
         strip_f.pack(side='left', fill='y')
         tk.Frame(strip_f, bg=_CYAN if installed else _SEP).pack(fill='both', expand=True)
+        
         body = tk.Frame(card, bg=_PANEL)
         body.pack(side='left', fill='both', expand=True, padx=16, pady=16)
         head = tk.Frame(body, bg=_PANEL)
         head.pack(fill='x')
-        tk.Label(head, text=f'{meta.get("icon", "◇")}  {meta["name"]}', bg=_PANEL, fg=_CYAN if installed else _TEXT, font=(hud._F, hud._fs(15), 'bold'), anchor='w').pack(side='left')
+        
+        title_l = tk.Label(head, text=f'★  {meta["name"]}', bg=_PANEL, fg=_CYAN if installed else _TEXT, font=(hud._F, JStyle.TEXT_BODY, 'bold'), anchor='w')
+        title_l.pack(side='left')
+        
         if installed:
             badge_text, badge_col = ('АКТИВНО', _CYAN)
         elif bundled:
             badge_text, badge_col = ('ГОТОВО К УСТАНОВКЕ', _AMBER)
         else:
             badge_text, badge_col = ('ОБЛАЧНЫЙ МОДУЛЬ', _DIM)
-        badge_l = tk.Label(head, text=badge_text, bg=_PANEL, fg=badge_col, font=(hud._F, hud._fs(10), 'bold'))
+        badge_l = tk.Label(head, text=badge_text, bg=_PANEL, fg=badge_col, font=(hud._F, JStyle.TEXT_TINY, 'bold'))
         badge_l.pack(side='right')
-        def _on_enter(e, c=card, b=badge_l):
-            c.configure(highlightbackground=brd_col_active)
-            if not installed:
-                b.configure(fg=_CYAN)
-        def _on_leave(e, c=card, b=badge_l):
-            c.configure(highlightbackground=brd_col_idle)
-            if not installed:
-                b.configure(fg=badge_col)
-        card.bind('<Enter>', _on_enter)
-        card.bind('<Leave>', _on_leave)
-        tk.Label(body, text=meta.get('description', ''), bg=_PANEL, fg=_TEXT, font=(hud._F, hud._fs(11)), anchor='w', wraplength=int(480*hud.zoom_factor), justify='left').pack(fill='x', pady=(4, 10))
+
+        desc_l = tk.Label(body, text=meta.get('description', ''), bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), anchor='w', wraplength=int(480*hud.zoom_factor), justify='left')
+        desc_l.pack(fill='x', pady=(4, 10))
+        _desc_labels.append(desc_l)
+
         actions_outer = tk.Frame(body, bg=_PANEL)
         actions_outer.pack(fill="x", pady=(8, 0))
         
         inner_row = tk.Frame(actions_outer, bg=_PANEL)
-        inner_row.pack(anchor="center")
+        inner_row.pack(side="right")
+
+        hover_bg = _blend(_CYAN, 0.05)
+        def _on_enter(e, c=card, bd=body, h=head, t=title_l, bl=badge_l, d=desc_l, ao=actions_outer, ir=inner_row):
+            c.configure(border_color=brd_col_active, fg_color=hover_bg)
+            for w in [bd, h, t, bl, d, ao, ir]: w.configure(bg=hover_bg)
+            if not installed: bl.configure(fg=_CYAN)
+        def _on_leave(e, c=card, bd=body, h=head, t=title_l, bl=badge_l, d=desc_l, ao=actions_outer, ir=inner_row):
+            c.configure(border_color=brd_col_idle, fg_color=_PANEL)
+            for w in [bd, h, t, bl, d, ao, ir]: w.configure(bg=_PANEL)
+            if not installed: bl.configure(fg=badge_col)
+        
+        for w in [card, body, head, title_l, badge_l, desc_l, actions_outer, inner_row]:
+            w.bind('<Enter>', _on_enter, add='+')
+            w.bind('<Leave>', _on_leave, add='+')
 
         has_catalog_cmds = bool(meta.get("commands"))
         is_game = meta.get("type") == "game_profile"
@@ -487,30 +576,30 @@ def open_extensions(hud, reopen: bool = False) -> None:
                 if is_game and not m.get("commands"):
                     m["commands"] = _load_game_commands(m.get("file", ""))
                 _open_commands_help(win, hud, m)
-            # Standard width for row symmetry: 220 if pair, 160 if trio
-            btn_w = 160 if (installed and eid == 'game_ets2') else 220
+            # Единая ширина для всех кнопок для симметрии
+            btn_w = 160
             ctk.CTkButton(
-                inner_row, text="◈  КОМАНДЫ", width=btn_w, font=(hud._F, hud._fs(10), "bold"), height=48,
+                inner_row, text="◈  КОМАНДЫ", width=btn_w, font=("Consolas", 12, "bold"), height=JStyle.H_LARGE,
                 fg_color=_PANEL, hover_color=_blend(_CYAN, 0.2), text_color=_CYAN,
-                border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_show_cmds,
-            ).pack(side="left", padx=8)
+                border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_show_cmds,
+            ).pack(side="left", padx=5)
 
         if installed:
             def _do_uninstall(e=eid):
                 ext_mgr.uninstall(e); _refresh_cards()
 
             ctk.CTkButton(
-                inner_row, text='🗑  УДАЛИТЬ', width=160, font=(hud._F, hud._fs(11), 'bold'), height=48,
+                inner_row, text='🗑  УДАЛИТЬ', width=160, font=("Consolas", 12, 'bold'), height=JStyle.H_LARGE,
                 fg_color=_PANEL, hover_color=_blend(_RED, 0.2), text_color=_RED,
-                border_color=_blend(_RED, 0.4), border_width=2, corner_radius=12, command=_do_uninstall
-            ).pack(side="left", padx=8)
+                border_color=_blend(_RED, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_do_uninstall
+            ).pack(side="left", padx=5)
             
             if eid == 'feature_calendar_ics':
                 def _reconfig_cal(): _ask_calendar_setup(win, hud, _refresh_cards)
-                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=48, fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_reconfig_cal).pack(side="left", padx=8)
+                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE, fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_reconfig_cal).pack(side="left", padx=8)
             elif eid == 'feature_mail_client':
                 def _reconfig_mail(): _ask_mail_setup(win, hud, _refresh_cards)
-                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=48, fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=12, command=_reconfig_mail).pack(side="left", padx=8)
+                ctk.CTkButton(inner_row, text='⚙  НАСТРОЙКИ', width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE, fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_reconfig_mail).pack(side="left", padx=8)
             elif eid == 'game_ets2':
                 try:
                     from actions.ets2_telemetry_installer import is_telemetry_installed
@@ -529,11 +618,11 @@ def open_extensions(hud, reopen: bool = False) -> None:
 
                 ctk.CTkButton(
                     inner_row, text=t_text, 
-                    width=160, font=(hud._F, hud._fs(9), 'bold'), height=48, 
+                    width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE, 
                     fg_color=_PANEL, hover_color=_blend(t_col, 0.2), text_color=t_col,
-                    border_color=_blend(t_col, 0.4), border_width=2, corner_radius=12, 
+                    border_color=_blend(t_col, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, 
                     command=_do_dll_install
-                ).pack(side="left", padx=8)
+                ).pack(side="left", padx=5)
         elif bundled:
             def _do_install(e=eid, m=meta):
                 if m.get('requires_chat_id'):
@@ -558,10 +647,10 @@ def open_extensions(hud, reopen: bool = False) -> None:
                 else:
                     ext_mgr.install(e); _refresh_cards()
             ctk.CTkButton(
-                inner_row, text='⬇  УСТАНОВИТЬ', width=220, font=(hud._F, hud._fs(10), 'bold'), height=48, 
+                inner_row, text='⬇  УСТАНОВИТЬ', width=160, font=("Consolas", 12, 'bold'), height=JStyle.H_LARGE, 
                 fg_color=_PANEL, hover_color=_blend(_CYAN, 0.2), text_color=_CYAN, 
-                border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=12, command=_do_install
-            ).pack(side="left", padx=8)
+                border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_do_install
+            ).pack(side="left", padx=5)
         else:
             def _do_download(e=eid, m=meta):
                 def _thread():
@@ -573,13 +662,16 @@ def open_extensions(hud, reopen: bool = False) -> None:
                                 dest = (Path('data') / 'game_profiles').resolve(); dest.mkdir(parents=True, exist_ok=True)
                                 for mem in zf.infolist():
                                     if mem.filename.endswith('.json'): zf.extract(mem, dest)
-                        m['bundled'] = True; ext_mgr.install(e); win.after(0, _refresh_cards)
+                        m['bundled'] = True; ext_mgr.install(e); 
+                        def _done():
+                            if win.winfo_exists(): _refresh_cards()
+                        win.after(0, _done)
                     except Exception: pass
                 threading.Thread(target=_thread, daemon=True).start()
             ctk.CTkButton(
-                inner_row, text='☁  СИНХРОНИЗАЦИЯ', width=160, font=(hud._F, hud._fs(10), 'bold'), height=44, 
+                inner_row, text='☁  СИНХРОНИЗАЦИЯ', width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE, 
                 fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, 
-                border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=10, command=_do_download
+                border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_do_download
             ).pack(side='left', padx=5)
     _build_cards()
     _bind_wheel(inner)

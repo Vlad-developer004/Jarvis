@@ -48,7 +48,7 @@ APPS = {
         'type': 'lnk',
         'folders': ['Brave Apps', 'Програми Brave', 'Chrome Apps', 'Приложения Chrome'],
         'name': 'YouTube',
-        'keywords': [], # Empty keywords forces skip window check and go to launch/fallback
+        'keywords': ['YouTube', 'Ютуб'],
         'url': 'https://www.youtube.com'
     },
     'discord': {
@@ -192,13 +192,23 @@ def _focus_and_maximize(title_keywords: list[str], timeout: float=3.0):
         time.sleep(0.3)
     return False
 def open_app(app_name: str) -> tuple[bool, str]:
+    from core.system.state import app_state
     app = APPS.get(app_name)
     if not app:
         return (False, f'Неизвестное приложение: {app_name}')
+    
+    # Check for launch behavior preference from global HUD settings
+    launch_rules = {}
+    if app_state.hud:
+        launch_rules = app_state.hud._settings.get('app_launch_rules', {})
+    
+    behavior = launch_rules.get(app_name, 'switch') # 'switch' (default) or 'new'
+    
     try:
         app_type = app['type']
         keywords = app.get('keywords', app.get('names', []))
-        if keywords:
+        
+        if behavior == 'switch' and keywords:
             for w in gw.getAllWindows():
                 if w.visible and w.title:
                     t = w.title.lower()

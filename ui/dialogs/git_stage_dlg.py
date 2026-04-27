@@ -1,3 +1,4 @@
+from ui.hud_style import JStyle
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _DIM, _TEXT, _CYAN, _MAG, _WHITE, _PANEL, _BRD, _AMBER
@@ -46,11 +47,11 @@ class GitStageDialog(ctk.CTkToplevel):
         self.main_frame.pack(fill="both", expand=True)
         
         # Header
-        hdr = tk.Frame(self.main_frame, bg=_PANEL, height=52)
+        hdr = tk.Frame(self.main_frame, bg=_PANEL, height=JStyle.H_HUGE)
         hdr.pack(fill="x")
         hdr.bind("<Button-1>", start_move); hdr.bind("<B1-Motion>", on_move)
         tk.Label(hdr, text="⬡  GIT CONTROL SYSTEM", font=("Consolas", 15, "bold"), fg=_CYAN, bg=_PANEL).pack(side="left", padx=20)
-        close_btn = tk.Label(hdr, text="✕", font=("Consolas", hud._fs(12)), fg=_DIM, bg=_PANEL, cursor="hand2")
+        close_btn = tk.Label(hdr, text="✕", font=("Consolas", JStyle.TEXT_BODY), fg=_DIM, bg=_PANEL, cursor="hand2")
         close_btn.pack(side="right", padx=16)
         close_btn.bind("<Button-1>", lambda e: self._cancel())
         close_btn.bind("<Enter>", lambda e: close_btn.configure(fg="#ff4444"))
@@ -62,11 +63,11 @@ class GitStageDialog(ctk.CTkToplevel):
         # SEARCH BAR
         self.search_entry = ctk.CTkEntry(
             c_wrap, placeholder_text="Поиск файлов...",
-            height=48, # Slightly taller for better touch/visibility
+            height=JStyle.H_HUGE, # Slightly taller for better touch/visibility
             fg_color=_BG, border_color=_blend(_CYAN, 0.3),
             text_color=_TEXT, font=("Consolas", self._hu._fs(12)),
             placeholder_text_color=_blend(_TEXT, 0.3),
-            border_width=2, corner_radius=12
+            border_width=2, corner_radius=JStyle.RAD_PANEL
         )
         self.search_entry.pack(fill="x", pady=(0, 20))
         self.search_entry.bind("<KeyRelease>", lambda e: self._filter_items())
@@ -75,14 +76,14 @@ class GitStageDialog(ctk.CTkToplevel):
         list_hdr = tk.Frame(c_wrap, bg=_BG)
         list_hdr.pack(fill="x", pady=(0, 5))
         
-        tk.Label(list_hdr, text="ИЗМЕНЕНИЯ", font=("Consolas", hud._fs(11), "bold"), fg=_DIM, bg=_BG).pack(side="left")
+        tk.Label(list_hdr, text="ИЗМЕНЕНИЯ", font=("Consolas", JStyle.TEXT_BODY, "bold"), fg=_DIM, bg=_BG).pack(side="left")
         
         self.all_var = tk.BooleanVar(value=True)
         self.all_cb = ctk.CTkCheckBox(
             list_hdr, text="ВЫБРАТЬ ВСЕ", variable=self.all_var,
-            font=("Consolas", hud._fs(10), "bold"), text_color=_CYAN,
+            font=("Consolas", JStyle.TEXT_SMALL, "bold"), text_color=_CYAN,
             fg_color=_CYAN, hover_color=_CYAN, border_color=_CYAN,
-            checkmark_color=_BG, width=22, height=22, corner_radius=6,
+            checkmark_color=_BG, width=22, height=22, corner_radius=JStyle.RAD_BTN,
             command=self._toggle_all
         )
         self.all_cb.pack(side="right")
@@ -109,11 +110,11 @@ class GitStageDialog(ctk.CTkToplevel):
         tk.Label(c_wrap, text="✧ СООБЩЕНИЕ КОММИТА", font=("Consolas", self._hu._fs(10), "bold"), fg=_CYAN, bg=_BG).pack(fill="x", anchor="w", pady=(0, 10))
         
         self.msg_entry = ctk.CTkEntry(
-            c_wrap, height=52, font=("Consolas", self._hu._fs(14)),
+            c_wrap, height=JStyle.H_HUGE, font=("Consolas", self._hu._fs(14)),
             fg_color=_BG, border_color=_blend(_CYAN, 0.25),
             text_color=_TEXT, placeholder_text="Опишите изменения...",
             placeholder_text_color=_blend(_TEXT, 0.2),
-            border_width=2, corner_radius=12
+            border_width=2, corner_radius=JStyle.RAD_PANEL
         )
         self.msg_entry.pack(fill="x")
         self.msg_entry.focus_set()
@@ -126,16 +127,16 @@ class GitStageDialog(ctk.CTkToplevel):
         btn_inner = tk.Frame(footer, bg=_BG)
         btn_inner.pack()
         self.btn_ok = ctk.CTkButton(
-            btn_inner, text="ОТПРАВИТЬ  ✦", width=220, height=48,
+            btn_inner, text="ОТПРАВИТЬ  ✦", width=220, height=JStyle.H_HUGE,
             fg_color=_blend(_CYAN, 0.12), border_color=_CYAN, border_width=2,
-            text_color=_CYAN, font=("Consolas", self._hu._fs(12), "bold"), corner_radius=12,
+            text_color=_CYAN, font=("Consolas", self._hu._fs(12), "bold"), corner_radius=JStyle.RAD_PANEL,
             command=self._confirm
         )
         self.btn_ok.pack(side="left", padx=12)
         ctk.CTkButton(
-            btn_inner, text="ОТМЕНА  ✕", width=220, height=48,
+            btn_inner, text="ОТМЕНА  ✕", width=220, height=JStyle.H_HUGE,
             fg_color="transparent", border_color=_DIM, border_width=2,
-            text_color=_DIM, font=("Consolas", self._hu._fs(12), "bold"), corner_radius=12,
+            text_color=_DIM, font=("Consolas", self._hu._fs(12), "bold"), corner_radius=JStyle.RAD_PANEL,
             command=self._cancel
         ).pack(side="left", padx=12)
 
@@ -165,7 +166,7 @@ class GitStageDialog(ctk.CTkToplevel):
             cb = ctk.CTkCheckBox(f, text=item['file'], variable=var,
                                  font=("Consolas", self._hu._fs(10)), text_color=_TEXT,
                                  fg_color=_CYAN, hover_color=_CYAN, border_color=_blend(_CYAN, 0.25),
-                                 checkmark_color=_BG, width=20, height=20, corner_radius=6)
+                                 checkmark_color=_BG, width=20, height=20, corner_radius=JStyle.RAD_BTN)
             cb.pack(side="left", padx=15, pady=4, fill="x", expand=True)
             
             # Status Badge (Bigger Chip)

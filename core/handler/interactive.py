@@ -84,12 +84,13 @@ def handle_interactive(handler, text: str) -> dict:
     elif state == 'qa_clarify':
         text_clean = _normalize_stt(text_lower)
         if text_clean.startswith('джарвис'): text_clean = text_clean[7:].strip()
+        if text_clean.startswith('скажи'): text_clean = text_clean[5:].strip()
         while text_clean.startswith('а '): text_clean = text_clean[2:].strip()
         if any(w in text_clean.split() for w in ['отмена', 'стоп', 'спасибо']):
             handler.play_response(); return {'clear_state': True}
         if not text_clean or match_command(text_clean) == 'wake':
             handler.play_response('wake')
-            return {'new_state': 'qa_clarify', 'new_data': data, 'timeout': 25.0}
+            return {'new_state': 'qa_clarify', 'new_data': data, 'timeout': 30.0}
         cmd = match_command(text_clean)
         if cmd and cmd != 'qa_search':
             handler._set_interactive(None)
@@ -99,8 +100,12 @@ def handle_interactive(handler, text: str) -> dict:
         context = data.get('context', '')
         last_ans = data.get('last_ans', '')
         if not is_real_question(text_clean):
-            return {'new_state': 'qa_clarify', 'new_data': data, 'timeout': 20.0}
+            return {'new_state': 'qa_clarify', 'new_data': data, 'timeout': 30.0}
         handler.play_response('loading')
+        try:
+            from core.speech import warmup_tts
+            warmup_tts()
+        except Exception: pass
         # We now pass the user's new question and the previous turn directly.
         # The LLM prompt handles relevance and topic changes automatically.
         def _task():
@@ -138,7 +143,7 @@ def handle_interactive(handler, text: str) -> dict:
                 final_ans = "".join(full_ans).strip()
                 if final_ans:
                     if has_hud: hud._hud.root.after(2000, hud._hud.hide_msg_stream)
-                    handler._set_interactive('qa_clarify', {'context': text_clean, 'last_ans': final_ans}, timeout=25.0)
+                    handler._set_interactive('qa_clarify', {'context': text_clean, 'last_ans': final_ans}, timeout=30.0)
                 else:
                     speak('Извините, не удалось найти информацию.')
                     if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)

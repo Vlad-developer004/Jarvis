@@ -10,7 +10,7 @@
     "sysinfo": true,
     "gamemode": true,
     "meetings_btn": true,
-    "videos_btn": false,
+    "videos_btn": true,
     "sunrise": true,
     "clock": true
   },
@@ -22,13 +22,14 @@
   "meetings": [],
   "feature_modules": {
     "photoshop_voice": false,
-    "inbox_digest": true,
+    "inbox_digest": false,
     "calendar_ics": false,
     "network_profiles": false,
     "qa": true,
     "games": true
   },
   "dep_sync_target": "webqa",
+  "manual_city": null,
   "last_location": {
     "lat": 52.5200066,
     "lon": 13.404954,
@@ -62,9 +63,15 @@
   ],
   "allow_parent_search": false,
   "ai_provider": "groq",
-  "ai_model": "llama-3.3-70b-versatile",
+  "ai_model": "llama-3.1-405b-reasoning",
   "start_maximized": true,
   "tts_unload_timeout": 0.0,
   "best_sample_rate": 16000,
-  "theme": "cyber"
+  "theme": "cyber",
+  "headphone_mode": true,
+  "app_launch_rules": {
+    "brave": "switch",
+    "youtube": "switch"
+  },
+  "wake_word_mode": "continuous"
 }

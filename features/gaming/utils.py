@@ -87,6 +87,8 @@ def transliterate_cyrillic_to_latin(text: str) -> str:
         'бэтл': 'battle', 'филд': 'field', 'сити': 'city', 'эйс': 'ase', 'айс': 'ice',
         'стар': 'star', 'филд': 'field', 'скайрим': 'skyrim', 'киберпанк': 'cyberpunk',
         'ведьмак': 'witcher', 'нид фор спид': 'need for speed', 'гта': 'gta',
+        'стим': 'steam', 'брейв': 'brave', 'хром': 'chrome', 'дискорд': 'discord',
+        'телеграм': 'telegram', 'телега': 'telegram', 'спотифай': 'spotify',
         'евротрак симулятор два': 'euro truck simulator 2',
         'евротрак симулятор 2': 'euro truck simulator 2',
         'евротрак': 'euro truck',

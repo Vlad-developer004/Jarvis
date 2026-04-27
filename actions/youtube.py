@@ -4,6 +4,27 @@ import win32con
 import pygetwindow as gw
 from actions.windows import send_hardware_key, _ensure_en_layout, _restore_layout
 from core.system import force_foreground
+def _get_url_by_search(title: str) -> str | None:
+    if not title: return None
+    import yt_dlp
+    search_q = title.replace(' - YouTube', '').replace('YouTube', '').strip()
+    if len(search_q) < 5: return None
+    print(f'[_get_url_by_search] searching for: {search_q!r}', flush=True)
+    opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'noplaylist': True}
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f'ytsearch1:{search_q}', download=False)
+            if info and 'entries' in info and info['entries']:
+                url = info['entries'][0].get('url')
+                if url:
+                    if not url.startswith('http'):
+                        url = f"https://www.youtube.com/watch?v={url}"
+                    print(f'[_get_url_by_search] found: {url}', flush=True)
+                    return url
+    except Exception as e:
+        print(f'[_get_url_by_search] error: {e}', flush=True)
+    return None
+
 def _get_url_from_history(window_title: str = '') -> str | None:
     import sqlite3, shutil, tempfile
     from pathlib import Path
@@ -14,8 +35,9 @@ def _get_url_from_history(window_title: str = '') -> str | None:
     ]
     best_url, best_time = None, 0
     title_match_url = None
-    title_hint = window_title.replace(' - YouTube', '').replace(' - Brave', '').strip()
-    title_hint = title_hint[:20].lower() if title_hint else ''
+    title_hint = window_title.replace(' - YouTube', '').replace('YouTube', '').replace(' - Brave', '').replace(' - Chrome', '').strip()
+    title_hint_clean = title_hint.lower() if title_hint else ''
+    
     for base in profiles:
         if not base.exists():
             continue
@@ -29,24 +51,30 @@ def _get_url_from_history(window_title: str = '') -> str | None:
                     rows = con.execute(
                         "SELECT url, title, last_visit_time FROM urls "
                         "WHERE url LIKE '%youtube.com/watch%' "
-                        "ORDER BY last_visit_time DESC LIMIT 20"
+                        "ORDER BY last_visit_time DESC LIMIT 30"
                     ).fetchall()
                 for url, title, ts in rows:
                     if ts > best_time:
                         best_url, best_time = url, ts
-                    if title_hint and title and title_hint in title.lower() and not title_match_url:
+                    if title_hint_clean and title and title_hint_clean in title.lower() and not title_match_url:
                         title_match_url = url
             except Exception:
                 pass
             finally:
                 if tmp is not None:
                     try:
-                        time.sleep(0.2)
+                        time.sleep(0.1)
                         tmp.unlink(missing_ok=True)
                     except Exception:
                         pass
+    
     result = title_match_url or best_url
-    print(f'[_get_url_from_history] title_hint={title_hint!r} match={title_match_url!r} best={best_url!r}', flush=True)
+    print(f'[_get_url_from_history] hint={title_hint_clean!r} match={title_match_url!r} best={best_url!r}', flush=True)
+    
+    # Fallback to search if history is useless or title was specific but didn't match history
+    if not result and len(title_hint_clean) > 8:
+        result = _get_url_by_search(title_hint)
+        
     return result
 def _get_current_url() -> str | None:
     import pyautogui
@@ -191,30 +219,51 @@ def _open_youtube_url(url: str):
         webbrowser.open(url)
     return True
 def open_youtube_channel(channel_name: str):
-    import webbrowser
-    import yt_dlp
-    opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'noplaylist': True}
+    import urllib.parse
+    import urllib.request
+    import re
+    
+    q_encoded = urllib.parse.quote(channel_name)
+    url = None
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(f'ytsearch:{channel_name}', download=False)
-            if info and info.get('entries'):
-                entry = info['entries'][0]
-                channel_url = entry.get('channel_url') or entry.get('uploader_url')
-                if channel_url:
-                    _open_youtube_url(channel_url)
-                    return (True, 'OK')
+        req = urllib.request.Request(
+            f'https://www.youtube.com/results?search_query={q_encoded}&sp=EgIQAg%3D%3D',
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                     'Accept-Language': 'en-US,en;q=0.9'}
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            html = r.read().decode('utf-8', errors='ignore')
+            # Extract the first channel found in the results
+            match = re.search(r'"canonicalBaseUrl":"(/@[^"]+)"', html)
+            if match:
+                url = f'https://www.youtube.com{match.group(1)}'
+            else:
+                match = re.search(r'"channelId":"(UC[^"]+)"', html)
+                if match:
+                    url = f'https://www.youtube.com/channel/{match.group(1)}'
     except Exception as e:
-        pass
-    _open_youtube_url(f'https://www.youtube.com/results?search_query={channel_name}&sp=EgIQAg%253D%253D')
+        print(f'[open_youtube_channel] error: {e}', flush=True)
+        
+    if url:
+        _open_youtube_url(url)
+    else:
+        _open_youtube_url(f'https://www.youtube.com/results?search_query={q_encoded}&sp=EgIQAg%3D%3D')
     return (True, 'OK')
 def download_youtube_video():
     import pyperclip
     import yt_dlp
     url = _get_current_url()
+    
     if not url or ('youtube.com' not in url and 'youtu.be' not in url):
-        url = pyperclip.paste() or ''
-        if 'youtube.com' not in url and 'youtu.be' not in url:
-            return (False, 'Не удалось найти ссылку на видео')
+        # NEW: Try to find by active window title
+        active_win = gw.getActiveWindow()
+        if active_win and active_win.title:
+            url = _get_url_from_history(active_win.title)
+            
+        if not url or ('youtube.com' not in url and 'youtu.be' not in url):
+            url = pyperclip.paste() or ''
+            if 'youtube.com' not in url and 'youtu.be' not in url:
+                return (False, 'Не удалось найти ссылку на видео')
     import re as _re
     url = _re.sub(r'[&?]list=[^&]*', '', url)
     url = _re.sub(r'[&?]start_radio=[^&]*', '', url)

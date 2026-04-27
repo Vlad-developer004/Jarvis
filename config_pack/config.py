@@ -7,19 +7,55 @@ def get_project_root() -> str:
     import os
     if getattr(sys, 'frozen', False):
         return os.path.dirname(os.path.abspath(sys.executable))
-    # Path to project root from config_pack/config.py is two levels up
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def get_settings_path() -> str:
+def get_app_data_root() -> str:
     import os
-    return os.path.join(get_project_root(), 'data', 'jarvis_settings.json')
+    base = os.environ.get('APPDATA') or os.environ.get('LOCALAPPDATA')
+    if base:
+        path = os.path.join(base, 'Jarvis')
+        os.makedirs(path, exist_ok=True)
+        return path
+    return os.path.join(get_project_root(), 'data')
+
+def get_data_path(filename: str) -> str:
+    """Returns path to data file, prioritizing AppData over project root."""
+    import os, shutil
+    appdata_file = os.path.join(get_app_data_root(), filename)
+    bundled_file = os.path.join(get_project_root(), 'data', filename)
+    
+    if not os.path.exists(appdata_file) and os.path.exists(bundled_file):
+        try:
+            os.makedirs(os.path.dirname(appdata_file), exist_ok=True)
+            if os.path.isfile(bundled_file):
+                shutil.copy2(bundled_file, appdata_file)
+        except Exception: pass
+    
+    os.makedirs(os.path.dirname(appdata_file), exist_ok=True)
+    return appdata_file
+
+def get_data_dir(dirname: str) -> str:
+    """Returns path to data directory in AppData, migrating if needed."""
+    import os, shutil
+    appdata_dir = os.path.join(get_app_data_root(), dirname)
+    bundled_dir = os.path.join(get_project_root(), 'data', dirname)
+    
+    if not os.path.exists(appdata_dir) and os.path.exists(bundled_dir):
+        try:
+            os.makedirs(os.path.dirname(appdata_dir), exist_ok=True)
+            # Copy entire directory content
+            shutil.copytree(bundled_dir, appdata_dir, dirs_exist_ok=True)
+        except Exception: pass
+        
+    os.makedirs(appdata_dir, exist_ok=True)
+    return appdata_dir
+
+def get_settings_path() -> str:
+    return get_data_path('jarvis_settings.json')
 
 def _secrets_env_path() -> str:
     import os
-    appdata = os.environ.get('APPDATA', '') or os.environ.get('LOCALAPPDATA', '')
-    if appdata:
-        return os.path.join(appdata, 'Jarvis', 'secrets.env')
-    return os.path.join(get_project_root(), '.env')
+    return os.path.join(get_app_data_root(), 'secrets.env')
 
 def _load_secrets() -> None:
     import os
@@ -101,3 +137,15 @@ def _read_tts_unload_timeout() -> float:
         pass
     return 300.0
 TTS_UNLOAD_TIMEOUT = _read_tts_unload_timeout()
+
+def _read_wake_word_mode() -> str:
+    try:
+        p_str = get_settings_path()
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return str(data.get('wake_word_mode', 'continuous'))
+    except Exception:
+        pass
+    return 'continuous'
+WAKE_WORD_MODE = _read_wake_word_mode()

@@ -1,8 +1,9 @@
 from __future__ import annotations
 import json
 import os
-_CATALOG_PATH = os.path.join('data', 'extensions_catalog.json')
-_INSTALLED_PATH = os.path.join('data', 'extensions_installed.json')
+from config_pack.config import get_data_path
+_CATALOG_PATH = get_data_path('extensions_catalog.json')
+_INSTALLED_PATH = get_data_path('extensions_installed.json')
 class ExtensionManager:
     _instance: ExtensionManager | None = None
     def __new__(cls) -> ExtensionManager:

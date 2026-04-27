@@ -56,8 +56,9 @@ def is_profile_installed(profile_stem: str) -> bool:
                 return True
     except Exception:
         pass
+    from config_pack.config import get_data_dir
     from pathlib import Path
-    return (Path('data') / 'game_profiles' / f'{profile_stem}.json').exists()
+    return (Path(get_data_dir('game_profiles')) / f'{profile_stem}.json').exists()
 def start_game_watcher(handler=None):
     def _watch():
         from core.system import get_foreground_process_name, app_state

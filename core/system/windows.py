@@ -282,21 +282,28 @@ def get_installed_apps() -> list[dict]:
                                                 break
                             except: pass
 
-                        # Final ignore list for "noise" (IDEs shouldn't be noise)
+                        # Final ignore list for "noise"
                         noise_keywords = [
                             "driver", "printer", "service", "uninstall", "redistributable", 
                             "canon", "library", "directx", "framework", "software development kit",
                             "runtime", "component", "msiexec", "host", "updater", "redist", 
                             "resolver", "license", "licensing", "extensibility", "click-to-run",
                             "clicktorun", "microsoft .net", "java auto", "webview2", "help",
-                            "manual", "documentation", "vcredist", "vsto"
+                            "manual", "documentation", "vcredist", "vsto", "git", "windhawk",
+                            "start11", "redragon", "reg organizer", "stardock", "officeclicktorun",
+                            "python 3.", "microsoft office ltsc", "sdk", "api", "tools", "web engine"
                         ]
                         low_name = name.lower()
                         is_noise = any(kw in low_name for kw in noise_keywords)
                         
+                        # Mark as noise if name looks like a system entry (long with versions)
+                        if not is_noise and len(name) > 40 and any(c.isdigit() for c in name):
+                             # Very long technical names are usually system components
+                             is_noise = True
+                        
                         # Also check the EXE itself for common installer/system patterns
                         low_exe = (exe_hint or "").lower()
-                        installer_signs = ["msiexec.exe", "setup", "install", "unins", "format", "update", "patch"]
+                        installer_signs = ["msiexec.exe", "setup", "install", "unins", "format", "update", "patch", "helper", "engine"]
                         if any(sign in low_exe for sign in installer_signs):
                             is_noise = True
                         

@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
 import sys
 import multiprocessing as _mp_mod
 import threading as _threading

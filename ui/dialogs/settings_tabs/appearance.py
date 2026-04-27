@@ -1,12 +1,14 @@
+from ui.hud_style import JStyle
 import os, json, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
-from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar
+from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ui.hud_widgets import _HudScrollbar
 
 def build_appearance_tab(inner, win, hud, _save_hud_settings):
     _sf = lambda n: hud._fs(n + 6)
+    _sfc = lambda n: n + 6
     def _add_context_menu(entry):
         menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, _sf(9)))
         def _paste():
@@ -132,8 +134,8 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         s = ctk.CTkSlider(
             container, from_=from_, to=to, number_of_steps=steps,
             progress_color=accent, button_color=_WHITE, button_hover_color=accent,
-            fg_color=_blend(accent, 0.1), height=hud._px(12),
-            border_width=hud._px(2), border_color=_blend(accent, 0.2),
+            fg_color=_blend(accent, 0.1), height=12,
+            border_width=2, border_color=_blend(accent, 0.2),
             command=_on_change
         )
         s.set(init_val)
@@ -145,14 +147,14 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             parent,
             text=text,
             command=command,
-            height=hud._px(44),
-            font=(hud._F, _sf(10), 'bold'),
+            height=JStyle.H_LARGE,
+            font=(hud._F, JStyle.TEXT_BODY, 'bold'),
             fg_color=_blend(accent, 0.08),
             hover_color=_blend(accent, 0.18),
-            text_color=accent,
+            text_color=_TEXT,
             border_color=_blend(accent, 0.32),
             border_width=1,
-            corner_radius=10,
+            corner_radius=JStyle.RAD_PANEL,
         )
         b.grid(**grid_kw)
         return b
@@ -162,18 +164,24 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
         pick_win.title("ВЫБОР ПРИЛОЖЕНИЯ")
-        pick_win.geometry(f"{hud._px(600)}x{hud._px(700)}")
+        pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
+        from ui.hud_utils import _center_window
+        _center_window(pick_win, 820, 740, hud.zoom_factor)
         pick_win.configure(bg=_BG)
         _set_dark_title_bar(pick_win)
         pick_win.attributes("-topmost", True)
+        _apply_window_icon(pick_win, hud)
         pick_win.lift()
         top_bar = tk.Frame(pick_win, bg=_BG)
         top_bar.pack(fill='x', padx=20, pady=(20, 10))
-        tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(anchor='w')
-        tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10))).pack(anchor='w')
+        tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold')).pack(anchor='w')
+        h_lbl = tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL), justify='left', anchor='w')
+        h_lbl.pack(fill='x', anchor='w')
+        def _upd_p_wrap(e, l=h_lbl): l.configure(wraplength=e.width)
+        top_bar.bind('<Configure>', _upd_p_wrap, add='+')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
         sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
@@ -209,7 +217,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
                 on_selected(app.get('exe') or app['name'])
                 pick_win.destroy()
         lb.bind('<Double-Button-1>', _on_pick)
-        ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=hud._px(50), font=(hud._F, _sf(12), 'bold'), fg_color=_CYAN, text_color=_BG).pack(fill='x', padx=20, pady=(0, 20))
+        ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
 
     def _on_theme_change(name):
         from ui.hud_themes import save_theme_name
@@ -224,22 +232,28 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         for w in restart_f.winfo_children():
             w.destroy()
         names = {'cyber': 'CYBER NEON', 'dark': 'PURE DARK', 'light': 'PURE LIGHT'}
-        tk.Label(
+        lbl = tk.Label(
             restart_f,
             text=f'✓  Тема «{names.get(name, name)}» сохранена. Требуется перезапуск.',
             bg=_blend(_GREEN, 0.08), fg=_GREEN,
-            font=(hud._F, _sf(9), 'bold'), anchor='w'
-        ).pack(side='left', fill='x', expand=True, padx=12, pady=8)
+            font=(hud._F, _sf(9), 'bold'), anchor='w', justify='left'
+        )
+        lbl.pack(side='left', fill='x', expand=True, padx=12, pady=8)
+        
+        def _upd_restart_wrap(e, l=lbl):
+            # Leave space for the button (160px + padding)
+            l.configure(wraplength=max(100, e.width - hud._px(190)))
+        restart_f.bind('<Configure>', _upd_restart_wrap, add='+')
         def _restart():
             import subprocess, sys
             subprocess.Popen([sys.executable] + sys.argv)
             win.after(200, lambda: __import__('os')._exit(0))
         ctk.CTkButton(
             restart_f, text='↺  ПЕРЕЗАПУСТИТЬ', command=_restart,
-            height=hud._px(34), font=(hud._F, _sf(9), 'bold'),
+            height=34, font=(hud._F, _sfc(9), 'bold'),
             fg_color=_blend(_GREEN, 0.15), hover_color=_blend(_GREEN, 0.25),
             text_color=_GREEN, border_color=_blend(_GREEN, 0.5),
-            border_width=1, corner_radius=8, width=hud._px(160)
+            border_width=1, corner_radius=JStyle.RAD_BTN, width=160
         ).pack(side='right', padx=8, pady=6)
         restart_f.pack(fill='x', pady=(6, 0))
 
@@ -255,9 +269,9 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
 
     # Theme definitions: (id, label, accent_color, bg_preview, text_preview)
     _theme_defs = [
-        ('cyber', '⬡  CYBER\nNEON',  '#00ffff', '#0a0b10', '#00ffff'),
-        ('dark',  '◼  PURE\nDARK',   '#4da6ff', '#0d0d0d', '#e8e8e8'),
-        ('light', '◻  PURE\nLIGHT',  '#0055cc', '#f4f6fa', '#1a1a2e'),
+        ('cyber', '⬡  CYBER NEON',  '#00ffff', '#0a0b10', '#00ffff'),
+        ('dark',  '◼  PURE DARK',   '#4da6ff', '#0d0d0d', '#e8e8e8'),
+        ('light', '◻  PURE LIGHT',  '#0055cc', '#f4f6fa', '#1a1a2e'),
     ]
 
     def _blend_hex(c1, c2, alpha):
@@ -275,14 +289,14 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         t_btn = ctk.CTkButton(
             theme_f, text=tname,
             command=lambda n=tid: _on_theme_change(n),
-            height=hud._px(64),
-            font=(hud._F, _sf(8), 'bold'),
+            height=JStyle.H_HUGE,
+            font=(hud._F, JStyle.TEXT_BODY, 'bold'),
             fg_color=tbg,
             hover_color=_blend_hex(tbg, accent, 0.25),
             text_color=tfg if not is_sel else accent,
             border_color=accent if is_sel else '#333333',
             border_width=2 if is_sel else 1,
-            corner_radius=10
+            corner_radius=JStyle.RAD_PANEL
         )
         t_btn.grid(row=0, column=i, padx=padx, sticky='ew')
 
@@ -297,12 +311,18 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
     _hint(c1, 'Ctrl + +/−  быстро  •  Ctrl+0 сброс  •  ✦ Авто определит масштаб по экрану')
     _zoom_timer_id = [None]
     def _apply_zoom(z: float) -> None:
-        ctk.set_widget_scaling(z)
+        z = round(z, 1)
+        _zoom_val_lbl.configure(text=f'{z:.1f}×')
         hud.zoom_factor = z
         hud._settings['zoom_factor'] = z
         _save_hud_settings(hud._settings)
         zoom_slider.set(z)
+        ctk.set_widget_scaling(z)
+        ctk.set_window_scaling(z)
         hud._apply_zoom_rebuild()
+        
+        # Force settings window to update its own scaling context
+        win.update()
 
     def _on_zoom_slide(v):
         z = round(float(v), 1)
@@ -332,8 +352,8 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         progress_color=_CYAN,
         fg_color=_BRD_I,
         button_color=_WHITE,
-        switch_width=hud._px(48),
-        switch_height=hud._px(24),
+        switch_width=48,
+        switch_height=24,
     )
     _max_sw.pack(side='right', padx=16, pady=12)
     _max_lbl = tk.Label(
@@ -388,21 +408,46 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             sticky='ew',
             padx=padx_z,
         )
+
     c2 = _card('◉', 'МОДУЛИ ИНТЕРФЕЙСА', _MAG)
     _hint(c2, 'Скрытые модули убираются из панели автоматически.')
-    _vis_icons = {'sunrise': '☀', 'sysinfo': '◈', 'storage': '📊', 'network': '⟳', 'weather': '≋', 'clock': '🕐', 'camera': '📷', 'gamemode': '✦', 'meetings_btn': '🔗', 'videos_btn': '▶'}
-    _vis_map = {'sunrise': 'Восход / Закат  (верхняя полоса)', 'sysinfo': 'Системные профили (Батарея / Мик)', 'storage': 'Аналитика хранилища (RAM / Диск)', 'network': 'Сетевая статистика', 'weather': 'Погода — Атмосфера', 'clock': 'Часы, дата и аптайм', 'camera': 'Видеосенсор (камера)', 'gamemode': 'Игровой режим', 'meetings_btn': 'Быстрые ссылки (кнопка в HUD)', 'videos_btn': 'Сохранённые видео (кнопка в HUD)'}
+    _vis_icons = {
+        'sunrise': '☀', 'sysinfo': '◈', 'storage': '📊', 'network': '⟳', 'weather': '≋', 
+        'clock': '🕐', 'camera': '📷', 'gamemode': '✦', 'meetings_btn': '🔗', 'videos_btn': '▶',
+        'network_ip': '◈', 'network_ssid': '◈', 'network_traffic': '◈', 'network_ls': '◈', 'sysinfo_mic': '◈'
+    }
+    _vis_map = {
+        'sunrise': 'Восход / Закат  (верхняя полоса)', 
+        'sysinfo': 'Системные профили',
+        'sysinfo_mic': 'Микрофон (усиление / порог)',
+        'storage': 'Аналитика хранилища (RAM / Диск)', 
+        'network': 'Сетевая статистика', 
+        'network_ip': 'Локальный IP адрес',
+        'network_ssid': 'Название Wi-Fi сети',
+        'network_ls': 'Скорость сетевого линка',
+        'network_traffic': 'Трафик (Загрузка / Скачивание)',
+        'weather': 'Погода — Атмосфера', 
+        'clock': 'Часы, дата и аптайм', 
+        'camera': 'Видеосенсор (камера)', 
+        'gamemode': 'Игровой режим', 
+        'meetings_btn': 'Быстрые ссылки (кнопка в HUD)', 
+        'videos_btn': 'Сохранённые видео (кнопка в HUD)'
+    }
     _vis_vars: dict[str, tk.BooleanVar] = {}
     for key, label in _vis_map.items():
         var = tk.BooleanVar(value=hud._widget_vis.get(key, True))
         _vis_vars[key] = var
+        
+        # Индексация подпунктов
+        is_sub = key.startswith(('network_', 'sysinfo_'))
         sw_row = tk.Frame(c2, bg=_PANEL)
-        sw_row.pack(fill='x', pady=4)
+        sw_row.pack(fill='x', pady=4, padx=(hud._px(28) if is_sub else 0, 0))
+        
         icon_f = tk.Frame(sw_row, bg=_PANEL, width=hud._px(36), height=hud._px(36))
         icon_f.pack_propagate(False)
         icon_f.pack(side='left')
-        tk.Label(icon_f, text=_vis_icons[key], bg=_PANEL, fg=_MAG, font=(hud._F, _sf(14))).place(relx=0.5, rely=0.5, anchor='center')
-        sw = ctk.CTkSwitch(sw_row, text='', variable=var, onvalue=True, offvalue=False, fg_color=_BRD_I, progress_color=_MAG, button_color=_WHITE, switch_width=hud._px(48), switch_height=hud._px(24), width=0)
+        tk.Label(icon_f, text=_vis_icons.get(key, ' '), bg=_PANEL, fg=_MAG, font=(hud._F, _sf(14))).place(relx=0.5, rely=0.5, anchor='center')
+        sw = ctk.CTkSwitch(sw_row, text='', variable=var, onvalue=True, offvalue=False, fg_color=_BRD_I, progress_color=_MAG, button_color=_WHITE, switch_width=48, switch_height=24, width=0)
         sw.pack(side='left', padx=(4, 5))
         lbl = tk.Label(sw_row, text=label, bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(12), 'bold'), anchor='w', justify='left')
         lbl.pack(side='left', fill='x', expand=True, padx=(2, 0))
@@ -411,11 +456,25 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             avail = e.width - hud._px(120)
             l.configure(wraplength=max(60, avail))
         sw_row.bind('<Configure>', _upd_sw_wrap, add='+')
+        
         def _on_vis_change(k=key, v=var):
             hud._widget_vis[k] = v.get()
+            
+            # Синхронизация подпунктов с родительским модулем
+            if k == 'network':
+                for subk in ['network_ip', 'network_ssid', 'network_ls', 'network_traffic']:
+                    if subk in _vis_vars:
+                        _vis_vars[subk].set(v.get())
+                        hud._widget_vis[subk] = v.get()
+            if k == 'sysinfo':
+                if 'sysinfo_mic' in _vis_vars:
+                    _vis_vars['sysinfo_mic'].set(v.get())
+                    hud._widget_vis['sysinfo_mic'] = v.get()
+
             hud._settings['widget_vis'] = hud._widget_vis
             _save_hud_settings(hud._settings)
-            if k in ('camera', 'sysinfo', 'gamemode', 'meetings_btn', 'videos_btn'):
+            
+            if k in ('camera', 'sysinfo', 'sysinfo_mic', 'gamemode', 'meetings_btn', 'videos_btn'):
                 hud._rebuild_left()
             else:
                 hud._rebuild_right()
@@ -423,5 +482,6 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
                 hud._apply_widget_visibility()
             if k == 'weather' and v.get():
                 hud._weather_tick()
+                
         sw.configure(command=lambda k=key, v=var: _on_vis_change(k, v))
         lbl.bind('<Button-1>', lambda e, k=key, v=var: (v.set(not v.get()), _on_vis_change(k, v)))

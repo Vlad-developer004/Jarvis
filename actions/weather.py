@@ -38,7 +38,7 @@ def _ip_geolocation(headers: dict, timeout: float = 2.0) -> tuple[float, float, 
     def fetch_one(pair: tuple[str, str]) -> tuple[float, float, str] | None:
         name, url = pair
         try:
-            resp = requests.get(url, headers=headers, timeout=timeout)
+            resp = requests.get(url, headers=headers, timeout=5.0)
             if resp.status_code != 200:
                 return None
             return _parse_geo_json(name, resp.json())
@@ -47,7 +47,7 @@ def _ip_geolocation(headers: dict, timeout: float = 2.0) -> tuple[float, float, 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = [pool.submit(fetch_one, p) for p in providers]
         try:
-            for fut in concurrent.futures.as_completed(futures, timeout=timeout + 1.5):
+            for fut in concurrent.futures.as_completed(futures, timeout=10.0):
                 try:
                     r = fut.result()
                     if r:
@@ -100,22 +100,47 @@ def get_weather_hud() -> dict:
     if cached and time.time() - cached['updated_ts'] < _HUD_TTL_SEC:
         return cached
     try:
-        import requests
+        import requests, json, os
         headers = {'User-Agent': 'Mozilla/5.0'}
-        last = _load_last_location()
-        if last:
-            lat, lon, city_name = last
-        else:
-            geo = _ip_geolocation(headers, timeout=2.0)
-            if geo:
-                lat, lon, city_name = geo
-                _save_last_location(lat, lon, city_name)
+        
+        # 1. Check for Manual City in settings
+        manual_city = None
+        settings_path = os.path.join('data', 'jarvis_settings.json')
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                s = json.load(f)
+                manual_city = s.get('manual_city')
+
+        lat, lon, city_name = (None, None, None)
+
+        if manual_city:
+            # Try to resolve manual city to coordinates
+            city_clean = manual_city.strip()
+            geo_url = f'https://geocoding-api.open-meteo.com/v1/search?name={city_clean}&count=1&language=ru&format=json'
+            geo_resp = requests.get(geo_url, headers=headers, timeout=5)
+            geo_data = geo_resp.json()
+            if geo_data.get('results'):
+                res = geo_data['results'][0]
+                lat, lon, city_name = res['latitude'], res['longitude'], res.get('name', manual_city)
+        
+        if lat is None:
+            # Fallback to last location or IP
+            last = _load_last_location()
+            if last:
+                lat, lon, city_name = last
+            else:
+                geo = _ip_geolocation(headers, timeout=2.0)
+                if geo:
+                    lat, lon, city_name = geo
+                    _save_last_location(lat, lon, city_name)
+                else:
+                    raise Exception("Location not found")
         
         # If city name is English/Latin, try to get Russian name via Geocoding API
         if city_name and all(ord(c) < 128 for c in city_name) and city_name != 'ГЕОЛОКАЦИЯ НЕДОСТУПНА':
             try:
                 geo_url = f'https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=5&language=ru&format=json'
-                geo_resp = requests.get(geo_url, headers=headers, timeout=2)
+                geo_resp = requests.get(geo_url, headers=headers, timeout=5)
                 if geo_resp.status_code == 200:
                     results = geo_resp.json().get('results', [])
                     if results:
@@ -134,7 +159,7 @@ def get_weather_hud() -> dict:
                 pass
 
         url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,surface_pressure&daily=sunrise,sunset&wind_speed_unit=ms&timezone=auto'
-        resp_obj = requests.get(url, headers=headers, timeout=3)
+        resp_obj = requests.get(url, headers=headers, timeout=10)
         resp = resp_obj.json()
         w = resp['current']
         code = w['weather_code']
@@ -148,6 +173,7 @@ def get_weather_hud() -> dict:
             sunrise = sunset = '—:—'
         data = {'ok': True, 'city': city_name, 'lat': lat, 'lon': lon, 'sunrise': sunrise, 'sunset': sunset, 'temp': int(round(w['temperature_2m'])), 'feels': int(round(w['apparent_temperature'])), 'desc': _WMO_DESC.get(code, '—'), 'icon': icon, 'color': color, 'wind': round(w.get('wind_speed_10m', 0), 1), 'humidity': int(w.get('relative_humidity_2m', 0)), 'pressure': pressure_mmhg, 'updated_ts': time.time()}
     except Exception:
+        if 'data' in _hud_cache: del _hud_cache['data']
         data = {'ok': False, 'city': '—', 'temp': 0, 'feels': 0, 'desc': 'ОШИБКА СЕТИ', 'icon': '⚠', 'color': _DIM_COLOR, 'wind': 0, 'humidity': 0, 'pressure': 0, 'updated_ts': time.time()}
     _hud_cache['data'] = data
     return data
@@ -163,17 +189,31 @@ def get_weather(city: str | None, date_offset: int = 0) -> tuple[bool, str]:
     if cached and time.time() - cached['ts'] < _CACHE_TTL_SEC:
         return (cached['ok'], cached['text'])
     try:
+        import requests, json, os
         headers = {'User-Agent': 'Mozilla/5.0'}
         if not city:
-            last = _load_last_location()
-            if last:
-                lat, lon, city_name = last
-            else:
-                geo = _ip_geolocation(headers, timeout=2.0)
-                if not geo: return (False, 'Ошибка при определении местоположения.')
-                lat, lon, city_name = geo
-                _save_last_location(lat, lon, city_name)
-        else:
+            # Check manual city first for auto-requests
+            settings_path = os.path.join('data', 'jarvis_settings.json')
+            manual_city = None
+            if os.path.exists(settings_path):
+                with open(settings_path, 'r', encoding='utf-8') as f:
+                    manual_city = json.load(f).get('manual_city')
+            
+            if manual_city:
+                city = manual_city # Use manual city as if it was requested
+            
+            if not manual_city:
+                last = _load_last_location()
+                if last:
+                    lat, lon, city_name = last
+                else:
+                    geo = _ip_geolocation(headers, timeout=2.0)
+                    if not geo: return (False, 'Ошибка при определении местоположения.')
+                    lat, lon, city_name = geo
+                    _save_last_location(lat, lon, city_name)
+        
+        # If we have a city (either requested or manual), resolve it
+        if city:
             city_clean = city.strip().lower()
             if len(city_clean) > 4:
                 if city_clean.endswith(('е', 'и', 'а', 'у')): city_clean = city_clean[:-1]

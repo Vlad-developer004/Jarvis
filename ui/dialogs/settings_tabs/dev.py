@@ -1,8 +1,9 @@
-﻿import os, json, sys, subprocess, threading, time
+from ui.hud_style import JStyle
+import os, json, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
-from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar
+from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ui.hud_widgets import _HudScrollbar
 
 def build_dev_tab(inner, win, hud, _save_hud_settings):
@@ -100,7 +101,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
         row.bind('<Configure>', _upd_row, add='+')
         return val_lbl
     def _slider(parent, from_, to, steps, accent, init_val, callback):
-        s = ctk.CTkSlider(parent, from_=from_, to=to, number_of_steps=steps, progress_color=accent, button_color=accent, button_hover_color=_blend(accent, 0.7), fg_color=_BRD_I, height=hud._px(16))
+        s = ctk.CTkSlider(parent, from_=from_, to=to, number_of_steps=steps, progress_color=accent, button_color=accent, button_hover_color=_blend(accent, 0.7), fg_color=_BRD_I, height=16)
         s.set(init_val)
         s.pack(fill='x', pady=(10, 4))
         s.configure(command=callback)
@@ -110,14 +111,14 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
             parent,
             text=text,
             command=command,
-            height=hud._px(44),
-            font=(hud._F, _sf(10), 'bold'),
+            height=JStyle.H_LARGE,
+            font=(hud._F, JStyle.TEXT_BODY, 'bold'),
             fg_color=_blend(accent, 0.08),
             hover_color=_blend(accent, 0.18),
-            text_color=accent,
+            text_color=_TEXT,
             border_color=_blend(accent, 0.32),
             border_width=1,
-            corner_radius=10,
+            corner_radius=JStyle.RAD_PANEL,
         )
         b.grid(**grid_kw)
         return b
@@ -127,21 +128,27 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
         pick_win.title("ВЫБОР ПРИЛОЖЕНИЯ")
-        pick_win.geometry(f"{hud._px(600)}x{hud._px(700)}")
+        pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
+        from ui.hud_utils import _center_window
+        _center_window(pick_win, 820, 740, hud.zoom_factor)
         pick_win.configure(bg=_BG)
         _set_dark_title_bar(pick_win)
         pick_win.attributes("-topmost", True)
+        _apply_window_icon(pick_win, hud)
         pick_win.lift()
         top_bar = tk.Frame(pick_win, bg=_BG)
         top_bar.pack(fill='x', padx=20, pady=(20, 10))
-        tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(anchor='w')
-        tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10))).pack(anchor='w')
+        tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold')).pack(anchor='w')
+        h_lbl = tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL), justify='left', anchor='w')
+        h_lbl.pack(fill='x', anchor='w')
+        def _upd_p_wrap(e, l=h_lbl): l.configure(wraplength=e.width)
+        top_bar.bind('<Configure>', _upd_p_wrap, add='+')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, _sf(11)), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=10)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
-        sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
+        sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, JStyle.TEXT_BODY, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=36, switch_height=18)
         sw_all.pack(side='right')
         lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
@@ -174,7 +181,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
                 on_selected(app.get('exe') or app['name'])
                 pick_win.destroy()
         lb.bind('<Double-Button-1>', _on_pick)
-        ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=hud._px(50), font=(hud._F, _sf(12), 'bold'), fg_color=_CYAN, text_color=_BG).pack(fill='x', padx=20, pady=(0, 20))
+        ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
 
     c_context = _card('⬡', 'РАБОЧЕЕ ОКРУЖЕНИЕ (IDE)', _CYAN)
     _hint(c_context, 'Джарвис будет нацелен на папку проекта, когда одно из этих приложений в фокусе.')
@@ -215,7 +222,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     ent_app_exe = ctk.CTkEntry(
         _add_app_row, placeholder_text='Имя процесса (например: notepad.exe)',
         font=(hud._F, _sf(10)), fg_color=_BG, border_color=_blend(_CYAN, 0.35),
-        height=hud._px(40), corner_radius=10 # Reduced from 44
+        height=JStyle.H_NORM, corner_radius=JStyle.RAD_PANEL # Reduced from 44
     )
     ent_app_exe.pack(fill='x', padx=4) # Reduced from 12
     
@@ -233,18 +240,30 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     _ctx_btn_r = tk.Frame(_ctx_btn_row, bg=_PANEL)
     _ctx_btn_r.pack(side='right', fill='x', expand=True)
 
-    _btn_k = dict(height=hud._px(40), font=(hud._F, _sf(10), 'bold'), corner_radius=8, border_width=1)
-    ctk.CTkButton(_ctx_btn_l, text='➕ Добавить', command=lambda: _ctx_add(ent_app_exe.get().strip()), fg_color=_blend(_CYAN, 0.12), text_color=_CYAN, border_color=_blend(_CYAN, 0.45), **_btn_k).pack(fill='x', padx=(0, 4), pady=4)
-    ctk.CTkButton(_ctx_btn_l, text='📂 Из установленных', command=lambda: _pick_app_dialog(_ctx_add), fg_color=_blend(_CYAN, 0.12), text_color=_CYAN, border_color=_blend(_CYAN, 0.4), **_btn_k).pack(fill='x', padx=(0, 4), pady=4)
-    ctk.CTkButton(_ctx_btn_r, text='🔍 Активное окно', command=lambda: ent_app_exe.delete(0, tk.END) or ent_app_exe.insert(0, os.path.basename(__import__('core.system.windows', fromlist=['get_foreground_process_exe']).get_foreground_process_exe() or '').lower()), fg_color=_blend(_AMBER, 0.12), text_color=_AMBER, border_color=_blend(_AMBER, 0.4), **_btn_k).pack(fill='x', padx=(4, 0), pady=4)
-    ctk.CTkButton(_ctx_btn_r, text='🗑 Удалить', command=lambda: (_enabled_apps.remove(lb_ctx_apps.get(lb_ctx_apps.curselection()[0]).replace('  ✓ ', '').strip()), hud._settings.update({'context_apps': _enabled_apps}), _save_hud_settings(hud._settings), _refresh_apps_list()) if lb_ctx_apps.curselection() else None, fg_color=_blend(_RED, 0.12), text_color=_RED, border_color=_blend(_RED, 0.4), **_btn_k).pack(fill='x', padx=(4, 0), pady=4)
+    _btn_k = dict(height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), corner_radius=JStyle.RAD_PANEL, border_width=2)
+    
+    ctk.CTkButton(_ctx_btn_l, text='➕  ДОБАВИТЬ', command=lambda: _ctx_add(ent_app_exe.get().strip()), 
+                  fg_color='transparent', hover_color=_blend(_CYAN, 0.25), text_color=_WHITE, 
+                  border_color=_blend(_CYAN, 0.8), **_btn_k).pack(fill='x', padx=(0, 4), pady=4)
+    
+    ctk.CTkButton(_ctx_btn_l, text='📂  ИЗ УСТАНОВЛЕННЫХ', command=lambda: _pick_app_dialog(_ctx_add), 
+                  fg_color='transparent', hover_color=_blend(_CYAN, 0.2), text_color=_WHITE, 
+                  border_color=_blend(_CYAN, 0.5), **_btn_k).pack(fill='x', padx=(0, 4), pady=4)
+    
+    ctk.CTkButton(_ctx_btn_r, text='🎯  АКТИВНОЕ ОКНО', command=lambda: ent_app_exe.delete(0, tk.END) or ent_app_exe.insert(0, os.path.basename(__import__('core.system.windows', fromlist=['get_foreground_process_exe']).get_foreground_process_exe() or '').lower()), 
+                  fg_color='transparent', hover_color=_blend(_AMBER, 0.25), text_color=_WHITE, 
+                  border_color=_blend(_AMBER, 0.8), **_btn_k).pack(fill='x', padx=(4, 0), pady=4)
+    
+    ctk.CTkButton(_ctx_btn_r, text='🗑  УДАЛИТЬ', command=lambda: (_enabled_apps.remove(lb_ctx_apps.get(lb_ctx_apps.curselection()[0]).replace('  ✓ ', '').strip()), hud._settings.update({'context_apps': _enabled_apps}), _save_hud_settings(hud._settings), _refresh_apps_list()) if lb_ctx_apps.curselection() else None, 
+                  fg_color='transparent', hover_color=_blend(_RED, 0.25), text_color=_WHITE, 
+                  border_color=_blend(_RED, 0.8), **_btn_k).pack(fill='x', padx=(4, 0), pady=4)
 
     _parent_search_var = tk.BooleanVar(value=hud._settings.get('allow_parent_search', False))
     ctk.CTkSwitch(
         c_context, text='Разрешить поиск в родительских папках', variable=_parent_search_var,
         command=lambda: (hud._settings.update({'allow_parent_search': _parent_search_var.get()}), _save_hud_settings(hud._settings)),
         font=(hud._F, _sf(10)), progress_color=_CYAN,
-        switch_width=hud._px(48), switch_height=hud._px(24) # Enlarged
+        switch_width=48, switch_height=24 # Enlarged
     ).pack(anchor='w', pady=(14, 0), padx=4) 
     
     _hint(c_context, 'Рекурсивный поиск «назад при необходимости.')
@@ -332,7 +351,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     ent_code_ext = ctk.CTkEntry(
         _ext_well, placeholder_text='py, tsx, rs или .py',
         font=(hud._F, _sf(10)), fg_color=_BG, border_color=_blend(_CYAN, 0.35),
-        height=hud._px(40), corner_radius=10 # Reduced from 44
+        height=JStyle.H_NORM, corner_radius=JStyle.RAD_PANEL # Reduced from 44
     )
     ent_code_ext.pack(fill='x', pady=(4, 8), padx=4) # Reduced from 12
     ent_code_ext.bind('<Return>', lambda e: _on_add_prog_ext())
@@ -343,6 +362,11 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     _ext_btn_r = tk.Frame(_ext_btn_row, bg=_PANEL)
     _ext_btn_r.pack(side='right', fill='x', expand=True)
 
-    _e_btn_k = dict(height=hud._px(40), font=(hud._F, _sf(10), 'bold'), corner_radius=8, border_width=1)
-    ctk.CTkButton(_ext_btn_l, text='➕ Добавить', command=_on_add_prog_ext, fg_color=_blend(_CYAN, 0.12), text_color=_CYAN, border_color=_blend(_CYAN, 0.45), **_e_btn_k).pack(fill='x', padx=(0, 4), pady=4)
-    ctk.CTkButton(_ext_btn_r, text='🗑 Удалить', command=_on_del_prog_ext, fg_color=_blend(_RED, 0.12), text_color=_RED, border_color=_blend(_RED, 0.4), **_e_btn_k).pack(fill='x', padx=(4, 0), pady=4)
+    _e_btn_k = dict(height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), corner_radius=JStyle.RAD_PANEL, border_width=2)
+    ctk.CTkButton(_ext_btn_l, text='➕  ДОБАВИТЬ', command=_on_add_prog_ext, 
+                  fg_color='transparent', hover_color=_blend(_CYAN, 0.25), text_color=_WHITE, 
+                  border_color=_blend(_CYAN, 0.8), **_e_btn_k).pack(fill='x', padx=(0, 4), pady=4)
+    
+    ctk.CTkButton(_ext_btn_r, text='🗑  УДАЛИТЬ', command=_on_del_prog_ext, 
+                  fg_color='transparent', hover_color=_blend(_RED, 0.25), text_color=_WHITE, 
+                  border_color=_blend(_RED, 0.8), **_e_btn_k).pack(fill='x', padx=(4, 0), pady=4)

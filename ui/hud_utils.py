@@ -17,7 +17,8 @@ try:
     _PIL_OK = True
 except ImportError:
     _PIL_OK = False
-_SETTINGS_PATH = os.path.join('data', 'jarvis_settings.json')
+from config_pack.config import get_settings_path
+_SETTINGS_PATH = get_settings_path()
 def _load_hud_settings():
     if os.path.exists(_SETTINGS_PATH):
         try:
@@ -145,11 +146,16 @@ def _glow_text(c: tk.Canvas, x, y, text, font, color) -> None:
     c.create_text(x + 1, y + 1, text=text, font=font, fill=_blend(color, 0.25), tags=_DYN)
     c.create_text(x, y, text=text, font=font, fill=color, tags=_DYN)
 def _fmt_speed(bps: float) -> str:
+    """Форматирует скорость из Байт/с в КБ/с, МБ/с или ГБ/с."""
+    if bps < 0: bps = 0
     if bps < 1024:
         return f'{bps:.0f} Б/с'
-    if bps < 1048576:
+    elif bps < 1048576: # < 1 МБ
         return f'{bps / 1024:.1f} КБ/с'
-    return f'{bps / 1048576:.1f} МБ/с'
+    elif bps < 1073741824: # < 1 ГБ
+        return f'{bps / 1048576:.1f} МБ/с'
+    else:
+        return f'{bps / 1073741824:.2f} ГБ/с'
 def _uptime() -> str:
     import psutil as _psutil
     s = int(time.time() - _psutil.boot_time())
@@ -258,7 +264,7 @@ def _set_dark_title_bar(window: tk.Toplevel | tk.Tk) -> None:
             text_col = ctypes.c_int(0x002E1A1A)    # BGR: 1a1a2e -> 2e1a1a
         else:
             # Dark theme: Deep dark title bar, white text
-            caption_col = ctypes.c_int(0x001A1C30) # BGR: 0a0b10 -> 301c1a
+            caption_col = ctypes.c_int(0x00100B0A) # BGR for #0a0b10
             text_col = ctypes.c_int(0x00FFFFFF)
             
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption_col), 4)
@@ -336,3 +342,128 @@ def autostart_set(enabled: bool) -> None:
         except FileNotFoundError:
             pass
     winreg.CloseKey(key)
+
+def _get_work_area() -> tuple[int, int, int, int]:
+    """Returns (left, top, right, bottom) of the Windows work area in LOGICAL pixels."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        rect = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):
+            pl, pt, pr, pb = rect.left, rect.top, rect.right, rect.bottom
+            
+            # Get DPI scale factor (Logical / Physical)
+            import tkinter as tk
+            root = tk._default_root
+            if root:
+                sw_log = root.winfo_screenwidth()
+                sw_phys = ctypes.windll.user32.GetSystemMetrics(0) # SM_CXSCREEN
+                scale = sw_log / sw_phys if sw_phys > 0 else 1.0
+                return (int(pl*scale), int(pt*scale), int(pr*scale), int(pb*scale))
+            return (pl, pt, pr, pb)
+    except Exception: pass
+    
+    # Fallback to logical screen size if API fails
+    import tkinter as tk
+    try:
+        _r = tk._default_root or tk.Tk()
+        sw, sh = _r.winfo_screenwidth(), _r.winfo_screenheight()
+        if not tk._default_root: _r.destroy()
+        return (0, 0, sw, sh - 40)
+    except: return (0, 0, 1920, 1040)
+
+def _center_window(window: tk.Toplevel | tk.Tk, width: int, height: int, zoom: float = 1.0) -> None:
+    """Centers the window within the usable Work Area (avoiding taskbars)."""
+    window.update_idletasks()
+    l, t, r, b = _get_work_area()
+    aw, ah = (r - l), (b - t)
+    
+    x = l + (aw // 2) - (width // 2)
+    y = t + (ah // 2) - (height // 2)
+    
+    # Ensure it's not off-screen even if work area is weird
+    x = max(l, min(x, r - width))
+    y = max(t, min(y, b - height))
+    
+    window.geometry(f'{width}x{height}+{x}+{y}')
+
+def _constrain_window(win: tk.Toplevel | tk.Tk, x: int, y: int) -> tuple[int, int]:
+    """Constrains coordinates with jitter protection and DPI awareness."""
+    l, t, r, b = _get_work_area() 
+    
+    try:
+        title_h = win.winfo_rooty() - win.winfo_y()
+        border_w = win.winfo_rootx() - win.winfo_x()
+        th = win.winfo_height() + title_h + border_w 
+        tw = win.winfo_width() + (border_w * 2)
+        if th < 50: raise Exception() 
+    except:
+        tw, th = win.winfo_reqwidth(), win.winfo_reqheight()
+
+    nx = max(l, min(x, r - tw))
+    ny = max(t, min(y, b - th))
+    
+    if abs(nx - x) < 2: nx = x
+    if abs(ny - y) < 2: ny = y
+    
+    return nx, ny
+def _make_resizable(win: tk.Toplevel | tk.Tk, min_w: int = 400, min_h: int = 300):
+    """Adds native resizability to a borderless window without visible grips using Windows API."""
+    import ctypes
+    
+    # Применяем пороги сразу, если они переданы
+    try:
+        win.minsize(min_w, min_h)
+    except: pass
+    
+    zoom = 1.0
+    if hasattr(win, '_hud_zoom'): zoom = win._hud_zoom
+    elif hasattr(win, 'master') and hasattr(win.master, 'zoom_factor'): zoom = win.master.zoom_factor
+    
+    border = int(6 * zoom)
+    _state = {'cursor': ''}
+    
+    def _get_ht(e):
+        try:
+            w, h = win.winfo_width(), win.winfo_height()
+            x = e.x_root - win.winfo_rootx()
+            y = e.y_root - win.winfo_rooty()
+        except: return 0, ''
+        
+        # HTLEFT=10, HTRIGHT=11, HTTOP=12, HTTOPLEFT=13, HTTOPRIGHT=14, HTBOTTOM=15, HTBOTTOMLEFT=16, HTBOTTOMRIGHT=17
+        if y < border:
+            if x < border: return 13, 'size_nw_se'
+            if x > w - border: return 14, 'size_ne_sw'
+            return 12, 'size_ns'
+        elif y > h - border:
+            if x < border: return 16, 'size_ne_sw'
+            if x > w - border: return 17, 'size_nw_se'
+            return 15, 'size_ns'
+        else:
+            if x < border: return 10, 'size_we'
+            if x > w - border: return 11, 'size_we'
+        return 0, ''
+
+    def _motion(e):
+        ht, cursor = _get_ht(e)
+        if _state['cursor'] != cursor:
+            _state['cursor'] = cursor
+            win.configure(cursor=cursor)
+
+    def _press(e):
+        ht, _ = _get_ht(e)
+        if ht:
+            # We are on a border! Trigger native resize
+            hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+            if not hwnd: hwnd = win.winfo_id()
+            
+            # Release Tkinter's mouse grab and hand over to Windows DWM
+            ctypes.windll.user32.ReleaseCapture()
+            import threading
+            threading.Thread(target=lambda: ctypes.windll.user32.SendMessageW(hwnd, 0x00A1, ht, 0), daemon=True).start()
+            return "break"
+
+    # Bind to Toplevel so it catches events bubbling from any child canvas/frame
+    win.bind('<Motion>', _motion, add='+')
+    win.bind('<ButtonPress-1>', _press, add='+')
+

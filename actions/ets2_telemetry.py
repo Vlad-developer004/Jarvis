@@ -215,8 +215,7 @@ def get_cruise_speed_kmh() -> Optional[float]:
     for field in ("cruiseControlSpeed", "cruise_control_speed", "cruiseSpeed"):
         v = d.get(field)
         if v is not None:
-            kmh = float(v) * 3.6
-            return round(kmh / 5.0) * 5.0
+            return float(v) * 3.6
     return None
 def get_gear() -> Optional[int]:
     d = get()

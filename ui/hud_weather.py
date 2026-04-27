@@ -6,7 +6,13 @@ def weather_tick(hud) -> None:
     if not hud._widget_vis.get('weather', True):
         return
     threading.Thread(target=lambda: _fetch_weather(hud), daemon=True).start()
-    hud.root.after(600000, lambda: weather_tick(hud))
+    
+    # Adaptive retry: if last data failed, retry much sooner (30s) instead of 10m
+    delay = 600000
+    if hasattr(hud, '_last_weather_data') and hud._last_weather_data and not hud._last_weather_data.get('ok'):
+        delay = 30000
+        
+    hud.root.after(delay, lambda: weather_tick(hud))
 def _fetch_weather(hud) -> None:
     try:
         from actions.weather import get_weather_hud

@@ -14,7 +14,8 @@ def _load_api_key(provider: str) -> str:
         'gemini': 'GOOGLE_API_KEY',
         'google': 'GOOGLE_API_KEY',
         'deepseek': 'DEEPSEEK_API_KEY',
-        'anthropic': 'ANTHROPIC_API_KEY'
+        'anthropic': 'ANTHROPIC_API_KEY',
+        'openrouter': 'OPENROUTER_API_KEY'
     }
     key_name = env_map.get(provider.lower(), 'GROQ_API_KEY')
     
@@ -68,9 +69,9 @@ _FILLER = {
 _QUESTION_WORDS = {
     'кто такой', 'зачем', 'как', 'когда', 'где', 'кто', 'что', 'куда', 'откуда',
     'какой', 'какая', 'какие', 'какое', 'чем', 'кем', 'чего', 'сколько',
-    'найди', 'объясни', 'поищи',
+    'найди', 'объясни', 'поищи', 'расскажи', 'подробнее', 'почему', 'зачем',
 }
-_QUESTION_PHRASES = ('кто такой', 'что такое', 'расскажи о')
+_QUESTION_PHRASES = ('кто такой', 'что такое', 'расскажи о', 'расскажи про', 'подробнее о', 'а если', 'а как')
 
 def is_real_question(text: str) -> bool:
     text = text.strip().lower()
@@ -108,6 +109,8 @@ def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', st
     }
 
     if provider == 'groq':
+        # Fallback for deprecated models
+        if model == 'llama-3.1-405b-reasoning': model = 'llama-3.3-70b-versatile'
         params['model'] = model or 'llama-3.3-70b-versatile'
         return ask_groq(**params)
     elif provider == 'openai':
@@ -122,6 +125,9 @@ def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', st
     elif provider == 'anthropic':
         params['model'] = model or 'claude-3-5-sonnet-latest'
         return ask_anthropic(**params)
+    elif provider == 'openrouter':
+        params['model'] = model or 'deepseek/deepseek-chat'
+        return ask_openrouter(**params)
     
     return ask_groq(topic, question, 'llama-3.3-70b-versatile', timeout, last_ans, stream=stream)
 
@@ -247,6 +253,68 @@ def ask_openai(topic: str, question: str, model: str, timeout: int = 12, last_an
         return _clean(text) if text else ''
     except Exception as e:
         _log_qa(f"OpenAI Error: {type(e).__name__}: {str(e)}")
+        if stream: return iter([])
+        return ''
+
+def ask_openrouter(topic: str, question: str, model: str, timeout: int = 15, last_ans: str = '', stream: bool = False):
+    global _clients
+    api_key = _load_api_key('openrouter')
+    if not api_key:
+        if stream: return iter([])
+        return ''
+    try:
+        with _lock:
+            if 'openrouter' not in _clients:
+                from openai import OpenAI
+                _clients['openrouter'] = OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=api_key,
+                    default_headers={
+                        "HTTP-Referer": "https://github.com/vlad-developer/jarvis", # Optional, but good for OpenRouter
+                        "X-Title": "J.A.R.V.I.S. HUD",
+                    }
+                )
+        
+        messages = [{'role': 'system', 'content': get_sys_prompt()}]
+        if topic and last_ans:
+            messages.extend([
+                {'role': 'user', 'content': topic},
+                {'role': 'assistant', 'content': last_ans},
+                {'role': 'user', 'content': question}
+            ])
+        else:
+            prompt = f'Тема: «{topic}». Вопрос: «{question}»' if topic and question else (question or topic)
+            messages.append({'role': 'user', 'content': prompt})
+
+        if stream:
+            def _gen():
+                try:
+                    completion = _clients['openrouter'].chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        max_tokens=300,
+                        temperature=0.4,
+                        timeout=timeout,
+                        stream=True
+                    )
+                    for chunk in completion:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content.replace('\n', ' ')
+                except Exception as e:
+                    _log_qa(f"OpenRouter Stream Error: {e}")
+            return _gen()
+
+        completion = _clients['openrouter'].chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=300,
+            temperature=0.4,
+            timeout=timeout
+        )
+        text = completion.choices[0].message.content.strip()
+        return _clean(text) if text else ''
+    except Exception as e:
+        _log_qa(f"OpenRouter Error: {type(e).__name__}: {str(e)}")
         if stream: return iter([])
         return ''
 

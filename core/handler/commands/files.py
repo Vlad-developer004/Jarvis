@@ -220,21 +220,15 @@ def handle_files(handler, cmd, text_lower):
         if not kind:
             from pathlib import Path as _Path
             bp = _Path(ctx).resolve()
-            # Coding context check
-            if (
-                (bp / 'pyproject.toml').is_file()
-                or (bp / 'setup.py').is_file()
-                or (bp / 'package.json').is_file()
-                or (bp / 'Cargo.toml').is_file()
-                or any(bp.glob('*.py'))
-            ):
-                kind = 'py'
-            else:
-                # Office document context check
+            # Use dominant extension in the current folder as smart default
+            from core.handler.parse_create_file import dominant_ext_in_folder
+            kind = dominant_ext_in_folder(str(bp))
+            if not kind:
+                # Fallback: check for office documents
                 if any(bp.glob('*.docx')) or any(bp.glob('*.xlsx')) or any(bp.glob('*.pptx')):
-                    kind = 'docx' # Standard default for office-heavy folders
+                    kind = 'docx'
                 else:
-                    kind = None # Let the unified dialog handle it
+                    kind = 'txt'  # Safe universal default
         name = (intent.get('name_hint') or '').strip()
         if name:
             low = name.lower()
@@ -245,43 +239,45 @@ def handle_files(handler, cmd, text_lower):
                     if ext in CREATE_BY_KIND:
                         kind = ext
                     break
-        if not name or not kind:
-            titles = {
-                'docx': ('WORD — J.A.R.V.I.S.', '⬡  ИМЯ ДОКУМЕНТА (.docx)'),
-                'xlsx': ('EXCEL — J.A.R.V.I.S.', '⬡  ИМЯ ТАБЛИЦЫ (.xlsx)'),
-                'pptx': ('POWERPOINT — J.A.R.V.I.S.', '⬡  ИМЯ ПРЕЗЕНТАЦИИ (.pptx)'),
-                'txt': ('ТЕКСТ — J.A.R.V.I.S.', '⬡  ИМЯ ФАЙЛА (.txt)'),
-                'py': ('PYTHON — J.A.R.V.I.S.', '⬡  ИМЯ МОДУЛЯ (.py)'),
-                'md': ('MARKDOWN — J.A.R.V.I.S.', '⬡  ИМЯ ФАЙЛА (.md)'),
-            }
-            tit, hdr = titles.get(
-                kind or 'docx',
-                ('ФАЙЛ — J.A.R.V.I.S.', f'⬡  ИМЯ ФАЙЛА (.{kind or "docx"})'),
+        # Always show the dialog — pre-fill with what we know, user confirms
+        kind = kind or 'txt'
+        titles = {
+            'docx': ('WORD — J.A.R.V.I.S.', '⬡  ИМЯ ДОКУМЕНТА (.docx)'),
+            'xlsx': ('EXCEL — J.A.R.V.I.S.', '⬡  ИМЯ ТАБЛИЦЫ (.xlsx)'),
+            'pptx': ('POWERPOINT — J.A.R.V.I.S.', '⬡  ИМЯ ПРЕЗЕНТАЦИИ (.pptx)'),
+            'txt': ('ТЕКСТ — J.A.R.V.I.S.', '⬡  ИМЯ ФАЙЛА (.txt)'),
+            'py': ('PYTHON — J.A.R.V.I.S.', '⬡  ИМЯ МОДУЛЯ (.py)'),
+            'md': ('MARKDOWN — J.A.R.V.I.S.', '⬡  ИМЯ ФАЙЛА (.md)'),
+        }
+        tit, hdr = titles.get(
+            kind,
+            ('ФАЙЛ — J.A.R.V.I.S.', f'⬡  ИМЯ ФАЙЛА (.{kind})'),
+        )
+        try:
+            res_vals = ask_text(
+                title=tit,
+                header=hdr,
+                ok_text='СОЗДАТЬ',
+                cancel_text='ОТМЕНА',
+                placeholder='',
+                initial_path=str(base_path),
+                show_extension_field=True,
+                default_extension=kind,
+                initial_value=name or '',
             )
-            try:
-                res_vals = ask_text(
-                    title=tit,
-                    header=hdr,
-                    ok_text='СОЗДАТЬ',
-                    cancel_text='ОТМЕНА',
-                    placeholder='',
-                    initial_path=str(base_path),
-                    show_extension_field=True,
-                    default_extension=kind,
-                )
-                if isinstance(res_vals, tuple) and len(res_vals) == 3:
-                    base_path_str, name, ext_pick = res_vals
-                    base_path = Path(base_path_str)
-                    ext_pick = (ext_pick or '').strip().lower().lstrip('.')
-                    if ext_pick:
-                        kind = ext_pick
-                elif isinstance(res_vals, tuple):
-                    base_path_str, name = res_vals[0], res_vals[1]
-                    base_path = Path(base_path_str)
-                else:
-                    name = res_vals
-            except Exception:
-                name = None
+            if isinstance(res_vals, tuple) and len(res_vals) == 3:
+                base_path_str, name, ext_pick = res_vals
+                base_path = Path(base_path_str)
+                ext_pick = (ext_pick or '').strip().lower().lstrip('.')
+                if ext_pick:
+                    kind = ext_pick
+            elif isinstance(res_vals, tuple):
+                base_path_str, name = res_vals[0], res_vals[1]
+                base_path = Path(base_path_str)
+            else:
+                name = res_vals
+        except Exception:
+            name = None
         if not name:
             handler.speak('Отменено.')
             return

@@ -56,12 +56,12 @@ class CommandHandler(BaseHandler):
         if cmd == 'mail_compose' and not module_enabled('inbox_digest'):
             self.speak('Модуль «Почта» выключен. Включите расширение в центре модулей.')
             return
-        if cmd.startswith('yt_') or cmd.startswith('vol_') or cmd.startswith('app_vol_') or cmd in ('media_pause', 'media_pause_youtube', 'media_pause_browser') or cmd == 'audio_switch':
+        if cmd.startswith('yt_') or cmd.startswith('vol_') or cmd.startswith('app_vol_') or cmd.startswith('media_') or cmd == 'audio_switch':
             from .commands.media import handle_yt_control, handle_volume
             if cmd.startswith('yt_'): handle_yt_control(self, cmd, text_lower)
             elif cmd.startswith('vol_') or cmd.startswith('app_vol_') or cmd == 'audio_switch':
                 handle_volume(self, cmd, text_lower, amount)
-            elif cmd in ('media_pause', 'media_pause_youtube', 'media_pause_browser'):
+            elif cmd in ('media_pause', 'media_play', 'media_pause_youtube', 'media_pause_browser', 'media_play_youtube', 'media_play_browser'):
                 from core.system import app_state
                 if app_state.mouse_moving:
                     app_state.mouse_moving = False
@@ -75,12 +75,13 @@ class CommandHandler(BaseHandler):
                     ok = False
                     try:
                         from actions.system import send_play_pause_to_video
-                        if cmd == 'media_pause_youtube':
-                            ok = send_play_pause_to_video(prefer='youtube')
-                        elif cmd == 'media_pause_browser':
-                            ok = send_play_pause_to_video(prefer='browser')
+                        action = 'play' if 'play' in cmd else ('pause' if 'pause' in cmd else 'toggle')
+                        if 'youtube' in cmd:
+                            ok = send_play_pause_to_video(prefer='youtube', action=action)
+                        elif 'browser' in cmd:
+                            ok = send_play_pause_to_video(prefer='browser', action=action)
                         else:
-                            ok = send_play_pause_to_video()
+                            ok = send_play_pause_to_video(action=action)
                     except Exception:
                         ok = False
                     if not ok:
@@ -104,7 +105,7 @@ class CommandHandler(BaseHandler):
         elif cmd in ['qa_search']:
             from .commands.ai import handle_ai
             handle_ai(self, cmd, text_lower, amount)
-        elif cmd in ['currency_rate', 'weather', 'google_search', 'translate', 'translate_speech', 'my_ip']:
+        elif cmd in ['currency_rate', 'weather', 'google_search', 'translate', 'translate_speech', 'my_ip', 'system_specs']:
             from .commands.info import handle_info
             handle_info(self, cmd, text_lower)
         elif cmd in ['empty_trash', 'create_folder', 'delete_folder', 'delete_file', 'cd_folder', 'explorer_go_up', 'explorer_goto', 'find_doc', 'find_sheet', 'find_file', 'create_word_doc'] or cmd.startswith('recent_'):
@@ -158,7 +159,7 @@ class CommandHandler(BaseHandler):
         elif cmd == 'spell_list':
             from .commands.game import handle_game_extra
             handle_game_extra(self, cmd, text_lower)
-        elif (cmd.startswith('open_') or cmd.startswith('close_')) and cmd not in ['open_browser_history', 'open_last_video', 'open_saved']:
+        elif (cmd.startswith('open_') or cmd.startswith('close_')) and cmd not in ['open_browser_history', 'open_last_video', 'open_saved', 'open_settings', 'open_keybinds', 'open_extensions', 'open_perf']:
             if cmd == 'open_task_manager':
                 import subprocess; subprocess.Popen(['taskmgr']); self.play_response()
             elif cmd == 'open_terminal':
@@ -181,6 +182,7 @@ class CommandHandler(BaseHandler):
             from actions.youtube import _open_youtube_url
             import urllib.parse as _up
             is_music = any(w in text_lower for w in ['песню', 'песня', 'музыку', 'музыка', 'трек'])
+            is_video = any(w in text_lower for w in ['видео', 'ролик', 'клип'])
             query = text_lower
             for sw in ['включи песню', 'поставь песню', 'найди песню',
                        'включи музыку', 'поставь музыку', 'найди музыку',
@@ -192,7 +194,12 @@ class CommandHandler(BaseHandler):
                 _open_youtube_url('https://www.youtube.com')
                 self.play_response()
             else:
-                yt_query = f'{query} песня' if is_music else query
+                yt_query = query
+                if is_music:
+                    yt_query += ' песня'
+                elif is_video:
+                    yt_query += ' видео'
+                    
                 def _play(q=yt_query, orig=query, music=is_music):
                     url = None
                     try:

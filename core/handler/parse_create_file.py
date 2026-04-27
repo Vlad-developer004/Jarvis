@@ -18,11 +18,14 @@ def parse_create_file_intent(text_lower: str) -> dict:
     for pat in (
         r"\b(?:именем|названием|название|имя)\s+(.+)$",
         r"\bфайл\s+([a-zа-яёії0-9_.\- ]+)$",
+        r"\b(?:создай|сделай|создать)\s+(?:файл|новый файл|пустой файл)\s+([a-zа-яёії0-9_.\- ]{1,80})$",
     ):
         m = re.search(pat, t, re.I)
         if m:
             cand = m.group(1).strip().strip(".,")
-            if cand and len(cand) < 120:
+            # Don't confuse extension keywords with filenames
+            _EXT_WORDS = {'python', 'пайтон', 'питон', 'typescript', 'javascript', 'markdown', 'html', 'css', 'json', 'vue', 'react', 'scss', 'word', 'ворд', 'excel', 'эксель'}
+            if cand and len(cand) < 120 and cand.lower() not in _EXT_WORDS:
                 name_hint = cand
                 t = t[: m.start()].strip()
             break
@@ -109,3 +112,31 @@ def _detect_kind(t: str) -> str | None:
     if re.search(r"\b(новый файл|создай файл|пустой файл)\b", t, re.I):
         return None
     return None
+
+def dominant_ext_in_folder(folder_path: str) -> str | None:
+    """Count file extensions in folder and return the most common one (among code/doc types)."""
+    from pathlib import Path
+    from collections import Counter
+    _CANDIDATE_EXTS = {
+        'py', 'ts', 'tsx', 'js', 'jsx', 'vue', 'svelte', 'php', 'go', 'rs',
+        'html', 'css', 'scss', 'json', 'md', 'txt', 'docx', 'xlsx', 'pptx',
+        'java', 'cs', 'cpp', 'rb', 'swift', 'kt'
+    }
+    try:
+        p = Path(folder_path)
+        if not p.is_dir():
+            return None
+        counts = Counter(
+            f.suffix.lower().lstrip('.')
+            for f in p.iterdir()
+            if f.is_file() and f.suffix.lower().lstrip('.') in _CANDIDATE_EXTS
+        )
+        if not counts:
+            return None
+        top_ext, top_count = counts.most_common(1)[0]
+        # Only suggest if there are at least 2 files of this type
+        if top_count >= 2:
+            return top_ext
+        return None
+    except Exception:
+        return None

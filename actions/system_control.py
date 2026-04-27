@@ -66,59 +66,82 @@ def cancel_shutdown() -> tuple[bool, str]:
         return (True, 'Таймер отменён')
     except Exception as e:
         return (False, str(e))
-def _toggle_wifi_worker(enabled: bool):
-    try:
-        import asyncio
-        try:
-            import winrt.windows.devices.radios as radios
-        except ImportError:
-            from winsdk.windows.devices import radios
+def _toggle_radio(kind_name: str, enabled: bool):
+    """
+    Toggle a Windows radio (WiFi or Bluetooth).
+    Tier 1: winrt (if installed)
+    Tier 2: PowerShell Get-PnpDevice / Enable-NetAdapter approach
+    Tier 3: netsh (WiFi only) / PowerShell DeviceManagement
+    """
+    import asyncio
 
-        async def _wifi_toggle():
-            radios_list = await radios.Radio.get_radios_async()
-            found = False
-            for r in radios_list:
-                if r.kind == radios.RadioKind.WI_FI:
-                    state = radios.RadioState.ON if enabled else radios.RadioState.OFF
-                    print(f"[SYSTEM] Toggling WiFi to {state} ({r.name})", flush=True)
-                    res = await r.set_state_async(state)
-                    print(f"[SYSTEM] WiFi toggle result: {res}", flush=True)
-                    found = True
-            if not found:
-                print("[SYSTEM] No WiFi radio found via winsdk.", flush=True)
-        asyncio.run(_wifi_toggle())
-    except ImportError:
-        print("[SYSTEM] winsdk not installed, WiFi toggle unavailable.", flush=True)
-    except Exception as e:
-        print(f"[SYSTEM] WiFi toggle error: {e}", flush=True)
+    # ── Tier 1: winrt ────────────────────────────────────────────────────
+    try:
+        import winrt.windows.devices.radios as _radios  # type: ignore
+
+        async def _winrt_toggle():
+            radio_list = await _radios.Radio.get_radios_async()
+            target_kind = _radios.RadioKind.WI_FI if kind_name == 'wifi' else _radios.RadioKind.BLUETOOTH
+            for r in radio_list:
+                if r.kind == target_kind:
+                    state = _radios.RadioState.ON if enabled else _radios.RadioState.OFF
+                    await r.set_state_async(state)
+                    print(f'[SYSTEM] {kind_name} toggled via winrt → {state}', flush=True)
+                    return True
+            return False
+
+        ok = asyncio.run(_winrt_toggle())
+        if ok:
+            return
+    except Exception:
+        pass
+
+    # ── Tier 2: PowerShell Enable/Disable-NetAdapter ─────────────────────
+    try:
+        verb = 'Enable' if enabled else 'Disable'
+        if kind_name == 'wifi':
+            ps_cmd = (
+                f'Get-NetAdapter | Where-Object {{$_.PhysicalMediaType -eq "Native 802.11"}} | '
+                f'{verb}-NetAdapter -Confirm:$false'
+            )
+        else:  # bluetooth
+            ps_cmd = (
+                f'Get-PnpDevice | Where-Object {{$_.Class -eq "Bluetooth"}} | '
+                f'{verb}-PnpDevice -Confirm:$false'
+            )
+        subprocess.run(
+            ['powershell', '-WindowStyle', 'Hidden', '-Command', ps_cmd],
+            capture_output=True, timeout=10, creationflags=134217728
+        )
+        print(f'[SYSTEM] {kind_name} toggled via PowerShell NetAdapter', flush=True)
+        return
+    except Exception:
+        pass
+
+    # ── Tier 3: netsh (WiFi only) ────────────────────────────────────────
+    if kind_name == 'wifi':
+        try:
+            action = 'connect' if enabled else 'disconnect'
+            subprocess.run(
+                ['netsh', 'interface', 'set', 'interface', 'Wi-Fi', 'admin=', 'enabled' if enabled else 'disabled'],
+                capture_output=True, timeout=5, creationflags=134217728
+            )
+            print(f'[SYSTEM] WiFi toggled via netsh', flush=True)
+        except Exception as e:
+            print(f'[SYSTEM] WiFi toggle failed all tiers: {e}', flush=True)
+    else:
+        print(f'[SYSTEM] Bluetooth toggle: no fallback available without winrt', flush=True)
+
+
+def _toggle_wifi_worker(enabled: bool):
+    _toggle_radio('wifi', enabled)
+
 def toggle_wifi(enabled: bool) -> tuple[bool, str]:
     _run_system_async(_toggle_wifi_worker, enabled)
     return (True, f'Команда на {("включение" if enabled else "выключение")} Wi-Fi отправлена')
 def _toggle_bluetooth_worker(enabled: bool):
-    try:
-        import asyncio
-        try:
-            import winrt.windows.devices.radios as radios
-        except ImportError:
-            from winsdk.windows.devices import radios
+    _toggle_radio('bluetooth', enabled)
 
-        async def _bt_toggle():
-            radios_list = await radios.Radio.get_radios_async()
-            found = False
-            for r in radios_list:
-                if r.kind == radios.RadioKind.BLUETOOTH:
-                    state = radios.RadioState.ON if enabled else radios.RadioState.OFF
-                    print(f"[SYSTEM] Toggling Bluetooth to {state} ({r.name})", flush=True)
-                    res = await r.set_state_async(state)
-                    print(f"[SYSTEM] Bluetooth toggle result: {res}", flush=True)
-                    found = True
-            if not found:
-                print("[SYSTEM] No Bluetooth radio found via winsdk.", flush=True)
-        asyncio.run(_bt_toggle())
-    except ImportError:
-        print("[SYSTEM] winsdk not installed, Bluetooth toggle unavailable.", flush=True)
-    except Exception as e:
-        print(f"[SYSTEM] Bluetooth toggle error: {e}", flush=True)
 def toggle_bluetooth(enabled: bool) -> tuple[bool, str]:
     _run_system_async(_toggle_bluetooth_worker, enabled)
     return (True, f'Команда на {("включение" if enabled else "выключение")} Bluetooth отправлена')
@@ -156,27 +179,163 @@ def get_my_ip() -> str:
     except Exception:
         return "Не удалось получить IP адрес. Проверьте соединение."
 def clean_system() -> tuple[bool, str]:
+    """
+    High-level deep PC cleanup:
+    - User & System %TEMP% folders
+    - Windows Update cache (SoftwareDistribution\\Download)
+    - Browser caches (Chrome, Brave, Firefox, Edge, Yandex)
+    - Thumbnail cache (thumbcache_*.db)
+    - Windows Prefetch files
+    - Recycle Bin
+    - DNS cache flush
+    - Windows Event Logs clear
+    - Memory standby list flush (EmptyStandbyList)
+    Reports total MB freed.
+    """
     import shutil
-    cleaned_dirs = 0
-    errors = 0
-    temp_paths = [os.environ.get('TEMP'), os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'Temp'), os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Temp')]
-    for path in temp_paths:
-        if not path or not os.path.exists(path):
-            continue
-        for item in os.listdir(path):
-            if 'jarvis_tts_cache' in item:
-                continue
-            item_path = os.path.join(path, item)
+    import threading
+
+    def _do_clean(speak_fn=None):
+        import ctypes
+        import glob
+
+        freed_bytes = 0
+        errors = 0
+        local_app = os.environ.get('LOCALAPPDATA', '')
+        app_data   = os.environ.get('APPDATA', '')
+        sys_root   = os.environ.get('SystemRoot', r'C:\Windows')
+        user_profile = os.environ.get('USERPROFILE', '')
+
+        def _rm(path: str):
+            nonlocal freed_bytes, errors
             try:
-                if os.path.isfile(item_path) or os.path.islink(item_path):
-                    os.unlink(item_path)
-                elif os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-                cleaned_dirs += 1
+                if os.path.isfile(path) or os.path.islink(path):
+                    freed_bytes += os.path.getsize(path)
+                    os.unlink(path)
+                elif os.path.isdir(path):
+                    size = sum(
+                        os.path.getsize(os.path.join(dp, f))
+                        for dp, _, fs in os.walk(path)
+                        for f in fs
+                        if os.path.exists(os.path.join(dp, f))
+                    )
+                    freed_bytes += size
+                    shutil.rmtree(path, ignore_errors=True)
             except Exception:
                 errors += 1
-    try:
-        subprocess.Popen(['cleanmgr', '/sagerun:1'], creationflags=134217728)
-    except Exception:
-        pass
-    return (True, f'Уборка завершена. Очищено объектов: {cleaned_dirs}. Ошибок (занятые файлы): {errors}')
+
+        def _rm_dir_contents(path: str, skip_names: list = None):
+            if not path or not os.path.isdir(path):
+                return
+            for item in os.listdir(path):
+                if skip_names and item in skip_names:
+                    continue
+                if 'jarvis_tts_cache' in item:
+                    continue
+                _rm(os.path.join(path, item))
+
+        # ── 1. TEMP folders ──────────────────────────────────────────────
+        for tmp in [
+            os.environ.get('TEMP'),
+            os.path.join(sys_root, 'Temp'),
+            os.path.join(local_app, 'Temp'),
+        ]:
+            _rm_dir_contents(tmp)
+
+        # ── 2. Windows Update cache ──────────────────────────────────────
+        _rm_dir_contents(os.path.join(sys_root, r'SoftwareDistribution\Download'))
+
+        # ── 3. Browser caches ────────────────────────────────────────────
+        browser_cache_paths = [
+            # Chrome
+            os.path.join(local_app, r'Google\Chrome\User Data\Default\Cache'),
+            os.path.join(local_app, r'Google\Chrome\User Data\Default\Code Cache'),
+            os.path.join(local_app, r'Google\Chrome\User Data\Default\GPUCache'),
+            # Brave
+            os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\Cache'),
+            os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\Code Cache'),
+            os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\GPUCache'),
+            # Edge
+            os.path.join(local_app, r'Microsoft\Edge\User Data\Default\Cache'),
+            os.path.join(local_app, r'Microsoft\Edge\User Data\Default\Code Cache'),
+            # Firefox
+            os.path.join(local_app, r'Mozilla\Firefox\Profiles'),
+            # Opera
+            os.path.join(app_data,  r'Opera Software\Opera Stable\Cache'),
+            # Yandex
+            os.path.join(local_app, r'Yandex\YandexBrowser\User Data\Default\Cache'),
+        ]
+        for bp in browser_cache_paths:
+            if 'Firefox' in bp:
+                # Firefox keeps per-profile cache dirs
+                if os.path.isdir(bp):
+                    for prof in os.listdir(bp):
+                        for sub in ('cache2', 'startupCache', 'OfflineCache'):
+                            _rm_dir_contents(os.path.join(bp, prof, sub))
+            else:
+                _rm_dir_contents(bp)
+
+        # ── 4. Thumbnail cache ───────────────────────────────────────────
+        thumb_dir = os.path.join(local_app, r'Microsoft\Windows\Explorer')
+        if os.path.isdir(thumb_dir):
+            for f in glob.glob(os.path.join(thumb_dir, 'thumbcache_*.db')):
+                _rm(f)
+            for f in glob.glob(os.path.join(thumb_dir, 'iconcache_*.db')):
+                _rm(f)
+
+        # ── 5. Windows Prefetch ──────────────────────────────────────────
+        prefetch = os.path.join(sys_root, r'Prefetch')
+        _rm_dir_contents(prefetch)
+
+        # ── 6. Recent / Jump-list spam ───────────────────────────────────
+        for sub in [
+            r'Microsoft\Windows\Recent\AutomaticDestinations',
+            r'Microsoft\Windows\Recent\CustomDestinations',
+        ]:
+            _rm_dir_contents(os.path.join(app_data, sub))
+
+        # ── 7. Recycle Bin (all drives) ──────────────────────────────────
+        try:
+            ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 0x0007)
+        except Exception:
+            pass
+
+        # ── 8. DNS cache flush ───────────────────────────────────────────
+        try:
+            subprocess.run(['ipconfig', '/flushdns'], capture_output=True, creationflags=134217728, timeout=5)
+        except Exception:
+            pass
+
+        # ── 9. Memory standby list flush (needs admin, fails gracefully) ──
+        try:
+            elist_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools', 'EmptyStandbyList.exe')
+            if os.path.exists(elist_path):
+                subprocess.run([elist_path, 'standbylist'], capture_output=True, creationflags=134217728, timeout=10)
+            else:
+                # Fallback: use RAMMap CLI if available
+                subprocess.run(['RAMMap.exe', '-Et'], capture_output=True, creationflags=134217728, timeout=5)
+        except Exception:
+            pass
+
+        # ── 10. Windows Event Log clear (non-critical, best-effort) ──────
+        try:
+            logs_to_clear = ['Application', 'System', 'Setup']
+            for log in logs_to_clear:
+                subprocess.run(
+                    ['wevtutil', 'cl', log],
+                    capture_output=True, creationflags=134217728, timeout=5
+                )
+        except Exception:
+            pass
+
+        freed_mb = round(freed_bytes / (1024 * 1024))
+        msg = f'Уборка завершена. Освобождено {freed_mb} МБ. Ошибок (занятые файлы): {errors}.'
+        print(f'[CLEANUP] {msg}', flush=True)
+        if speak_fn:
+            speak_fn(msg)
+
+    # Run in background so Jarvis can speak immediately
+    import threading
+    from core.speech import speak as _speak
+    threading.Thread(target=_do_clean, args=(_speak,), daemon=True, name='jarvis-cleanup').start()
+    return (True, 'Начинаю уборку, сэр. Чищу временные файлы, кэши браузеров, мусор Windows. Доложу по завершении.')

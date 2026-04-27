@@ -8,10 +8,11 @@ try:
     _input.PAUSE = 0
 except ImportError:
     import pyautogui as _input
-PROFILES_DIR = Path('data') / 'game_profiles'
+from config_pack.config import get_data_dir
+PROFILES_DIR = Path(get_data_dir('game_profiles'))
 _profile_name: str = ''
 _entries: list[dict] = []
-_flat: list[tuple[str, dict]] = []
+_flat: list[tuple[str, dict, str, int]] = []
 _bindings: dict = {}
 _last_cast: dict[str, float] = {}
 def press_robust(key: str, duration: float = 0.15):
@@ -22,10 +23,12 @@ def press_robust(key: str, duration: float = 0.15):
     if not key:
         return
     try:
+        print(f"[INPUT] Pressing key: {key!r} (duration={duration}s)", flush=True)
         _input.keyDown(key)
         time.sleep(duration)
         _input.keyUp(key)
-    except Exception:
+    except Exception as e:
+        print(f"[INPUT] Error pressing {key!r}: {e}", flush=True)
         # Fallback to simple press if keyDown/Up fails or not supported
         try:
             _input.press(key)
@@ -137,7 +140,9 @@ def load_profile(profile_name: str) -> tuple[bool, str]:
                 continue
             for variant in entry.get('variants', [entry['name']]):
                 v_norm = _nn(variant.lower().strip())
-                _flat.append((v_norm, entry))
+                v_nospace = v_norm.replace(' ', '')
+                v_len = len(v_norm.split())
+                _flat.append((v_norm, entry, v_nospace, v_len))
         
         _flat.sort(key=lambda x: len(x[0]), reverse=True)
         _profile_name = data.get('game', profile_name)
@@ -167,26 +172,22 @@ def match_command(text: str, threshold: float = 0.75) -> tuple[dict, float] | No
     
     # 1. Exact or very close nospace match (Highest priority)
     text_nospace = text_lower.replace(' ', '')
-    for variant, entry in _flat:
+    for variant, entry, v_nospace, vlen in _flat:
         if text_lower == variant:
             return (entry, 1.0)
-        v_nospace = variant.replace(' ', '')
         if text_nospace == v_nospace and len(v_nospace) > 4:
             return (entry, 0.98)
 
     if not _fuzz:
         # Simple fallback if rapidfuzz is missing
-        for variant, entry in _flat:
+        for variant, entry, _, _ in _flat:
             if variant == text_lower: return (entry, 1.0)
         return None
 
     best_score = 0.0
     best_entry = None
     
-    for variant, entry in _flat:
-        v_words = variant.split()
-        vlen = len(v_words)
-        
+    for variant, entry, _, vlen in _flat:
         # Base fuzzy scores
         ratio = _fuzz.ratio(text_lower, variant) / 100.0
         sort_ratio = _fuzz.token_sort_ratio(text_lower, variant) / 100.0
@@ -232,7 +233,7 @@ def get_command_list() -> str:
 def get_hotwords() -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
-    for variant, _ in _flat:
+    for variant, _, _, _ in _flat:
         if variant not in seen:
             seen.add(variant)
             result.append(variant)

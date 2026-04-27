@@ -7,9 +7,11 @@ import time
 import queue
 import gc
 from datetime import datetime
+from functools import lru_cache
 import pygame
 import psutil
 import pythoncom
+import json
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'jarvis_tts_cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -36,6 +38,9 @@ _MASTER_VOLUME = 1.0
 _warmup_started = False
 _warmup_lock = threading.Lock()
 _mixer_lock = threading.RLock()
+# Cached audio device name — read once, not on every playback
+_cached_audio_device: str | None = None
+_cached_audio_device_loaded: bool = False
 try:
     if not pygame.mixer.get_init():
         pygame.mixer.pre_init(48000, -16, 2, 2048)
@@ -204,6 +209,7 @@ class TTSManager:
             time.sleep(0.05)
 
     def speak(self, text: str, priority: int = 10, wait: bool = False):
+        # normalize on calling thread (often already a background thread) so worker loop stays lean
         text = normalize_for_tts(text).strip()
         if not text: return
         self.active_playback = True
@@ -218,7 +224,7 @@ class TTSManager:
         for i, s in enumerate(sentences): self.executor.submit(self._queue_sentence, s, priority, base_ts + i * 0.001)
         self._reset_unload_timer()
         if wait: self.wait_until_finished()
-        else: time.sleep(0.02)
+        # No sleep needed here — generation is async and already queued
 
     def put_item(self, priority: int, ts: float, item: str):
         if not hasattr(self, '_last_items_lock'):
@@ -414,10 +420,29 @@ def _resolve_sdl_device_name(preferred_name: str | None) -> str | None:
 
 
 
+def _get_audio_device_name() -> str | None:
+    """Read audio device from settings once and cache. Reset by apply_audio_devices()."""
+    global _cached_audio_device, _cached_audio_device_loaded
+    if _cached_audio_device_loaded:
+        return _cached_audio_device
+    try:
+        from config_pack.config import get_settings_path
+        p = get_settings_path()
+        if os.path.exists(p):
+            with open(p, 'r', encoding='utf-8') as f:
+                d = json.load(f)
+                if isinstance(d, dict):
+                    dev = d.get('audio_output_device_name')
+                    _cached_audio_device = dev if (isinstance(dev, str) and dev.strip()) else None
+    except Exception:
+        _cached_audio_device = None
+    _cached_audio_device_loaded = True
+    return _cached_audio_device
+
 def ensure_mixer_init() -> None:
     with _mixer_lock:
         try:
-            # Check if initialized. If so, try a test call to ensure device is open.
+            # Fast path: if already initialized, just ensure channels are set
             init_data = pygame.mixer.get_init()
             if init_data:
                 try:
@@ -428,22 +453,9 @@ def ensure_mixer_init() -> None:
                     try: pygame.mixer.quit()
                     except: pass
             
-            dev = None
-            try:
-                from config_pack.config import get_settings_path
-                p = get_settings_path()
-                if os.path.exists(p):
-                    with open(p, 'r', encoding='utf-8') as f:
-                        d = json.load(f)
-                        if isinstance(d, dict):
-                            dev = d.get('audio_output_device_name')
-                            if not isinstance(dev, str) or not dev.strip():
-                                dev = None
-            except Exception:
-                dev = None
+            # Use cached device name (avoids json.load on every playback)
+            dev = _get_audio_device_name()
             
-            # Use System Default by default! (None)
-            # 48000 matching pre_init is safer
             def _try_init(dname=None, freq=48000):
                 try:
                     pygame.mixer.init(frequency=freq, devicename=dname, buffer=2048)
@@ -455,7 +467,6 @@ def ensure_mixer_init() -> None:
                     return False
 
             success = False
-            # Try order: 1. Default (None) 48k, 2. Default 44.1k
             if _try_init(None, 48000): success = True
             elif _try_init(None, 44100): success = True
             
@@ -466,7 +477,10 @@ def ensure_mixer_init() -> None:
             print(f"[TTS] ensure_mixer_init crash: {e}", flush=True)
 
 def apply_audio_devices(output_device_name: str | None = None, input_device_index: int | None = None) -> tuple[bool, str]:
-    """Live-apply audio device changes without restarting Jarvis."""
+    # Reset device cache so next ensure_mixer_init() picks up the new device
+    global _cached_audio_device, _cached_audio_device_loaded
+    _cached_audio_device = None
+    _cached_audio_device_loaded = False
     msgs = []
     ok = True
 
@@ -561,7 +575,9 @@ def wait_for_pygame_mixer_idle(timeout: float = 90.0, poll: float = 0.08) -> Non
         except Exception:
             return
         time.sleep(poll)
+@lru_cache(maxsize=512)
 def normalize_for_tts(text: str) -> str:
+    """Normalize text for TTS. LRU-cached — repeated phrases (responses, game commands) are free."""
     if not text: return ''
     if not hasattr(normalize_for_tts, '_nlp_cache'):
         from core.nlp import format_time_russian, get_russian_plural
@@ -585,6 +601,16 @@ def normalize_for_tts(text: str) -> str:
         except Exception:
             return m.group(0)
     text = re.sub(r'\b(19\d{2}|20\d{2})\s*(?:года|год)\b', _year_repl, text, flags=re.IGNORECASE)
+    # Handle dates like '1 сентября' -> 'первого сентября'
+    def _date_repl(m):
+        try:
+            day = int(m.group(1))
+            month = m.group(2)
+            ord_day = num2words(day, lang='ru', to='ordinal')
+            # For dates in text, 'первого', 'второго' (genitive) is usually better than 'первый'
+            return _ru_genitive_ordinal(ord_day) + ' ' + month
+        except Exception: return m.group(0)
+    text = re.sub(r'\b(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b', _date_repl, text, flags=re.IGNORECASE)
     text = re.sub(r'(?<![А-ЯЁа-яёa-zA-Z])[А-ЯЁ]{2,6}(?![А-ЯЁа-яёa-zA-Z])', lambda m: _CYR_ABBREV.get(m.group(0), ' '.join((_CYR_LETTERS.get(c, c) for c in m.group(0)))), text)
     text = re.sub(r"[a-zA-Z]+(?:['-][a-zA-Z]+)*", _transliterate_word, text)
     text = re.sub(r'(?<!\w)(\d+)(?!\w)', lambda m: num2words(int(m.group(1)), lang='ru'), text)

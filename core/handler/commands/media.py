@@ -1,4 +1,5 @@
 import time
+import re
 from core.nlp import extract_duration_seconds
 def handle_yt_control(handler, cmd, text_lower):
     from actions.youtube import control_youtube, open_last_watched_video, open_youtube_channel
@@ -40,11 +41,31 @@ def handle_volume(handler, cmd, text_lower, amount):
         if switch_audio_output(text_lower): handler.play_response()
         else: handler.speak('Не удалось найти устройство вывода.')
     elif cmd in ['app_vol_up', 'app_vol_down', 'app_vol_set']:
-        q = text_lower
-        for sw in ['приложения', 'приложение', 'громкость', 'звук', 'сделай', 'установи', 'на', 'в']:
-            q = q.replace(sw, '')
-        for sw in ['громче', 'тише', 'увеличь', 'убавь', 'поставь', 'минимум', 'максимум']:
-            q = q.replace(sw, '')
-        app_name = q.strip()
+        from core.nlp.commands import normalize_numbers
+        q = normalize_numbers(text_lower)
+        
+        # Clean up text to find app name
+        for sw in ['приложения', 'приложение', 'громкость', 'звук', 'сделай', 'установи', 'на', 'в', 'у', 'для']:
+            q = q.replace(sw, ' ')
+        for sw in ['громче', 'тише', 'увеличь', 'убавь', 'поставь', 'минимум', 'максимум', 'выставь', 'задай']:
+            q = q.replace(sw, ' ')
+        
+        # Remove the numeric amount if present to avoid it being part of the app name
+        if amount is not None:
+            q = q.replace(str(amount), ' ')
+            
+        # Remove any remaining digits and extra spaces
+        app_name_clean = re.sub(r'\d+', '', q).strip()
+        app_name_clean = re.sub(r'\s+', ' ', app_name_clean)
         direction = 'up' if 'up' in cmd else ('down' if 'down' in cmd else 'set')
-        if set_app_volume(app_name, direction, amount or 20)[0]: handler.play_response()
+        
+        # Try app volume first
+        ok, res = set_app_volume(app_name_clean, direction, amount or 20)
+        if ok:
+            handler.play_response()
+        else:
+            # Fallback to system volume if app not found and name is empty or just numeric
+            if not app_name_clean:
+                handle_volume(handler, cmd.replace('app_', ''), text_lower, amount)
+            else:
+                handler.speak(res)

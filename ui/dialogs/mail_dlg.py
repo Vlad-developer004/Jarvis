@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ui.hud_style import JStyle
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -33,7 +34,7 @@ def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
         dlg.destroy()
         ok_cb()
     ctk.CTkButton(
-        btn_row, text='ПОДТВЕРДИТЬ', width=160, height=40,
+        btn_row, text='ПОДТВЕРДИТЬ', width=160, height=JStyle.H_NORM,
         font=(hud._F, _sf(10), 'bold'),
         fg_color=_blend(_RED if danger else _CYAN, 0.25),
         hover_color=_blend(_RED if danger else _CYAN, 0.45),
@@ -41,7 +42,7 @@ def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
         command=_ok
     ).pack(side='left', padx=10)
     ctk.CTkButton(
-        btn_row, text='ОТМЕНА', width=120, height=40,
+        btn_row, text='ОТМЕНА', width=120, height=JStyle.H_NORM,
         font=(hud._F, _sf(10), 'bold'),
         fg_color=_blend(_WHITE, 0.08),
         command=dlg.destroy
@@ -125,7 +126,7 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
         ).grid(row=row, column=0, sticky='e', padx=(0, 8), pady=4)
         ent = ctk.CTkEntry(
             parent,
-            height=44,
+            height=JStyle.H_LARGE,
             font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_CYAN, 0.08),
             border_color=_field_border,
@@ -150,7 +151,7 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
         text_color=_TEXT,
         border_color=_blend(_GREEN, 0.5),
         border_width=1,
-        corner_radius=8,
+        corner_radius=JStyle.RAD_BTN,
         scrollbar_button_color=_blend(_CYAN, 0.25),
         scrollbar_button_hover_color=_blend(_CYAN, 0.42),
     )
@@ -184,7 +185,7 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
             tk.Label(row, text=p.name, bg=_card_bg, fg=_TEXT,
                      font=(hud._F, _sf(9, hud.zoom_factor)), anchor='w').pack(side='left', fill='x', expand=True)
             ctk.CTkButton(
-                row, text='✕', width=36, height=32,
+                row, text='✕', width=36, height=JStyle.H_TOOL,
                 font=(hud._F, _sf(10), 'bold'),
                 fg_color=_blend(_RED, 0.12), hover_color=_blend(_RED, 0.3), text_color=_RED,
                 command=lambda path=p: _rm_comp_attach(path),
@@ -267,13 +268,13 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
             dlg.after(0, _done)
         threading.Thread(target=work, daemon=True).start()
     ctk.CTkButton(
-        _btn_center, text='ОТПРАВИТЬ', width=220, height=48,
+        _btn_center, text='ОТПРАВИТЬ', width=220, height=JStyle.H_HUGE,
         font=(hud._F, _sf(12), 'bold'),
         fg_color=_blend(_GREEN, 0.25), hover_color=_blend(_GREEN, 0.45), text_color=_GREEN,
         command=_do_compose_send,
     ).pack(side='left', padx=10)
     ctk.CTkButton(
-        _btn_center, text='ОТМЕНА', width=160, height=48,
+        _btn_center, text='ОТМЕНА', width=160, height=JStyle.H_HUGE,
         font=(hud._F, _sf(11), 'bold'),
         fg_color=_blend(_CYAN, 0.12), hover_color=_blend(_CYAN, 0.22),
         command=dlg.destroy,
@@ -312,7 +313,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     def _open_compose():
         open_compose_dialog(hud, win, set_status=lambda t, c=_DIM: status.config(text=t, fg=c))
     ctk.CTkButton(
-        top, text='✉  НАПИСАТЬ', width=180, height=44,
+        top, text='✉  НАПИСАТЬ', width=180, height=JStyle.H_LARGE,
         font=(hud._F, _sf(11), 'bold'),
         fg_color=_blend(_GREEN, 0.22), hover_color=_blend(_GREEN, 0.4), text_color=_GREEN,
         command=_open_compose,
@@ -320,7 +321,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     
     # Close button for full-screen mode
     ctk.CTkButton(
-        top, text='✕', width=48, height=44,
+        top, text='✕', width=48, height=JStyle.H_LARGE,
         font=(hud._F, _sf(14), 'bold'),
         fg_color="transparent", hover_color=_blend(_RED, 0.2), text_color=_RED,
         command=win.destroy,
@@ -689,7 +690,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         text_color=_TEXT,
         border_color=_blend(_GREEN, 0.5),
         border_width=1,
-        corner_radius=8,
+        corner_radius=JStyle.RAD_BTN,
         scrollbar_button_color=_blend(_CYAN, 0.25),
         scrollbar_button_hover_color=_blend(_CYAN, 0.42),
     )
@@ -746,7 +747,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             row,
             text='ВСТАВИТЬ',
             width=160,
-            height=44,
+            height=JStyle.H_LARGE,
             font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_GREEN, 0.25),
             command=_ok,
@@ -881,7 +882,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         _btn_reply_center,
         text='ОТПРАВИТЬ ОТВЕТ',
         width=220,
-        height=42,
+        height=JStyle.H_LARGE,
         font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
         fg_color=_blend(_GREEN, 0.25),
         hover_color=_blend(_GREEN, 0.45),
@@ -892,7 +893,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         _btn_reply_center,
         text='УДАЛИТЬ ПИСЬМО',
         width=200,
-        height=42,
+        height=JStyle.H_LARGE,
         font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
         fg_color=_blend(_RED, 0.15),
         hover_color=_blend(_RED, 0.3),
@@ -903,7 +904,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         _btn_reply_center,
         text='ОБНОВИТЬ СПИСОК',
         width=200,
-        height=42,
+        height=JStyle.H_LARGE,
         font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
         fg_color=_blend(_CYAN, 0.12),
         hover_color=_blend(_CYAN, 0.22),

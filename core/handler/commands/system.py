@@ -19,7 +19,8 @@ def handle_system(handler, cmd, text_lower, amount):
             app_state.dictation_mode = True; handler.play_response()
     elif cmd == 'system_cleanup':
         from actions.system import clean_system
-        if clean_system(): handler.play_response()
+        ok, msg = clean_system()
+        if ok: handler.speak(msg)
     elif cmd == 'internet_speed':
         from actions.system import check_internet_speed
         handler.speak('Запускаю проверку скорости... Один момент.')

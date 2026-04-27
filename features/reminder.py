@@ -83,68 +83,68 @@ def _show_reminder_window(message: str, master=None):
     _theme = get_current_theme_name()
     ctk.set_appearance_mode("Light" if _theme == "light" else "Dark")
     
+    from ui.hud_utils import _center_window, _apply_window_icon, _set_dark_title_bar, _make_resizable
+    
+    # Resolve scaling factor
+    px = lambda v: v
+    if master and hasattr(master, '_px'): px = master._px
+    elif master and hasattr(master, 'master') and hasattr(master.master, '_px'): px = master.master._px
+
     _ACCENT = _CYAN
     root = tk.Toplevel(master) if master else tk.Tk()
+    
+    # Size and Centering
+    W, H = px(900), px(500)
     root.withdraw()
-    W, H = 640, 360
-    sw = root.winfo_screenwidth()
-    sh = root.winfo_screenheight()
-    x = (sw - W) // 2
-    y = (sh - H) // 2
-    root.title("REMINDER — J.A.R.V.I.S.")
-    root.geometry(f"{W}x{H}+{x}+{y}")
+    _center_window(root, W, H)
+    _make_resizable(root)
+    
     root.configure(bg=_BG)
-    root.resizable(False, False)
-    root.overrideredirect(True)
-    root.attributes("-topmost", True)
-    root.attributes("-alpha", 0.0)
+    _set_dark_title_bar(root)
+    root.after(150, lambda: _set_dark_title_bar(root))
+    _apply_window_icon(root, master)
 
-    outer = tk.Frame(root, bg=_ACCENT, bd=0)
-    outer.place(x=0, y=0, width=W, height=H)
-    inner = tk.Frame(outer, bg=_BG, bd=0)
-    inner.place(x=1, y=1, width=W - 2, height=H - 2)
+    root.title('НАПОМИНАНИЕ — J.A.R.V.I.S.')
 
-    # Title Bar
-    title_bar = tk.Frame(inner, bg=_PANEL, height=44)
+    inner = tk.Frame(root, bg=_BG, bd=0)
+    inner.pack(fill="both", expand=True)
+
+    # Title Bar (Design element only now)
+    title_bar = tk.Frame(inner, bg=_PANEL, height=px(50))
     title_bar.pack(fill="x")
-    hdr = tk.Frame(inner, bg=_blend(_ACCENT, 0.4), height=2)
-    hdr.pack(fill="x")
 
     def _close():
-        _fade_out(root)
+        root.destroy()
 
-    btn_close = tk.Label(title_bar, text="✕", font=("Consolas", 14), fg=_DIM, bg=_PANEL, cursor="hand2")
-    btn_close.pack(side="right", padx=16)
-    btn_close.bind("<Button-1>", lambda e: _close())
-    btn_close.bind("<Enter>", lambda e: btn_close.configure(fg=_RED))
-    btn_close.bind("<Leave>", lambda e: btn_close.configure(fg=_DIM))
+    # THE FAMOUS ACCENT LINE
+    tk.Frame(inner, bg=_ACCENT, height=2).pack(fill='x')
 
-    lbl_bell = tk.Label(title_bar, text="⬡", font=("Consolas", 16), fg=_ACCENT, bg=_PANEL)
-    lbl_bell.pack(side="left", padx=(18, 10))
-    tk.Label(title_bar, text="НАПОМИНАНИЕ", font=("Consolas", 11, "bold"), fg=_TEXT, bg=_PANEL).pack(side="left")
+    lbl_bell = tk.Label(title_bar, text="⬡", font=("Consolas", px(18)), fg=_ACCENT, bg=_PANEL)
+    lbl_bell.pack(side="left", padx=(px(20), px(10)))
+    tk.Label(title_bar, text="НАПОМИНАНИЕ", font=("Consolas", px(12), "bold"), fg=_TEXT, bg=_PANEL).pack(side="left")
 
-    content = tk.Frame(inner, bg=_BG)
-    content.pack(fill="both", expand=True, padx=36, pady=(32, 0))
+    content = tk.Frame(root, bg=_BG)
+    content.pack(fill="both", expand=True, padx=px(40), pady=(px(40), 0))
 
-    tk.Label(content, text="Голосом: «закрой» / «ок»", font=("Segoe UI", 11), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, 20))
+    tk.Label(content, text="Голосом: «закрой» / «ок»", font=("Segoe UI", px(12)), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, px(20)))
     
     display = message if len(message) > 72 else message.upper()
-    lbl_msg = tk.Label(content, text=display, font=("Consolas", 20, "bold"), fg=_AMBER, bg=_BG, wraplength=W - 72, justify="center")
-    lbl_msg.pack(expand=True, fill="both", pady=10)
+    lbl_msg = tk.Label(content, text=display, font=("Consolas", px(32), "bold"), fg=_AMBER, bg=_BG, wraplength=W - px(100), justify="center")
+    lbl_msg.pack(expand=True, fill="both", pady=px(10))
 
-    lbl_sub = tk.Label(content, text="J.A.R.V.I.S. — REMINDER SUBSYSTEM", font=("Consolas", 9), fg=_blend(_DIM, 0.7), bg=_BG)
-    lbl_sub.pack(pady=(0, 20))
+    lbl_sub = tk.Label(content, text="J.A.R.V.I.S. — REMINDER SUBSYSTEM", font=("Consolas", px(10)), fg=_blend(_DIM, 0.7), bg=_BG)
+    lbl_sub.pack(pady=(0, px(20)))
     
     # Button Row
     btn_wrap = tk.Frame(inner, bg=_BG)
-    btn_wrap.pack(fill="x", pady=(0, 32))
+    btn_wrap.pack(fill="x", pady=(0, px(40)))
     btn_inner = tk.Frame(btn_wrap, bg=_BG)
     btn_inner.pack(anchor="center")
 
     btn = ctk.CTkButton(
-        btn_inner, text="ЗАКРЫТЬ  ✕", width=200, height=48, 
+        btn_inner, text="ЗАКРЫТЬ  ✕", width=px(240), height=px(54), 
         fg_color="transparent", border_color=_DIM, border_width=2, text_color=_DIM,
-        hover_color=_blend(_WHITE, 0.1), font=("Consolas", 14, "bold"), corner_radius=6, command=_close
+        hover_color=_blend(_WHITE, 0.1), font=("Consolas", px(16), "bold"), corner_radius=6, command=_close
     )
     btn.pack()
 
@@ -183,35 +183,16 @@ def _show_reminder_window(message: str, master=None):
         if not root.winfo_exists():
             return
         color = _CYAN if _pulse_state[0] else _blend(_CYAN, 0.4)
-        hdr.configure(bg=color)
+        if title_bar.winfo_exists(): title_bar.configure(bg=color)
         lbl_bell.configure(fg=color)
         _pulse_state[0] = not _pulse_state[0]
         root.after(600, _pulse)
 
-    def _fade_in(alpha=0.0):
-        if not root.winfo_exists():
-            return
-        alpha = min(alpha + 0.07, 0.97)
-        root.attributes("-alpha", alpha)
-        if alpha < 0.97:
-            root.after(20, lambda: _fade_in(alpha))
-        else:
-            _pulse()
-            root.after(25000, _close)
-
-    def _fade_out(win, alpha=0.97):
-        if not win.winfo_exists():
-            return
-        alpha = max(alpha - 0.08, 0.0)
-        win.attributes("-alpha", alpha)
-        if alpha > 0:
-            win.after(20, lambda: _fade_out(win, alpha))
-        else:
-            win.destroy()
+    _pulse()
+    root.after(30000, _close)
 
     root.deiconify()
     root.lift()
     root.focus_force()
-    _fade_in()
     if master is None:
         root.mainloop()

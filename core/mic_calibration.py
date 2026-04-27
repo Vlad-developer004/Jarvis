@@ -3,7 +3,9 @@ import time
 import os
 import numpy as np
 from pathlib import Path
-_PROFILE_PATH = Path('data') / 'mic_profile.json'
+from config_pack.config import get_data_path
+
+_PROFILE_PATH = Path(get_data_path('mic_profile.json'))
 _REQUIRED_SAMPLES = 5
 _LISTEN_WINDOW_SEC = 4.0
 _MIN_THRESH = 50

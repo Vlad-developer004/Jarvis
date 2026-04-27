@@ -1,9 +1,10 @@
 from __future__ import annotations
+from ui.hud_style import JStyle
 import threading
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _BRD, _CYAN, _DIM, _PANEL, _TEXT, _WHITE
-from ui.hud_utils import _blend
+from ui.hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
 _FONT_UI = ("Segoe UI", 11)
 _FONT_UI_SM = ("Segoe UI", 10)
 _FONT_TITLE = ("Segoe UI Semibold", 12)
@@ -29,6 +30,10 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     _theme = get_current_theme_name()
     ctk.set_appearance_mode("Light" if _theme == "light" else "Dark")
     
+    hud, _ = _hud_root()
+    _sf = lambda n: (hud._fs(n) if hud else n)
+    _F = (hud._F if hud else "Segoe UI")
+
     _sw_scr = win.winfo_screenwidth()
     _sh_scr = win.winfo_screenheight()
     # Use underlying tk.Toplevel method to avoid CTK's empty string parsing crash
@@ -36,34 +41,55 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     
     def _recenter():
         win.update_idletasks()
-        hud, _ = _hud_root()
-        zf = hud.zoom_factor if hud else 1.0
-        rw, rh = int(win.winfo_reqwidth() / zf), int(win.winfo_reqheight() / zf)
-        win.geometry(f"{rw}x{rh}+{(_sw_scr-rw)//2}+{(_sh_scr-rh)//2}")
-    if isinstance(win, tk.Toplevel) or isinstance(win, tk.Tk):
-        win.overrideredirect(True)
+        from ui.hud_utils import _center_window
+        rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
+        _center_window(win, rw, rh)
     win.configure(bg=_BRD)
-    win.attributes("-topmost", True)
-    win.attributes("-alpha", 0.0)
+    _set_dark_title_bar(win)
+    win.title("Тип файла")
+    def _force_bounds(event=None):
+        if not win.winfo_exists(): return
+        if getattr(win, '_placing', True): return
+        
+        import ctypes
+        is_dragging = ctypes.windll.user32.GetKeyState(0x01) < 0
+        if is_dragging:
+            if not getattr(win, '_snap_pending', False):
+                win._snap_pending = True
+                win.after(200, _force_bounds)
+            return
+            
+        win._snap_pending = False
+        from ui.hud_utils import _constrain_window
+        wx, wy = win.winfo_x(), win.winfo_y()
+        nx, ny = _constrain_window(win, wx, wy)
+        if nx != wx or ny != wy:
+            win.geometry(f"+{nx}+{ny}")
+    win._placing = True
+    win.after(1000, lambda: setattr(win, '_placing', False))
+    win.bind('<Configure>', _force_bounds, add='+')
+    win.attributes("-alpha", 1.0)
     win.drag_data = {"x": 0, "y": 0}
     def start_move(event):
         win.drag_data["x"] = event.x
         win.drag_data["y"] = event.y
     def on_move(event):
-        x = win.winfo_x() + (event.x - win.drag_data["x"])
-        y = win.winfo_y() + (event.y - win.drag_data["y"])
+        deltax = event.x - win.drag_data["x"]
+        deltay = event.y - win.drag_data["y"]
+        x = win.winfo_x() + deltax
+        y = win.winfo_y() + deltay
         win.geometry(f"+{x}+{y}")
     outer = tk.Frame(win, bg=_BRD, bd=0)
     outer.pack(fill="both", expand=True)
     inner = tk.Frame(outer, bg=_BG, bd=0)
     inner.pack(fill="both", expand=True, padx=1, pady=1)
-    title_bar = tk.Frame(inner, bg=_PANEL, height=36)
+    title_bar = tk.Frame(inner, bg=_PANEL, height=int(36 * (hud.zoom_factor if hud else 1.0)))
     title_bar.pack(fill="x")
     title_bar.bind("<Button-1>", start_move)
     title_bar.bind("<B1-Motion>", on_move)
     tk.Frame(inner, bg=_CYAN, height=1).pack(fill="x")
-    tk.Label(title_bar, text="⬡", font=_FONT_TITLE, fg=_CYAN, bg=_PANEL).pack(side="left", padx=(12, 6))
-    tk.Label(title_bar, text="Тип файла", font=_FONT_TITLE, fg=_TEXT, bg=_PANEL).pack(side="left")
+    tk.Label(title_bar, text="⬡", font=(_F, _sf(12), "bold"), fg=_CYAN, bg=_PANEL).pack(side="left", padx=(12, 6))
+    tk.Label(title_bar, text="Тип файла", font=(_F, _sf(12), "bold"), fg=_TEXT, bg=_PANEL).pack(side="left")
     def _cancel():
         out[0] = None
         try:
@@ -79,7 +105,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     tk.Label(
         content,
         text="Фильтр или выбор в списке · Enter / двойной щелчок",
-        font=_FONT_UI_SM,
+        font=(_F, _sf(10)),
         fg=_DIM,
         bg=_BG,
         anchor="w",
@@ -105,7 +131,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     scroll.pack(side="right", fill="y")
     lb = tk.Listbox(
         body,
-        font=_FONT_UI,
+        font=(_F, _sf(11)),
         fg=_TEXT,
         bg=_BG,
         selectbackground=_blend(_CYAN, 0.3),
@@ -156,27 +182,27 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     ctk.CTkButton(
         btn_row,
         text="Создать",
-        width=140,
-        height=36,
+        width=int(140 * (hud.zoom_factor if hud else 1.0)),
+        height=int(36 * (hud.zoom_factor if hud else 1.0)),
         fg_color=_blend(_CYAN, 0.15),
         hover_color=_blend(_CYAN, 0.25),
         text_color=_CYAN,
-        font=_FONT_UI,
-        corner_radius=6,
+        font=(_F, 11, "bold"),
+        corner_radius=JStyle.RAD_BTN,
         command=_confirm_sel,
     ).pack(side="left", padx=(0, 10))
     ctk.CTkButton(
         btn_row,
         text="Отмена",
-        width=120,
-        height=36,
+        width=int(120 * (hud.zoom_factor if hud else 1.0)),
+        height=int(36 * (hud.zoom_factor if hud else 1.0)),
         fg_color="transparent",
         border_color=_DIM,
         border_width=1,
         text_color=_DIM,
         hover_color=_blend(_WHITE, 0.1),
-        font=_FONT_UI,
-        corner_radius=6,
+        font=(_F, 11),
+        corner_radius=JStyle.RAD_BTN,
         command=_cancel,
     ).pack(side="left")
     def _fade(a=0.0):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ui.hud_style import JStyle
 import json
 import os
 import tkinter as tk
@@ -83,23 +84,23 @@ def open_welcome(hud, force: bool = False) -> None:
     win.geometry(f'1040x700')
 
     F = getattr(hud, '_F', 'Consolas')
-    zoom = getattr(hud, '_zoom', 1.0)
+    zoom = getattr(hud, 'zoom_factor', 1.0)
 
     def _sf(n: int) -> int:
         return max(6, int(n * zoom))
 
     def _px(n: int) -> int:
-        return hud._px(n) if hasattr(hud, '_px') else max(4, int(n * zoom))
+        return int(n * zoom)
 
     # Top accent line
     tk.Frame(win, bg=_CYAN, height=2).pack(fill='x', side='top')
 
     # --- Header ---
     hdr = tk.Frame(win, bg=_BG)
-    hdr.pack(fill='x', padx=36, pady=(14, 8))
+    hdr.pack(fill='x', padx=_px(36), pady=(_px(14), _px(8)))
     
     logo_f = tk.Frame(hdr, bg=_BG)
-    logo_f.pack(side='left', padx=(0, 16))
+    logo_f.pack(side='left', padx=(0, _px(16)))
     tk.Label(logo_f, text='⌬', bg=_BG, fg=_CYAN, font=(F, _sf(44))).pack()
 
     title_col = tk.Frame(hdr, bg=_BG)
@@ -107,25 +108,25 @@ def open_welcome(hud, force: bool = False) -> None:
     tk.Label(title_col, text='J.A.R.V.I.S.', bg=_BG, fg=_CYAN,
              font=(F, _sf(32), 'bold'), anchor='w').pack(anchor='w')
     tk.Label(title_col, text='Just A Rather Very Intelligent System',
-             bg=_BG, fg=_DIM, font=(F, _sf(10), 'italic'), anchor='w').pack(anchor='w', pady=(2, 0))
+             bg=_BG, fg=_DIM, font=(F, _sf(10), 'italic'), anchor='w').pack(anchor='w', pady=(_px(2), 0))
     tk.Label(title_col,
              text='Голосовое управление вашей системой. Скажите «Джарвис» — и начните.',
-             bg=_BG, fg=_TEXT, font=(F, _sf(12)), anchor='w').pack(anchor='w', pady=(6, 0))
+             bg=_BG, fg=_TEXT, font=(F, _sf(12)), anchor='w').pack(anchor='w', pady=(_px(6), 0))
 
     badge = tk.Frame(hdr, bg=_blend(_CYAN, 0.08),
                      highlightbackground=_blend(_CYAN, 0.3), highlightthickness=1)
-    badge.pack(side='right', anchor='n', padx=(0, 4), pady=4)
+    badge.pack(side='right', anchor='n', padx=(0, _px(4)), pady=_px(4))
     tk.Label(badge, text=' v 1.5—HUD ', bg=_blend(_CYAN, 0.08), fg=_CYAN,
-             font=(F, _sf(9), 'bold')).pack(padx=10, pady=6)
+             font=(F, _sf(9), 'bold')).pack(padx=_px(10), pady=_px(6))
 
-    tk.Frame(win, bg=_BRD, height=1).pack(fill='x', padx=20)
+    tk.Frame(win, bg=_BRD, height=1).pack(fill='x', padx=_px(20))
 
     # --- Scrollable Area ---
     scroll_frame = ctk.CTkScrollableFrame(win, fg_color=_BG, scrollbar_fg_color=_BG,
                                           scrollbar_button_color=_BRD_I,
                                           scrollbar_button_hover_color=_CYAN,
                                           corner_radius=0)
-    scroll_frame.pack(fill='both', expand=True, padx=16, pady=(2, 4))
+    scroll_frame.pack(fill='both', expand=True, padx=_px(16), pady=(_px(2), _px(4)))
 
     # Center wrapper
     center_wrap = tk.Frame(scroll_frame, bg=_BG)
@@ -133,26 +134,26 @@ def open_welcome(hud, force: bool = False) -> None:
 
     # Simplified, shorter card texts for first-time users
     CARDS = [
-        (_CYAN,  '◎  ГОЛОСОВАЯ АКТИВАЦИЯ',
-         'Скажите «Джарвис» — система услышит вас. Вы можете свернуть интерфейс фразой «Скрой худ» и вернуть его командой «Открой худ» из системного трея.'),
-        (_GREEN, '🖥  КОНТРОЛЬ WINDOWS',
-         'Открывайте программы, управляйте окнами, папками и файлами голосом. «Открой браузер», «создай папку на рабочем столе» — всё это без мыши.'),
-        (_MAG,   '📝  ДИКТОВКА',
-         'Диктуйте текст в любое поле: чаты, документы, редакторы кода. Джарвис расставит пунктуацию и поймёт технические термины.'),
-        (_AMBER, '🎮  ИГРОВОЙ РЕЖИМ',
-         'ETS2 и FS22: управляйте машиной, грузом и маршрутом голосом. Джарвис следит за телеметрией и помогает в пути, не отвлекая от руля.'),
-        (_CYAN,  '⏰  НАПОМИНАНИЯ',
-         'Скажите «напомни через час» или «задача на утро» — Джарвис запомнит и оповестит в нужный момент. Ваш голосовой планировщик.'),
-        (_GREEN, '🔍  УМНЫЙ ПОИСК',
-         'Джарвис ищет, анализирует и озвучивает ответ — погода, курсы валют, любой вопрос. Не нужно открывать браузер и читать страницы.'),
-        (_MAG,   '🎵  МЕДИА',
-         'Найдите и включите видео на YouTube голосом. Управляйте громкостью и воспроизведением. Скажите «скачай это видео» — сохранит.'),
-        (_AMBER, '⚙️  РАСШИРЕНИЯ',
-         'В настройках включите нужные модули: Photoshop, почта, календарь, мониторинг. Джарвис подстраивается под вас.'),
+        (_CYAN,  '🗣  ОТВЕТЫ НА ИМЯ (WAKE WORD)',
+         'Скажите «Джарвис» — система вас услышит (он активен 30 секунд). В настройках можно выбрать: либо он отвечает «Да, сэр» только 1 раз при пробуждении (не спамит на имя), либо всегда отвечает на имя.'),
+        (_GREEN, '🧹  УБОРКА И СИСТЕМА',
+         'Скажите «Джарвис, приберись» — он очистит кэш браузеров, временные файлы и память. Также можно голосом выключать ПК, управлять Bluetooth и Wi-Fi.'),
+        (_MAG,   '🌐  ИНТЕРНЕТ И МЕДИА',
+         '«Открой ютуб», «Открой новую вкладку» или «Сделай погромче». Джарвис сам найдёт всё в интернете и поможет управлять просмотром без мышки.'),
+        (_AMBER, '🎮  ИГРОВОЙ РЕЖИМ (ETS2)',
+         'Играете за рулём? Скажите «Статус грузовика» или «Круиз-контроль на 90», и Джарвис мгновенно выполнит действия в игре, не отвлекая от дороги.'),
+        (_CYAN,  '📝  ГОЛОСОВАЯ ДИКТОВКА',
+         'Поставьте курсор в чат или документ и включите режим диктовки. Джарвис будет печатать всё, что вы говорите, сам расставляя знаки препинания.'),
+        (_GREEN, '⏰  УМНЫЙ ПОМОЩНИК',
+         '«Напомни выключить духовку через 20 минут» или «Выключи компьютер через час». Джарвис всё запомнит и вовремя выведет сообщение на экран.'),
+        (_MAG,   '⚙️  ГДЕ ИСКАТЬ НАСТРОЙКИ?',
+         'Нажмите на кнопку с шестеренкой внизу или скажите «Открой настройки». Там можно откалибровать микрофон, если Джарвис вас плохо слышит.'),
+        (_AMBER, '🔒  ЗАЧЕМ ЭТО НУЖНО?',
+         'Чтобы управлять ПК со свободными руками! При этом Джарвис работает локально (без интернета), поэтому ваши разговоры в полной безопасности.'),
     ]
 
     grid = tk.Frame(center_wrap, bg=_BG)
-    grid.pack(fill='both', expand=True, padx=8, pady=6)
+    grid.pack(fill='both', expand=True, padx=_px(8), pady=_px(6))
     grid.columnconfigure(0, weight=1)
     grid.columnconfigure(1, weight=1)
 
@@ -161,25 +162,25 @@ def open_welcome(hud, force: bool = False) -> None:
     for idx, (accent, title, body_text) in enumerate(CARDS):
         r, c = divmod(idx, 2)
         card = tk.Frame(grid, bg=_BG, highlightbackground=_blend(accent, 0.35), highlightthickness=1)
-        card.grid(row=r, column=c, padx=8, pady=8, sticky='nsew')
+        card.grid(row=r, column=c, padx=_px(8), pady=_px(8), sticky='nsew')
         inner_card = tk.Frame(card, bg=_blend(accent, 0.04))
         inner_card.pack(fill='both', expand=True, padx=1, pady=1)
 
         tk.Label(inner_card, text=title, bg=_blend(accent, 0.04), fg=accent,
                  font=(F, _sf(12), 'bold'), anchor='w',
-                 justify='left').pack(fill='x', padx=14, pady=(14, 6))
-        tk.Frame(inner_card, bg=_blend(accent, 0.18), height=1).pack(fill='x', padx=14, pady=(0, 8))
+                 justify='left').pack(fill='x', padx=_px(14), pady=(_px(14), _px(6)))
+        tk.Frame(inner_card, bg=_blend(accent, 0.18), height=1).pack(fill='x', padx=_px(14), pady=(0, _px(8)))
         lbl = tk.Label(inner_card, text=body_text, bg=_blend(accent, 0.04), fg=_TEXT,
                        font=(F, _sf(11)), anchor='nw',
-                       justify='left', wraplength=360)
-        lbl.pack(fill='both', expand=True, padx=14, pady=(0, 16))
+                       justify='left', wraplength=_px(360))
+        lbl.pack(fill='both', expand=True, padx=_px(14), pady=(0, _px(16)))
         label_widgets.append(lbl)
 
     def _on_grid_resize(e=None):
         try:
             w = center_wrap.winfo_width()
             if w > 100:
-                col_w = max(100, w // 2 - 60)
+                col_w = max(100, w // 2 - _px(60))
                 for l in label_widgets:
                     l.configure(wraplength=col_w)
         except Exception:
@@ -197,7 +198,7 @@ def open_welcome(hud, force: bool = False) -> None:
     bot.pack(fill='x', side='bottom')
     
     tk.Label(bot, text='Настройте Джарвиса под себя, сэр. Мы всегда готовы к работе.',
-             bg=_PANEL, fg=_DIM, font=(F, _sf(10))).pack(side='left', padx=20, pady=14)
+             bg=_PANEL, fg=_DIM, font=(F, _sf(10))).pack(side='left', padx=_px(20), pady=_px(14))
 
     def _open_settings():
         try:
@@ -206,17 +207,19 @@ def open_welcome(hud, force: bool = False) -> None:
         except Exception:
             pass
 
+    # CTK widgets automatically scale by zoom_factor, so pass base logical pixels
     ctk.CTkButton(bot, text='⚙  Настройки', command=_open_settings,
-                  height=_px(42), font=(F, _sf(12)),
+                  height=JStyle.H_LARGE, font=(F, 12),
                   fg_color='transparent', hover_color=_blend(_DIM, 0.1),
                   text_color=_DIM, border_color=_blend(_DIM, 0.3),
-                  border_width=2, corner_radius=10).pack(side='right', padx=(4, 14), pady=10)
+                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(4), _px(14)), pady=_px(10))
 
     ctk.CTkButton(bot, text='  Продолжить  ▶', command=win.destroy,
-                  height=_px(42), font=(F, _sf(13), 'bold'),
+                  height=JStyle.H_LARGE, font=(F, 13, 'bold'),
                   fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.28),
                   text_color=_CYAN, border_color=_blend(_CYAN, 0.65),
-                  border_width=2, corner_radius=10).pack(side='right', padx=(14, 4), pady=10)
+                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(14), _px(4)), pady=_px(10))
 
     win.grab_set()
     win.focus_set()
+

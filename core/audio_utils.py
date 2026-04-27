@@ -62,9 +62,7 @@ _last_jarvis_hp_res = False
 
 def is_jarvis_output_headphones() -> bool:
     """Check if Jarvis's *configured* output device is headphones.
-    Unlike is_current_output_headphones(), this reads Jarvis settings directly
-    instead of the Windows system default — so it's correct even when Jarvis
-    outputs to a different device than the OS default.
+    Checks manual headphone_mode flag first, then detects by device name.
     """
     global _last_jarvis_hp_check, _last_jarvis_hp_res
     t = time.time()
@@ -74,6 +72,10 @@ def is_jarvis_output_headphones() -> bool:
     _last_jarvis_hp_check = t
     try:
         d = _load_audio_settings()
+        # Manual override: if the user explicitly set headphone mode — trust them
+        if d.get('headphone_mode', False):
+            _last_jarvis_hp_res = True
+            return True
         dev_name = str(d.get('audio_output_device_name') or '').lower()
         if dev_name:
             keywords = ['headphone', 'headset', 'kopfhörer', 'наушники', 'гарнитура', 'phone', 'ear', 'pod', 'bt', 'blue', 'hands-free', 'wireless']

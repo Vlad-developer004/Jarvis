@@ -5,6 +5,17 @@ import threading
 import time
 import random
 def bootstrap():
+    # Enable DPI awareness for sharp UI and to prevent Windows double-scaling
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            import ctypes
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
     if getattr(sys, 'frozen', False):
         os.chdir(os.path.dirname(sys.executable))
     else:

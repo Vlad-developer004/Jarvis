@@ -11,33 +11,94 @@ def _find_git_repo(start_path: str | None=None) -> str | None:
     except Exception:
         pass
     return None
-def _vscode_recent_workspaces() -> list[str]:
+def _get_all_recent_workspaces() -> list[str]:
     candidates = []
     appdata = os.environ.get('APPDATA', '')
+    import urllib.parse
+    import sqlite3
+    import xml.etree.ElementTree as ET
+    
+    # 1. JetBrains IDEs
+    jb_path = Path(appdata) / 'JetBrains'
+    if jb_path.exists():
+        for ide_dir in jb_path.iterdir():
+            if not ide_dir.is_dir(): continue
+            for xml_name in ['recentProjects.xml', 'recentProjectDirectories.xml']:
+                rp = ide_dir / 'options' / xml_name
+                if rp.exists():
+                    try:
+                        tree = ET.parse(rp)
+                        root = tree.getroot()
+                        for entry in root.iter('entry'):
+                            key = entry.attrib.get('key', '')
+                            if key and ('/' in key or '\\' in key):
+                                key = key.replace('$USER_HOME$', os.environ.get('USERPROFILE', ''))
+                                candidates.append(str(Path(key).resolve()))
+                        for option in root.iter('option'):
+                            val = option.attrib.get('value', '')
+                            if val and ('/' in val or '\\' in val):
+                                val = val.replace('$USER_HOME$', os.environ.get('USERPROFILE', ''))
+                                candidates.append(str(Path(val).resolve()))
+                    except Exception:
+                        pass
+
+    # 2. Try sqlite database (newer VS Code)
+    db_path = Path(appdata) / 'Code' / 'User' / 'globalStorage' / 'state.vscdb'
+    if db_path.exists():
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT value FROM ItemTable WHERE key='history.recentlyOpenedPathsList'")
+                res = cur.fetchone()
+                if res and res[0]:
+                    data = json.loads(res[0])
+                    for entry in data.get('entries', []):
+                        uri = entry if isinstance(entry, str) else entry.get('folderUri', '')
+                        if uri.startswith('file:///'):
+                            folder = urllib.parse.unquote(uri[8:]).replace('/', '\\')
+                            candidates.append(folder)
+        except Exception:
+            pass
+
+    # 3. Try older JSON files
     storage_paths = [Path(appdata) / 'Code' / 'User' / 'globalStorage' / 'storage.json', Path(appdata) / 'Code' / 'storage.json']
     for sp in storage_paths:
+        if not sp.exists(): continue
         try:
             data = json.loads(sp.read_text(encoding='utf-8'))
             opened = data.get('openedPathsList', {})
+            if 'backupWorkspaces' in data:
+                for folder_obj in data['backupWorkspaces'].get('folders', []):
+                    uri = folder_obj.get('folderUri', '')
+                    if uri.startswith('file:///'):
+                        folder = urllib.parse.unquote(uri[8:]).replace('/', '\\')
+                        candidates.append(folder)
+
             for entry in opened.get('workspaces3', []) + opened.get('entries', []):
                 uri = entry if isinstance(entry, str) else entry.get('folderUri', '')
                 if uri.startswith('file:///'):
-                    folder = uri[8:].replace('/', '\\')
+                    folder = urllib.parse.unquote(uri[8:]).replace('/', '\\')
                     candidates.append(folder)
         except Exception:
             pass
-    return candidates
+    
+    seen = set()
+    return [c for c in candidates if not (c in seen or seen.add(c))]
 def _repo_from_window_title(hwnd) -> str | None:
     try:
         import win32gui
+        import re
         title = win32gui.GetWindowText(hwnd)
         if not title:
             return None
-        parts = [p.strip() for p in title.split(' - ')]
-        if len(parts) >= 3:
-            folder_name = parts[-2]
-            for ws_path in _vscode_recent_workspaces():
-                if Path(ws_path).name == folder_name:
+        parts = [p.strip() for p in re.split(r'\s*[-–—|:]\s*', title) if p.strip()]
+        if not parts:
+            return None
+            
+        known_workspaces = _get_all_recent_workspaces()
+        for folder_name in parts:
+            for ws_path in known_workspaces:
+                if Path(ws_path).name.lower() == folder_name.lower():
                     repo = _find_git_repo(ws_path)
                     if repo:
                         return repo
@@ -83,6 +144,16 @@ def detect_repo_and_status(active_hwnd=None) -> tuple[str | None, list[dict]]:
             pid = win32process.GetWindowThreadProcessId(active_hwnd)[1]
             proc = psutil.Process(pid)
             repo = _find_git_repo(proc.cwd())
+            
+            if not repo:
+                try:
+                    for child in proc.children(recursive=True):
+                        try:
+                            repo = _find_git_repo(child.cwd())
+                            if repo: break
+                        except Exception: pass
+                except Exception: pass
+
             if not repo:
                 for arg in proc.cmdline()[1:]:
                     if Path(arg).is_dir():
