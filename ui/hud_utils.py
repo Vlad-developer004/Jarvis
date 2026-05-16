@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 import math, subprocess, time, os, sys, json
 from datetime import datetime
 from functools import lru_cache

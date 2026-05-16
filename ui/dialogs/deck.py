@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 from ui.hud_style import JStyle
 import json, os, threading, time
 import tkinter as tk
@@ -49,7 +50,7 @@ def open_deck(hud, reopen: bool = False) -> None:
     header = tk.Frame(inner_root, bg=_PANEL, height=hud._px(50))
     header.pack(fill="x")
     
-    tk.Label(header, text="⌬  БАЗА КОМАНД J.A.R.V.I.S.", font=(hud._F, JStyle.TEXT_BODY, "bold"), 
+    tk.Label(header, text=i18n.tr('dialogs.deck.title'), font=(hud._F, JStyle.TEXT_BODY, "bold"),
              fg=_AMBER, bg=_PANEL).pack(side="left", padx=20)
              
     win.lift()
@@ -66,21 +67,21 @@ def open_deck(hud, reopen: bool = False) -> None:
     _f14 = JStyle.TEXT_H2
     _f16 = hud._fs(19)
 
-    tk.Label(win_for_content, text='Голосовые фразы-триггеры для J.A.R.V.I.S.', bg=_BG, fg=_TEXT, font=(hud._F, _f11)).pack(pady=(hud._px(10), 0))
+    tk.Label(win_for_content, text=i18n.tr('dialogs.deck.subtitle'), bg=_BG, fg=_TEXT, font=(hud._F, _f11)).pack(pady=(hud._px(10), 0))
     tk.Frame(win_for_content, bg=_SEP, height=hud._px(1)).pack(fill='x', padx=hud._px(20), pady=(hud._px(10), hud._px(6)))
     
     search_f = tk.Frame(win_for_content, bg=_BG)
     search_f.pack(fill='x', padx=hud._px(20), pady=(0, hud._px(8)))
     search_entry = ctk.CTkEntry(
-        search_f, 
-        placeholder_text='ПОИСК ГОЛОСОВОЙ КОМАНДЫ...', 
-        font=(hud._F, JStyle.TEXT_BODY), 
-        fg_color=_PANEL, 
-        text_color=_CYAN, 
-        placeholder_text_color=_blend(_CYAN, 0.4), 
-        border_color=_blend(_CYAN, 0.3), 
-        border_width=1, 
-        corner_radius=JStyle.RAD_PANEL, 
+        search_f,
+        placeholder_text=i18n.tr('dialogs.deck.search_placeholder'),
+        font=(hud._F, JStyle.TEXT_BODY),
+        fg_color=_PANEL,
+        text_color=_CYAN,
+        placeholder_text_color=_blend(_CYAN, 0.4),
+        border_color=_blend(_CYAN, 0.3),
+        border_width=1,
+        corner_radius=JStyle.RAD_PANEL,
         height=JStyle.H_NORM + 4
     )
     search_entry.pack(side='left', fill='x', expand=True)
@@ -98,13 +99,13 @@ def open_deck(hud, reopen: bool = False) -> None:
         new_mode = modes[idx]
         _sort_mode.set(new_mode)
         
-        lbls = {'cat': '◈ ПО КАТЕГОРИЯМ', 'ru': 'А-Я ПО ИМЕНИ', 'en': 'A-Z BY ID'}
+        lbls = {'cat': i18n.tr('dialogs.deck.sort_by_category'), 'ru': i18n.tr('dialogs.deck.sort_a_z'), 'en': i18n.tr('dialogs.deck.sort_a_z_id')}
         sort_btn.configure(text=lbls[new_mode])
         _build_cards(search_entry.get())
 
     sort_btn = ctk.CTkButton(
-        sort_f, 
-        text='◈ ПО КАТЕГОРИЯМ',
+        sort_f,
+        text=i18n.tr('dialogs.deck.sort_by_category'),
         command=_cycle_sort,
         width=hud._px(160),
         height=JStyle.H_NORM + 4,

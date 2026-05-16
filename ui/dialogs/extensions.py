@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 from ui.hud_style import JStyle
 import json, os, threading, time
 import tkinter as tk
@@ -417,12 +418,12 @@ def open_extensions(hud, reopen: bool = False) -> None:
     header_area.pack(fill='x', padx=24, pady=(16, 0))
     title_f = tk.Frame(header_area, bg=_BG)
     title_f.pack(side='top', fill='x', anchor='w')
-    tk.Label(title_f, text='⬡  ЦЕНТР РАСШИРЕНИЙ', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold')).pack(anchor='w')
-    tk.Label(title_f, text='СИСТЕМНАЯ ДИАГНОСТИКА И КОНФИГУРАЦИЯ МОДУЛЕЙ', bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(anchor='w')
+    tk.Label(title_f, text=i18n.tr('extensions.title'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold')).pack(anchor='w')
+    tk.Label(title_f, text=i18n.tr('extensions.subtitle'), bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(anchor='w')
     
     search_entry = ctk.CTkEntry(
-        header_area, 
-        placeholder_text='ПОИСК МОДУЛЯ...', 
+        header_area,
+        placeholder_text=i18n.tr('extensions.search_placeholder'),
         height=34,
         font=("Consolas", 12),
         fg_color=_PANEL, 
@@ -536,11 +537,11 @@ def open_extensions(hud, reopen: bool = False) -> None:
         title_l.pack(side='left')
         
         if installed:
-            badge_text, badge_col = ('АКТИВНО', _CYAN)
+            badge_text, badge_col = (i18n.tr('extensions.installed'), _CYAN)
         elif bundled:
-            badge_text, badge_col = ('ГОТОВО К УСТАНОВКЕ', _AMBER)
+            badge_text, badge_col = (i18n.tr('extensions.ready'), _AMBER)
         else:
-            badge_text, badge_col = ('ОБЛАЧНЫЙ МОДУЛЬ', _DIM)
+            badge_text, badge_col = (i18n.tr('extensions.cloud'), _DIM)
         badge_l = tk.Label(head, text=badge_text, bg=_PANEL, fg=badge_col, font=(hud._F, JStyle.TEXT_TINY, 'bold'))
         badge_l.pack(side='right')
 
@@ -579,7 +580,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
             # Единая ширина для всех кнопок для симметрии
             btn_w = 160
             ctk.CTkButton(
-                inner_row, text="◈  КОМАНДЫ", width=btn_w, font=("Consolas", 12, "bold"), height=JStyle.H_LARGE,
+                inner_row, text=i18n.tr('extensions.commands'), width=btn_w, font=("Consolas", 12, "bold"), height=JStyle.H_LARGE,
                 fg_color=_PANEL, hover_color=_blend(_CYAN, 0.2), text_color=_CYAN,
                 border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_show_cmds,
             ).pack(side="left", padx=5)
@@ -589,7 +590,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
                 ext_mgr.uninstall(e); _refresh_cards()
 
             ctk.CTkButton(
-                inner_row, text='🗑  УДАЛИТЬ', width=160, font=("Consolas", 12, 'bold'), height=JStyle.H_LARGE,
+                inner_row, text=i18n.tr('extensions.uninstall'), width=160, font=("Consolas", 12, 'bold'), height=JStyle.H_LARGE,
                 fg_color=_PANEL, hover_color=_blend(_RED, 0.2), text_color=_RED,
                 border_color=_blend(_RED, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_do_uninstall
             ).pack(side="left", padx=5)
@@ -647,8 +648,8 @@ def open_extensions(hud, reopen: bool = False) -> None:
                 else:
                     ext_mgr.install(e); _refresh_cards()
             ctk.CTkButton(
-                inner_row, text='⬇  УСТАНОВИТЬ', width=160, font=("Consolas", 12, 'bold'), height=JStyle.H_LARGE, 
-                fg_color=_PANEL, hover_color=_blend(_CYAN, 0.2), text_color=_CYAN, 
+                inner_row, text=i18n.tr('extensions.install'), width=160, font=("Consolas", 12, 'bold'), height=JStyle.H_LARGE,
+                fg_color=_PANEL, hover_color=_blend(_CYAN, 0.2), text_color=_CYAN,
                 border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_do_install
             ).pack(side="left", padx=5)
         else:
@@ -669,8 +670,8 @@ def open_extensions(hud, reopen: bool = False) -> None:
                     except Exception: pass
                 threading.Thread(target=_thread, daemon=True).start()
             ctk.CTkButton(
-                inner_row, text='☁  СИНХРОНИЗАЦИЯ', width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE, 
-                fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, 
+                inner_row, text=i18n.tr('extensions.sync'), width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE,
+                fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN,
                 border_color=_blend(_CYAN, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_do_download
             ).pack(side='left', padx=5)
     _build_cards()

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 import json, os, sys
 
 # ──────────────────────────────────────────────────────────────────────────────

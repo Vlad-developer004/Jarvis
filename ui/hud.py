@@ -55,7 +55,7 @@ class JarvisHUD:
         
         # 1. Hide immediately to prepare geometry
         self.root.withdraw()
-        self.root.title('J.A.R.V.I.S. — HUD v1.5')
+        self.root.title(i18n.tr('hud.title'))
         self.root.configure(fg_color=_BG)
         _set_dark_title_bar(self.root)
         self.root.minsize(1100, 620)
@@ -119,7 +119,7 @@ class JarvisHUD:
         self._top_rise = '—:—'
         self._top_set = '—:—'
         self._top_pct = 0.0
-        self._top_week = 'ОЖИДАНИЕ ДАННЫХ'
+        self._top_week = i18n.tr('hud.waiting_data')
         self._top_day = '...'
         self._top_pct_str = '0%'
         self._weather_city = '...'
@@ -302,9 +302,9 @@ class JarvisHUD:
             _test_fs = int(11 * self.zoom_factor)
             _f_test = _tf.Font(family=self._F, size=_test_fs, weight='bold')
             _hdr_texts = [
-                'КОМАНДЫ И УПРАВЛЕНИЕ', 'СИСТЕМНЫЕ ПРОФИЛИ',
-                'АНАЛИТИКА ДАННЫХ',     'СЕТЕВАЯ СТАТИСТИКА',
-                '✧ МИКРОФОН / ЧУВСТВИТЕЛЬНОСТЬ'
+                i18n.tr('hud.commands_control'), i18n.tr('hud.system_profiles'),
+                i18n.tr('hud.data_analytics'),     i18n.tr('hud.network_stats'),
+                i18n.tr('hud.microphone_section')
             ]
             _max_text_w = max(_f_test.measure(t) for t in _hdr_texts)
             _content_w = _max_text_w + self._px(64) # text + icon + margins
@@ -533,7 +533,7 @@ class JarvisHUD:
         from core.system import autostart_enabled, autostart_set
         on = not autostart_enabled()
         autostart_set(on)
-        try: self._autostart_btn.hud_update('АВТОЗАПУСК СИСТЕМЫ', '◉' if on else '○', _c._GREEN if on else _c._DIM)
+        try: self._autostart_btn.hud_update(i18n.tr('hud.system_autostart'), '◉' if on else '○', _c._GREEN if on else _c._DIM)
         except: pass
     def _open_settings(self, reopen=False):
         from .dialogs.settings_dlg import open_settings

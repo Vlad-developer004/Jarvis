@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 from ui.hud_style import JStyle
 import os
 import threading

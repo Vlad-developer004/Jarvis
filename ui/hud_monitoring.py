@@ -132,16 +132,14 @@ def update_sys_widgets(hud) -> None:
         
         if rise_m is not None and set_m is not None:
             if rise_m <= now_m < set_m:
-                # ДЕНЬ
-                hud._top_week = "СВЕТОВОЙ ЦИКЛ"
-                hud._top_day = "ДО ЗАКАТА"
+                hud._top_week = i18n.tr('hud.daylight_cycle')
+                hud._top_day = i18n.tr('hud.until_sunset')
                 total = set_m - rise_m
                 passed = now_m - rise_m
                 pct = (passed / total) if total > 0 else 0
             else:
-                # НОЧЬ
-                hud._top_week = "НОЧНОЙ ЦИКЛ"
-                hud._top_day = "ДО РАССВЕТА"
+                hud._top_week = i18n.tr('hud.night_cycle')
+                hud._top_day = i18n.tr('hud.until_sunrise')
                 if now_m >= set_m:
                     total = (1440 - set_m) + rise_m
                     passed = now_m - set_m
@@ -153,10 +151,9 @@ def update_sys_widgets(hud) -> None:
             hud._top_pct = max(0.0, min(1.0, pct))
             hud._top_pct_str = f"{int(hud._top_pct * 100)}%"
             
-            # Доп. инфо (опционально внизу)
             hud._top_wday_str = _RU_DAYS.get(now.weekday(), '').upper()
-            hud._top_yday_str = f"ДЕНЬ {now.timetuple().tm_yday}"
-            hud._top_week_str = f"НЕДЕЛЯ {now.isocalendar()[1]}"
+            hud._top_yday_str = i18n.tr('hud.day_format').format(now.timetuple().tm_yday)
+            hud._top_week_str = i18n.tr('hud.week_format').format(now.isocalendar()[1])
             
             renderer.draw_top_strip(hud)
     except: pass
@@ -192,7 +189,7 @@ def update_sys_widgets(hud) -> None:
                 hud._bat_visible = True
             except: pass
         _set(hud._bat_bar, hud._bat_val, bat, f'{bat:.0f}%', _RED if bat < 20 else _AMBER if bat < 40 else _GREEN)
-        try: hud._bat_lbl.configure(text='⚡ ЗАРЯЖАЕТСЯ' if d.get('bat_plug') else '🔋 РАБОТА ОТ БАТАРЕИ')
+        try: hud._bat_lbl.configure(text=i18n.tr('hud.charging') if d.get('bat_plug') else i18n.tr('hud.battery_mode'))
         except: pass
     else:
         if getattr(hud, '_bat_visible', False):
@@ -213,16 +210,16 @@ def update_sys_widgets(hud) -> None:
     ram = d.get('ram_pct', 0)
     ru, rt = (d.get('ram_used', 0), d.get('ram_tot', 0))
     _set(hud._ram_bar, hud._ram_val, ram, f'{ram:.0f}%')
-    try: hud._ram_det.configure(text=f'{ru:.1f} / {rt:.1f} ГБ')
+    try: hud._ram_det.configure(text=f'{ru:.1f} / {rt:.1f} ' + i18n.tr('hud.gb'))
     except: pass
 
     dsk = d.get('dsk_pct', 0)
     du2, dt = (d.get('dsk_used', 0), d.get('dsk_tot', 0))
     _set(hud._dsk_bar, hud._dsk_val, dsk, f'{dsk:.0f}%')
-    try: hud._dsk_det.configure(text=f'{du2:.0f} ГБ / {dt:.0f} ГБ' if dt < 1000 else f'{du2 / 1000:.1f} / {dt / 1000:.1f} ТБ')
+    try: hud._dsk_det.configure(text=f'{du2:.0f} ' + i18n.tr('hud.gb') + f' / {dt:.0f} ' + i18n.tr('hud.gb') if dt < 1000 else f'{du2 / 1000:.1f} / {dt / 1000:.1f} ' + i18n.tr('hud.tb'))
     except: pass
     
-    try: hud._uptime_lbl.configure(text=f'ВРЕМЯ РАБОТЫ: {d.get("uptime", "—")}')
+    try: hud._uptime_lbl.configure(text=i18n.tr('hud.uptime').format(d.get("uptime", "—")))
     except: pass
 
 def start_perf_collector(hud) -> None:

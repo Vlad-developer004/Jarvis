@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 _COMMANDS = {
     'ОСНОВНЫЕ (СИСТЕМА)': [
         ('Статус Jarvis', '«Статус системы»', 'Выводит данные о нагрузке ЦП, памяти и уровне заряда батареи'),

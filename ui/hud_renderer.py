@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 import math, time
 import tkinter as tk
 from . import hud_constants as _c

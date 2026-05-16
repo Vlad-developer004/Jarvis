@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 from ui.dialogs.name_dlg import ask_text
 _VOICE_COMMIT_CONFIRM: tuple[str, ...] = (
     "коммит",
@@ -19,14 +20,14 @@ _VOICE_COMMIT_CONFIRM: tuple[str, ...] = (
 )
 def ask_commit_message() -> str | None:
     return ask_text(
-        title="GIT COMMIT — J.A.R.V.I.S.",
-        header="⬡  GIT COMMIT — СООБЩЕНИЕ",
-        ok_text="КОММИТ",
-        cancel_text="ОТМЕНА",
+        title=i18n.tr('dialogs.commit.title'),
+        header=i18n.tr('dialogs.commit.header'),
+        ok_text=i18n.tr('dialogs.commit.button_commit'),
+        cancel_text=i18n.tr('dialogs.commit.button_cancel'),
         placeholder="",
         width=650,
         height=340,
-        hint_voice="Голосом: «коммит» / «отмена»  ·  Enter / Esc",
+        hint_voice=i18n.tr('dialogs.commit.hint'),
         voice_confirm_phrases=_VOICE_COMMIT_CONFIRM,
         require_message_to_confirm=True,
     )

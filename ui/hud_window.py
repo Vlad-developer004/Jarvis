@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 import os, sys
 import threading
 import tkinter as tk

@@ -2,6 +2,7 @@ from __future__ import annotations
 from ui.hud_style import JStyle
 import threading, time
 import tkinter as tk
+from core import i18n
 from .hud_constants import _CYAN, _WHITE, _AMBER, _DIM, _RED
 from .hud_utils import _blend
 try:
@@ -33,26 +34,26 @@ def draw_cam_standby(hud) -> None:
     for x, y, dx, dy in [(hud._px(10), hud._px(10), 1, 1), (w - hud._px(10), hud._px(10), -1, 1), (hud._px(10), h - hud._px(10), 1, -1), (w - hud._px(10), h - hud._px(10), -1, -1)]:
         c.create_line(x, y, x + dx * s, y, fill=_CYAN, width=2)
         c.create_line(x, y, x, y + dy * s, fill=_CYAN, width=2)
-    c.create_text(cx, cy + r + hud._px(35), text='ВИДЕОСЕНСОР: ОЖИДАНИЕ', fill=_blend(_CYAN, 0.5), font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
-    c.create_text(cx, cy + r + hud._px(60), text='СИГНАЛ НЕ ОБНАРУЖЕН', fill=_RED, font=(hud._F, JStyle.TEXT_TINY))
+    c.create_text(cx, cy + r + hud._px(35), text=i18n.tr('hud.camera.status.waiting'), fill=_blend(_CYAN, 0.5), font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
+    c.create_text(cx, cy + r + hud._px(60), text=i18n.tr('hud.camera.status.signal_not_found'), fill=_RED, font=(hud._F, JStyle.TEXT_TINY))
 def toggle_cam(hud) -> None:
     if not _CV2_OK or not _PIL_OK:
         return
     if hud._cam_run:
         hud._cam_run = False
         if hud._cam_btn:
-            hud._cam_btn.hud_update('АКТИВИРОВАТЬ ВИДЕОСЕНСОР ', '⦿', _CYAN, icon_fs=22)
+            hud._cam_btn.hud_update(i18n.tr('hud.camera.activate') + ' ', '⦿', _CYAN, icon_fs=22)
         hud.root.after(100, lambda: draw_cam_standby(hud))
     else:
         hud._cam_run = True
         if hud._cam_btn:
-            hud._cam_btn.hud_update('ДЕАКТИВИРОВАТЬ СЕНСОР ', '◎', _AMBER, icon_fs=22)
+            hud._cam_btn.hud_update(i18n.tr('hud.camera.deactivate') + ' ', '◎', _AMBER, icon_fs=22)
         threading.Thread(target=lambda: _cam_thread(hud), daemon=True).start()
 def _cam_thread(hud) -> None:
     cap = _cv2.VideoCapture(0)
     if not cap.isOpened():
         hud._cam_run = False
-        hud._hud_queue.put(lambda: hud._cam_btn.hud_update('СЕНСОР НЕ НАЙДЕН', '⚠', _RED))
+        hud._hud_queue.put(lambda: hud._cam_btn.hud_update(i18n.tr('hud.camera.not_found'), '⚠', _RED))
         return
     cap.set(_cv2.CAP_PROP_FRAME_WIDTH, 320)
     cap.set(_cv2.CAP_PROP_FRAME_HEIGHT, 240)
@@ -62,7 +63,6 @@ def _cam_thread(hud) -> None:
         import os
         cascade_path = _cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         if os.path.exists(cascade_path):
-            face_cascade = _cv2.感 (cascade_path)
             face_cascade = _cv2.CascadeClassifier(cascade_path)
     except:
         pass

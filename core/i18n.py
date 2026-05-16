@@ -10,8 +10,6 @@ def _init():
     global _translations
     _translations = _load_locale(_language)
 
-_init()
-
 def _load_locale(lang: str) -> dict:
     locale_dir = Path(__file__).parent.parent / 'data' / 'locales'
     locale_file = locale_dir / f'{lang}.json'
@@ -19,6 +17,8 @@ def _load_locale(lang: str) -> dict:
         return {}
     with open(locale_file, 'r', encoding='utf-8') as f:
         return json.load(f)
+
+_init()
 
 def tr(key: str) -> str:
     return _translations.get(key, key)
