@@ -89,7 +89,18 @@ GAME_CMD_L10N = {
 }
 
 def _load_game_commands(filename: str) -> list[dict]:
-    path = os.path.join("data", "game_profiles", filename)
+    # Try to load Ukrainian version if language is set to Ukrainian
+    lang = i18n.get_language()
+    if lang == 'uk':
+        uk_filename = filename.replace('.json', '_uk.json')
+        uk_path = os.path.join("data", "game_profiles", uk_filename)
+        if os.path.exists(uk_path):
+            path = uk_path
+        else:
+            path = os.path.join("data", "game_profiles", filename)
+    else:
+        path = os.path.join("data", "game_profiles", filename)
+
     if not os.path.exists(path): return []
     try:
         with open(path, "r", encoding="utf-8") as f: data = json.load(f)

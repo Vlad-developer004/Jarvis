@@ -2,7 +2,18 @@ from __future__ import annotations
 import json
 import os
 from config_pack.config import get_data_path
-_CATALOG_PATH = get_data_path('extensions_catalog.json')
+from core import i18n
+
+def _get_catalog_path():
+    """Get catalog path, preferring Ukrainian version if language is set to Ukrainian"""
+    lang = i18n.get_language()
+    if lang == 'uk':
+        uk_path = get_data_path('extensions_catalog_uk.json')
+        if os.path.exists(uk_path):
+            return uk_path
+    return get_data_path('extensions_catalog.json')
+
+_CATALOG_PATH = _get_catalog_path()
 _INSTALLED_PATH = get_data_path('extensions_installed.json')
 class ExtensionManager:
     _instance: ExtensionManager | None = None
