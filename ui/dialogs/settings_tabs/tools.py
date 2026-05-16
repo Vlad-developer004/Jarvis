@@ -1,4 +1,5 @@
 from ui.hud_style import JStyle
+from core import i18n
 import os, json, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
@@ -28,10 +29,10 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
         def _select_all():
             entry.select_range(0, 'end')
             entry.icursor('end')
-        menu.add_command(label='Вставить (Ctrl+V)', command=_paste)
-        menu.add_command(label='Копировать (Ctrl+C)', command=_copy)
+        menu.add_command(label=i18n.tr('context_menu.paste'), command=_paste)
+        menu.add_command(label=i18n.tr('context_menu.copy'), command=_copy)
         menu.add_separator()
-        menu.add_command(label='Выделить всё (Ctrl+A)', command=_select_all)
+        menu.add_command(label=i18n.tr('context_menu.select_all'), command=_select_all)
         def _show_menu(e):
             menu.tk_popup(e.x_root, e.y_root)
         entry.bind('<Button-3>', _show_menu)
@@ -173,7 +174,7 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
         from core.system.windows import get_installed_apps
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
-        pick_win.title("ВЫБОР ПРИЛОЖЕНИЯ")
+        pick_win.title(i18n.tr('app_picker.title'))
         pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
         from ui.hud_utils import _center_window
         _center_window(pick_win, 820, 740, hud.zoom_factor)
@@ -184,17 +185,17 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
         pick_win.lift()
         top_bar = tk.Frame(pick_win, bg=_BG)
         top_bar.pack(fill='x', padx=20, pady=(20, 10))
-        tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(anchor='w')
-        h_lbl = tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10)), justify='left', anchor='w')
+        tk.Label(top_bar, text=i18n.tr('app_picker.header'), bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(anchor='w')
+        h_lbl = tk.Label(top_bar, text=i18n.tr('app_picker.hint'), bg=_BG, fg=_DIM, font=(hud._F, _sf(10)), justify='left', anchor='w')
         h_lbl.pack(fill='x', anchor='w')
         def _upd_p_wrap(e, l=h_lbl): l.configure(wraplength=e.width)
         top_bar.bind('<Configure>', _upd_p_wrap, add='+')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text=i18n.tr('app_picker.search_placeholder'), font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
-        sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, JStyle.TEXT_BODY, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=36, switch_height=18)
+        sw_all = ctk.CTkSwitch(ctrl_f, text=i18n.tr('app_picker.system_apps'), variable=_show_all_var, font=(hud._F, JStyle.TEXT_BODY, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=36, switch_height=18)
         sw_all.pack(side='right')
         lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
@@ -227,13 +228,15 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
                 on_selected(app.get('exe') or app['name'])
                 pick_win.destroy()
         lb.bind('<Double-Button-1>', _on_pick)
-        ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
+        ctk.CTkButton(pick_win, text=i18n.tr('app_picker.select_btn'), command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
 
-    c_yt = _card('▶', 'YOUTUBE / СОХРАНЁННЫЕ ВИДЕО', _CYAN)
+    c_yt = _card('▶', i18n.tr('tools.youtube_title'), _CYAN)
+    c_yt.master.pack_forget()
+    c_yt.master.pack(fill='x', padx=20, pady=(0, 0))
     _cur_max_saved = int(hud._settings.get('max_saved_videos', 10))
-    _max_saved_lbl = _label_row(c_yt, 'Максимум сохранённых видео', _CYAN)
+    _max_saved_lbl = _label_row(c_yt, i18n.tr('tools.max_videos'), _CYAN)
     _max_saved_lbl.configure(text=str(_cur_max_saved))
-    _hint(c_yt, 'Старые записи удаляются автоматически при превышении лимита')
+    _hint(c_yt, i18n.tr('tools.max_videos_hint'))
     _max_saved_save_after = [None]
     def _on_max_saved(v):
         val = int(float(v))
@@ -249,19 +252,19 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
     _v_row = tk.Frame(c_yt, bg=_PANEL)
     _v_row.pack(fill='x', pady=(14, 0))
     ctk.CTkButton(
-        _v_row, text='📋  ПРОСМОТР СОХРАНЁННЫХ ВИДЕО',
+        _v_row, text=i18n.tr('tools.view_videos'),
         command=lambda: __import__('ui.dialogs.manage_dlg', fromlist=['open_videos_manager']).open_videos_manager(hud),
         height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'),
         fg_color='transparent', hover_color=_blend(_CYAN, 0.25),
         text_color=_WHITE, border_color=_blend(_CYAN, 0.8),
         border_width=2, corner_radius=JStyle.RAD_PANEL
     ).pack(anchor='center', fill='x', padx=12, pady=(0, 4))
-    
-    c_mtg = _card('🔗', 'БЫСТРЫЕ ССЫЛКИ', _GREEN)
-    _hint(c_mtg, 'Пары, совещания, конференции — любая ссылка по голосовой фразе.')
+
+    c_mtg = _card('🔗', i18n.tr('tools.meetings_title'), _GREEN)
+    _hint(c_mtg, i18n.tr('tools.meetings_hint'))
     from actions.meetings import get_meetings, save_meetings as _save_meetings
     _meetings_list: list[dict] = list(get_meetings())
-    _mtg_count_lbl = tk.Label(c_mtg, text=f'Сохранено: {len(_meetings_list)}', bg=_PANEL, fg=_DIM,
+    _mtg_count_lbl = tk.Label(c_mtg, text=i18n.tr('tools.meetings_saved').format(n=len(_meetings_list)), bg=_PANEL, fg=_DIM,
                                 font=(hud._F, _sf(9)))
     _mtg_count_lbl.pack(anchor='w', pady=(4, 0))
     _entry_kw = dict(font=(hud._F, _sf(10), 'bold'), fg_color=_BG, text_color=_WHITE,
@@ -269,14 +272,14 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
                      corner_radius=JStyle.RAD_PANEL, height=JStyle.H_NORM, # Reduced from 44
                      placeholder_text_color=_blend(_WHITE, 0.25))
     _lkw_mtg = dict(bg=_PANEL, fg=_blend(_GREEN, 0.8), font=(hud._F, _sf(9), 'bold'), anchor='w')
-    tk.Label(c_mtg, text='Голосовая фраза', **_lkw_mtg).pack(fill='x', pady=(10, 0), padx=4) # Reduced from 12
-    _mtg_phrase_entry = ctk.CTkEntry(c_mtg, placeholder_text='например: заходим на пару по математике', **_entry_kw)
+    tk.Label(c_mtg, text=i18n.tr('tools.voice_phrase'), **_lkw_mtg).pack(fill='x', pady=(10, 0), padx=4) # Reduced from 12
+    _mtg_phrase_entry = ctk.CTkEntry(c_mtg, placeholder_text=i18n.tr('tools.phrase_example'), **_entry_kw)
     _mtg_phrase_entry.pack(fill='x', pady=(2, 8), padx=4) # Reduced from 12
-    tk.Label(c_mtg, text='Ссылка', **_lkw_mtg).pack(fill='x', padx=4)
+    tk.Label(c_mtg, text=i18n.tr('tools.link'), **_lkw_mtg).pack(fill='x', padx=4)
     _mtg_url_entry = ctk.CTkEntry(c_mtg, placeholder_text='https://zoom.us/j/123...', **_entry_kw)
     _mtg_url_entry.pack(fill='x', pady=(2, 8), padx=4)
-    tk.Label(c_mtg, text='Название (необязательно)', **_lkw_mtg).pack(fill='x', padx=4)
-    _mtg_name_entry = ctk.CTkEntry(c_mtg, placeholder_text='например: Высшая математика', **_entry_kw)
+    tk.Label(c_mtg, text=i18n.tr('tools.name_optional'), **_lkw_mtg).pack(fill='x', padx=4)
+    _mtg_name_entry = ctk.CTkEntry(c_mtg, placeholder_text=i18n.tr('tools.name_example'), **_entry_kw)
     _mtg_name_entry.pack(fill='x', pady=(2, 12), padx=4)
     _add_context_menu(_mtg_phrase_entry)
     _add_context_menu(_mtg_url_entry)
@@ -289,7 +292,7 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
         name = _mtg_name_entry.get().strip()
         if not phrase or not url:
             _mtg_status.pack(anchor='w', pady=(0, 6))
-            _mtg_status.configure(text='Укажите фразу и ссылку.', fg=_AMBER)
+            _mtg_status.configure(text=i18n.tr('tools.mtg_required'), fg=_AMBER)
             return
         if not name:
             name = phrase
@@ -299,31 +302,31 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
         _mtg_url_entry.delete(0, 'end')
         _mtg_name_entry.delete(0, 'end')
         _mtg_status.pack(anchor='w', pady=(0, 6))
-        _mtg_status.configure(text=f'Добавлено: «{phrase}»  ✓', fg=_GREEN)
-        _mtg_count_lbl.configure(text=f'Сохранено: {len(_meetings_list)}')
+        _mtg_status.configure(text=i18n.tr('tools.mtg_added').format(p=phrase), fg=_GREEN)
+        _mtg_count_lbl.configure(text=i18n.tr('tools.meetings_saved').format(n=len(_meetings_list)))
     btn_row_mtg = tk.Frame(c_mtg, bg=_PANEL)
     btn_row_mtg.pack(fill='x', pady=(4, 2), padx=0) # Removed padx=8, body handles it
     btn_row_mtg.columnconfigure(0, weight=1)
     btn_row_mtg.columnconfigure(1, weight=1)
-    
+
     _m_btn_k = dict(height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), corner_radius=JStyle.RAD_PANEL, border_width=2)
     ctk.CTkButton(
-        btn_row_mtg, text='➕  ДОБАВИТЬ ССЫЛКУ', command=_add_meeting,
+        btn_row_mtg, text=i18n.tr('tools.add_link'), command=_add_meeting,
         fg_color='transparent', hover_color=_blend(_GREEN, 0.25),
         text_color=_WHITE, border_color=_blend(_GREEN, 0.8),
         **_m_btn_k
     ).grid(row=0, column=0, padx=4, sticky='ew')
 
     ctk.CTkButton(
-        btn_row_mtg, text='🛠  УПРАВЛЕНИЕ',
+        btn_row_mtg, text=i18n.tr('tools.manage_links'),
         command=lambda: __import__('ui.dialogs.manage_dlg', fromlist=['open_meetings_manager']).open_meetings_manager(hud),
         fg_color='transparent', hover_color=_blend(_CYAN, 0.25),
         text_color=_WHITE, border_color=_blend(_CYAN, 0.8),
         **_m_btn_k
     ).grid(row=0, column=1, padx=4, sticky='ew')
-    
-    c_gm = _card('✦', 'ИГРОВОЙ РЕЖИМ — ЗАКРЫТИЕ ОКОН', _AMBER)
-    _hint(c_gm, 'Что НЕ закрывать при включении игрового режима: введите фрагмент заголовка или выберите приложение.')
+
+    c_gm = _card('✦', i18n.tr('tools.gamemode_title'), _AMBER)
+    _hint(c_gm, i18n.tr('tools.gamemode_hint'))
     
     def _load_gm_prefs() -> dict:
         try:
@@ -358,7 +361,7 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
 
     # Neural Placeholder for Game Mode
     _gm_empty_lbl = tk.Label(
-        c_gm, text='◎  РЕЖИМ ОЖИДАНИЯ\nВведите названия приложений для игнорирования',
+        c_gm, text=i18n.tr('tools.gamemode_empty'),
         bg=_PANEL, fg=_blend(_AMBER, 0.4), font=(hud._F, _sf(10)), pady=14
     )
 
@@ -375,7 +378,7 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
 
     def _save_gm_now():
         _save_gm_prefs({'keep_titles': list(_keep_titles)})
-        _gm_status.configure(text='Сохранено. Применится при следующем включении.', fg=_GREEN)
+        _gm_status.configure(text=i18n.tr('tools.gamemode_saved'), fg=_GREEN)
 
     def _gm_add(s):
         s = s.strip().lower()
@@ -387,7 +390,7 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
     _refresh_gm_lb()
 
     _gm_entry = ctk.CTkEntry(
-        c_gm, placeholder_text='Заголовок (например: discord)',
+        c_gm, placeholder_text=i18n.tr('tools.gamemode_placeholder'),
         font=(hud._F, _sf(10)), fg_color=_BG, border_color=_blend(_AMBER, 0.35),
         height=JStyle.H_NORM, corner_radius=JStyle.RAD_PANEL # Reduced from 44
     )
@@ -396,23 +399,23 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
 
     _gm_btn_row = tk.Frame(c_gm, bg=_PANEL)
     _gm_btn_row.pack(fill='x', padx=0) # Body handles padding
-    
+
     _gm_btn_k = dict(height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), corner_radius=JStyle.RAD_PANEL, border_width=2)
-    ctk.CTkButton(_gm_btn_row, text='➕  ДОБАВИТЬ', command=lambda: (_gm_add(_gm_entry.get()), _gm_entry.delete('0', 'end')), 
-                  fg_color='transparent', hover_color=_blend(_AMBER, 0.25), text_color=_WHITE, 
+    ctk.CTkButton(_gm_btn_row, text=i18n.tr('dev.add_btn'), command=lambda: (_gm_add(_gm_entry.get()), _gm_entry.delete('0', 'end')),
+                  fg_color='transparent', hover_color=_blend(_AMBER, 0.25), text_color=_WHITE,
                   border_color=_blend(_AMBER, 0.8), **_gm_btn_k).pack(side='left', fill='x', expand=True, padx=4, pady=4)
-    
-    ctk.CTkButton(_gm_btn_row, text='📂  ИЗ УСТАНОВЛЕННЫХ', command=lambda: _pick_app_dialog(_gm_add), 
-                  fg_color='transparent', hover_color=_blend(_AMBER, 0.2), text_color=_WHITE, 
+
+    ctk.CTkButton(_gm_btn_row, text=i18n.tr('tools.from_installed'), command=lambda: _pick_app_dialog(_gm_add),
+                  fg_color='transparent', hover_color=_blend(_AMBER, 0.2), text_color=_WHITE,
                   border_color=_blend(_AMBER, 0.5), **_gm_btn_k).pack(side='left', fill='x', expand=True, padx=4, pady=4)
-    
-    ctk.CTkButton(_gm_btn_row, text='🗑  УДАЛИТЬ', command=lambda: (_keep_titles.remove(_gm_lb.get(_gm_lb.curselection()[0]).strip()), _refresh_gm_lb(), _save_gm_now()) if _gm_lb.curselection() else None, 
-                  fg_color='transparent', hover_color=_blend(_RED, 0.25), text_color=_WHITE, 
+
+    ctk.CTkButton(_gm_btn_row, text=i18n.tr('dev.delete_btn'), command=lambda: (_keep_titles.remove(_gm_lb.get(_gm_lb.curselection()[0]).strip()), _refresh_gm_lb(), _save_gm_now()) if _gm_lb.curselection() else None,
+                  fg_color='transparent', hover_color=_blend(_RED, 0.25), text_color=_WHITE,
                   border_color=_blend(_RED, 0.8), **_gm_btn_k).pack(side='left', fill='x', expand=True, padx=4, pady=4)
     _refresh_gm_lb()
 
-    c_launch = _card('🚀', 'ЗАПУСК ПРИЛОЖЕНИЙ', _CYAN)
-    _hint(c_launch, 'Выберите, как открывать приложения: переключаться на уже открытое или всегда запускать новое окно.')
+    c_launch = _card('🚀', i18n.tr('tools.launch_title'), _CYAN)
+    _hint(c_launch, i18n.tr('tools.launch_hint'))
     
     _launch_rules = hud._settings.get('app_launch_rules', {})
     if not isinstance(_launch_rules, dict): _launch_rules = {}
@@ -431,14 +434,14 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
     def _refresh_launch_lb():
         _launch_lb.delete('0', 'end')
         for app, behavior in sorted(_launch_rules.items()):
-            b_text = 'НОВОЕ ОКНО' if behavior == 'new' else 'ПЕРЕКЛЮЧЕНИЕ'
+            b_text = i18n.tr('tools.launch_new') if behavior == 'new' else i18n.tr('tools.launch_switch')
             _launch_lb.insert('end', f'  {app.upper():<20} ◈ {b_text}')
         _launch_lb.config(height=max(3, min(8, len(_launch_rules))))
 
     def _save_launch_now():
         hud._settings['app_launch_rules'] = _launch_rules
         _save_hud_settings(hud._settings)
-        _launch_status.configure(text='Настройки запуска сохранены.', fg=_GREEN)
+        _launch_status.configure(text=i18n.tr('tools.launch_saved'), fg=_GREEN)
 
     def _toggle_launch_rule():
         sel = _launch_lb.curselection()
@@ -464,19 +467,19 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
 
     _l_btn_row = tk.Frame(c_launch, bg=_PANEL)
     _l_btn_row.pack(fill='x')
-    
+
     _l_btn_k = dict(height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), corner_radius=JStyle.RAD_PANEL, border_width=2)
-    ctk.CTkButton(_l_btn_row, text='➕  ДОБАВИТЬ', command=lambda: _pick_app_dialog(_add_launch_rule), 
-                  fg_color='transparent', hover_color=_blend(_CYAN, 0.25), text_color=_WHITE, 
+    ctk.CTkButton(_l_btn_row, text=i18n.tr('dev.add_btn'), command=lambda: _pick_app_dialog(_add_launch_rule),
+                  fg_color='transparent', hover_color=_blend(_CYAN, 0.25), text_color=_WHITE,
                   border_color=_blend(_CYAN, 0.8), **_l_btn_k).pack(side='left', fill='x', expand=True, padx=4, pady=4)
-    
-    ctk.CTkButton(_l_btn_row, text='⇆  ИЗМЕНИТЬ РЕЖИМ', command=_toggle_launch_rule, 
-                  fg_color='transparent', hover_color=_blend(_AMBER, 0.2), text_color=_WHITE, 
+
+    ctk.CTkButton(_l_btn_row, text=i18n.tr('tools.toggle_mode'), command=_toggle_launch_rule,
+                  fg_color='transparent', hover_color=_blend(_AMBER, 0.2), text_color=_WHITE,
                   border_color=_blend(_AMBER, 0.5), **_l_btn_k).pack(side='left', fill='x', expand=True, padx=4, pady=4)
-    
-    ctk.CTkButton(_l_btn_row, text='🗑  УДАЛИТЬ', 
-                  command=lambda: (_launch_rules.pop(next(k for k in _launch_rules if k.lower() == _launch_lb.get(_launch_lb.curselection()[0]).strip().split(' ◈ ')[0].strip().lower())), _refresh_launch_lb(), _save_launch_now()) if _launch_lb.curselection() else None, 
-                  fg_color='transparent', hover_color=_blend(_RED, 0.25), text_color=_WHITE, 
+
+    ctk.CTkButton(_l_btn_row, text=i18n.tr('dev.delete_btn'),
+                  command=lambda: (_launch_rules.pop(next(k for k in _launch_rules if k.lower() == _launch_lb.get(_launch_lb.curselection()[0]).strip().split(' ◈ ')[0].strip().lower())), _refresh_launch_lb(), _save_launch_now()) if _launch_lb.curselection() else None,
+                  fg_color='transparent', hover_color=_blend(_RED, 0.25), text_color=_WHITE,
                   border_color=_blend(_RED, 0.8), **_l_btn_k).pack(side='left', fill='x', expand=True, padx=4, pady=4)
 
     _refresh_launch_lb()

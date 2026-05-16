@@ -1,4 +1,5 @@
 from ui.hud_style import JStyle
+from core import i18n
 import os, json, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
@@ -7,7 +8,23 @@ from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_
 from ui.hud_widgets import _HudScrollbar, _HUDDropdown
 
 def build_voice_tab(inner, win, hud, _save_hud_settings):
-    _sf = lambda n: hud._fs(n + 6)
+    _sf  = lambda n: hud._fs(n + 6)   # для tk.Label / tk.Canvas (отрицательные пиксели)
+    _sfc = lambda n: n + 6             # для CTK виджетов (CTK сам масштабирует)
+
+    def _close_dropdowns(*args):
+        from ui.hud_widgets import _active_dropdown
+        if _active_dropdown and hasattr(_active_dropdown, 'close'):
+            try:
+                _active_dropdown.close()
+            except:
+                pass
+
+    def _on_scroll(_e=None):
+        _close_dropdowns()
+
+    inner.bind('<MouseWheel>', _on_scroll, add='+')
+    inner.bind('<Button-4>', _on_scroll, add='+')
+    inner.bind('<Button-5>', _on_scroll, add='+')
 
     def _add_context_menu(entry):
         menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, _sf(9)))
@@ -29,10 +46,10 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         def _select_all():
             entry.select_range(0, 'end')
             entry.icursor('end')
-        menu.add_command(label='Вставить (Ctrl+V)', command=_paste)
-        menu.add_command(label='Копировать (Ctrl+C)', command=_copy)
+        menu.add_command(label=i18n.tr('context_menu.paste'), command=_paste)
+        menu.add_command(label=i18n.tr('context_menu.copy'), command=_copy)
         menu.add_separator()
-        menu.add_command(label='Выделить всё (Ctrl+A)', command=_select_all)
+        menu.add_command(label=i18n.tr('context_menu.select_all'), command=_select_all)
         def _show_menu(e):
             menu.tk_popup(e.x_root, e.y_root)
         entry.bind('<Button-3>', _show_menu)
@@ -174,7 +191,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         from core.system.windows import get_installed_apps
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
-        pick_win.title("ВЫБОР ПРИЛОЖЕНИЯ")
+        pick_win.title(i18n.tr('app_picker.title'))
         pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
         from ui.hud_utils import _center_window
         _center_window(pick_win, 820, 740, hud.zoom_factor)
@@ -185,17 +202,17 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         pick_win.lift()
         top_bar = tk.Frame(pick_win, bg=_BG)
         top_bar.pack(fill='x', padx=20, pady=(20, 10))
-        tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(anchor='w')
-        h_lbl = tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, _sf(10)), justify='left', anchor='w')
+        tk.Label(top_bar, text=i18n.tr('app_picker.header'), bg=_BG, fg=_CYAN, font=(hud._F, _sf(14), 'bold')).pack(anchor='w')
+        h_lbl = tk.Label(top_bar, text=i18n.tr('app_picker.hint'), bg=_BG, fg=_DIM, font=(hud._F, _sf(10)), justify='left', anchor='w')
         h_lbl.pack(fill='x', anchor='w')
         def _upd_p_wrap(e, l=h_lbl): l.configure(wraplength=e.width)
         top_bar.bind('<Configure>', _upd_p_wrap, add='+')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text=i18n.tr('app_picker.search_placeholder'), font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
-        sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, JStyle.TEXT_BODY, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=36, switch_height=18)
+        sw_all = ctk.CTkSwitch(ctrl_f, text=i18n.tr('app_picker.system_apps'), variable=_show_all_var, font=(hud._F, JStyle.TEXT_BODY, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=36, switch_height=18)
         sw_all.pack(side='right')
         lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
@@ -228,16 +245,18 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                 on_selected(app.get('exe') or app['name'])
                 pick_win.destroy()
         lb.bind('<Double-Button-1>', _on_pick)
-        ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
+        ctk.CTkButton(pick_win, text=i18n.tr('app_picker.select_btn'), command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
 
-    c3 = _card('◎', 'РАСПОЗНАВАНИЕ РЕЧИ (STT)', _GREEN)
+    c3 = _card('◎', i18n.tr('voice.stt_title'), _GREEN)
+    c3.master.pack_forget()
+    c3.master.pack(fill='x', padx=20, pady=(0, 0))
     _cur_stt = hud._settings.get('stt_engine', 'gigaam')
     _stt_var = tk.StringVar(value=_cur_stt)
     _vosk_warn_frame = tk.Frame(c3, bg=_blend(_AMBER, 0.08), highlightbackground=_blend(_AMBER, 0.3), highlightthickness=1)
     _vosk_warn_inner = tk.Frame(_vosk_warn_frame, bg=_blend(_AMBER, 0.08))
     _vosk_warn_inner.pack(fill='x', padx=8, pady=6)
     tk.Label(_vosk_warn_inner, text='Р', bg=_blend(_AMBER, 0.08), fg=_AMBER, font=(hud._F, _sf(14))).pack(side='left', padx=(0, 8))
-    tk.Label(_vosk_warn_inner, text='Внимание: Vosk лёгкая модель.\nТочность распознавания снижена, но нагрузка на систему минимальна.', bg=_blend(_AMBER, 0.08), fg=_AMBER, font=(hud._F, _sf(9)), justify='left', anchor='w').pack(side='left')
+    tk.Label(_vosk_warn_inner, text=i18n.tr('voice.vosk_warning'), bg=_blend(_AMBER, 0.08), fg=_AMBER, font=(hud._F, _sf(9)), justify='left', anchor='w').pack(side='left')
     _active_stt_cards = []
     
     def _on_stt_change():
@@ -252,7 +271,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             card.configure(highlightbackground=_blend(col, 0.35) if engine == val else _BRD)
             
     _stt_restart_warn = tk.Frame(c3, bg=_blend(_RED, 0.08), highlightbackground=_blend(_RED, 0.3), highlightthickness=1)
-    tk.Label(_stt_restart_warn, text='⟳ Изменение движка STT требует перезапуска Джарвиса.', bg=_blend(_RED, 0.08), fg=_RED, font=(hud._F, _sf(9)), justify='left').pack(padx=10, pady=6)
+    tk.Label(_stt_restart_warn, text=i18n.tr('voice.stt_restart_warn'), bg=_blend(_RED, 0.08), fg=_RED, font=(hud._F, _sf(9)), justify='left').pack(padx=10, pady=6)
     
     def _on_stt_change_plus():
         _on_stt_change()
@@ -261,7 +280,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         else:
             _stt_restart_warn.pack_forget()
             
-    _stt_options = [('gigaam', '☁', 'GigaAM', 'Высокая точность', 'Требует GPU / мощный CPU', _GREEN), ('vosk', '📦', 'Vosk', 'Офлайн, лёгкий', 'Минимальная нагрузка на ОЗУ', _AMBER)]
+    _stt_options = [('gigaam', '☁', 'GigaAM', i18n.tr('voice.gigaam_badge'), i18n.tr('voice.gigaam_desc'), _GREEN), ('vosk', '📦', 'Vosk', i18n.tr('voice.vosk_badge'), i18n.tr('voice.vosk_desc'), _AMBER)]
     for val, icon, name, badge_txt, desc, col in _stt_options:
         rb_card = tk.Frame(c3, bg=_BG, highlightbackground=_blend(col, 0.3) if _stt_var.get() == val else _BRD, highlightthickness=1)
         rb_card.pack(fill='x', pady=(4, 0))
@@ -301,7 +320,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     if _cur_stt == 'vosk':
         _vosk_warn_frame.pack(fill='x', pady=(6, 0))
         
-    c4 = _card('◈', 'МИКРОФОН / ЧУВСТВИТЕЛЬНОСТЬ', _AMBER)
+    c4 = _card('◈', i18n.tr('voice.mic_title'), _AMBER)
     try:
         from core.mic_calibration import load_profile as _load_mp
         _mp = _load_mp()
@@ -309,11 +328,11 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         _cur_gain = float(_mp.get('gain', 2.5))
     except Exception:
         _cur_thresh, _cur_gain = (200, 2.5)
-        
-    _thresh_lbl = _label_row(c4, 'Порог срабатывания (Threshold)', _AMBER)
+
+    _thresh_lbl = _label_row(c4, i18n.tr('voice.threshold_label'), _AMBER)
     _thresh_lbl.configure(text=str(_cur_thresh))
-    _hint(c4, 'Ниже = чувствительнее к тихому голосу  •  Выше = только громкий голос')
-    tk.Label(c4, text='🔄  Применяется сразу, без перезапуска', bg=_PANEL, fg=_GREEN, font=(hud._F, _sf(8))).pack(anchor='w', padx=4, pady=(0, 4))
+    _hint(c4, i18n.tr('voice.threshold_hint'))
+    tk.Label(c4, text=i18n.tr('voice.instant_apply'), bg=_PANEL, fg=_GREEN, font=(hud._F, _sf(8))).pack(anchor='w', padx=4, pady=(0, 4))
     
     _cur_vol = float(hud._settings.get('volume', 1.0))
     _live_params = {'t': _cur_thresh, 'g': _cur_gain, 'v': _cur_vol}
@@ -340,9 +359,9 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     thresh_slider = _slider(c4, 30, 1200, 117, _AMBER, _cur_thresh, _on_thresh)
     tk.Frame(c4, bg=_BRD, height=1).pack(fill='x', pady=(10, 0))
     
-    _gain_lbl = _label_row(c4, 'Усиление микрофона (Gain)', _AMBER)
+    _gain_lbl = _label_row(c4, i18n.tr('voice.gain_label'), _AMBER)
     _gain_lbl.configure(text=f'{_cur_gain:.1f}×')
-    _hint(c4, '1.0× = без усиления  •  6.0× = максимальное усиление (для слабого микрофона)')
+    _hint(c4, i18n.tr('voice.gain_hint'))
     _gain_save_after = [None]
     
     def _on_gain(v):
@@ -367,10 +386,9 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     tk.Frame(c4, bg=_BRD, height=1).pack(fill='x', pady=(6, 0))
     
     tk.Label(
-        c4, text='Устройства ввода / вывода', bg=_PANEL, fg=_AMBER, font=(hud._F, _sf(10), 'bold'), anchor='w',
+        c4, text=i18n.tr('voice.devices_label'), bg=_PANEL, fg=_AMBER, font=(hud._F, _sf(10), 'bold'), anchor='w',
     ).pack(fill='x', pady=(4, 0))
-    _hint(c4, 'Выберите микрофон и устройство для голоса JARVIS. '
-              'Микрофон применяется сразу. Вывод (TTS) может потребовать перезапуск.')
+    _hint(c4, i18n.tr('voice.devices_hint'))
               
     def _load_settings_json() -> dict:
         try:
@@ -474,11 +492,11 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     _in_idx0  = _s0.get('audio_input_device_index')
     _out_name0 = _s0.get('audio_output_device_name')
     
-    _in_default_label = 'Системный микрофон (по умолчанию)'
-    _out_default_label = 'Системный вывод (по умолчанию)'
-    
-    _in_var  = tk.StringVar(value='⌛ Сканирование...')
-    _out_var = tk.StringVar(value='⌛ Сканирование...')
+    _in_default_label = i18n.tr('voice.default_input')
+    _out_default_label = i18n.tr('voice.default_output')
+
+    _in_var  = tk.StringVar(value=i18n.tr('voice.scanning'))
+    _out_var = tk.StringVar(value=i18n.tr('voice.scanning'))
     
     _in_map = {_in_default_label: None}
     _out_map = {_out_default_label: ''}
@@ -487,8 +505,8 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         return name.replace('\n', ' ').strip()
 
     def _dev_count_label(n: int) -> str:
-        if n == 0: return 'Устройства не обнаружены'
-        return f'Найдено устройств: {n}'
+        if n == 0: return i18n.tr('voice.no_devices')
+        return i18n.tr('voice.devices_found').format(n=n)
 
     _AUD_ICO = hud._px(40)
     _mic_block = tk.Frame(c4, bg=_PANEL)
@@ -505,27 +523,27 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     _in_title_row = tk.Frame(_in_col, bg=_PANEL)
     _in_title_row.pack(anchor='w', fill='x')
     
-    _in_title_lbl = tk.Label(_in_title_row, text='Микрофон (ввод)', bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='w')
+    _in_title_lbl = tk.Label(_in_title_row, text=i18n.tr('voice.input_title'), bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='w')
     _in_title_lbl.pack(side='left')
-    
+
     _live_badge = tk.Frame(_in_title_row, bg=_PANEL)
     _live_badge.pack(side='left', padx=(10, 0))
     tk.Label(_live_badge, text='[', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9))).pack(side='left')
     tk.Label(_live_badge, text='●', bg=_PANEL, fg=_AMBER, font=(hud._F, _sf(7))).pack(side='left', padx=2)
-    _live_txt = tk.Label(_live_badge, text='Обновление в реальном времени ]', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), justify='left')
+    _live_txt = tk.Label(_live_badge, text=i18n.tr('voice.live_update'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), justify='left')
     _live_txt.pack(side='left')
 
     def _upd_badge_wrap(e, l=_live_txt):
         if e.width < hud._px(550):
             l.configure(text='LIVE ]')
         else:
-            l.configure(text='Обновление в реальном времени ]')
+            l.configure(text=i18n.tr('voice.live_update'))
     _in_col.bind('<Configure>', _upd_badge_wrap)
 
-    _in_count_lbl = tk.Label(_in_col, text='⌛ Поиск...', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)))
+    _in_count_lbl = tk.Label(_in_col, text=i18n.tr('voice.searching'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)))
     _in_count_lbl.pack(anchor='w')
 
-    _in_m = _HUDDropdown(hud, _mic_block, ['⌛ Ожидание...'], _in_var, lambda _v: _apply_audio_settings(), accent=_AMBER)
+    _in_m = _HUDDropdown(hud, _mic_block, [i18n.tr('voice.waiting')], _in_var, lambda _v: _apply_audio_settings(), accent=_AMBER)
     _in_m.frame.pack(fill='x', pady=(6, 12))
 
     _out_block = tk.Frame(c4, bg=_PANEL)
@@ -536,14 +554,14 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     _out_icon.pack(side='left', padx=(0, 10))
     _out_icon.pack_propagate(False)
     tk.Label(_out_icon, text='🔊', bg=_blend(_MAG, 0.10), fg=_MAG, font=(hud._F, _sf(14))).place(relx=0.5, rely=0.5, anchor='center')
-    
+
     _out_col = tk.Frame(_out_top, bg=_PANEL)
     _out_col.pack(side='left', fill='x', expand=True)
-    tk.Label(_out_col, text='Вывод (голос JARVIS)', bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='w').pack(anchor='w')
-    _out_count_lbl = tk.Label(_out_col, text='⌛ Поиск...', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)))
+    tk.Label(_out_col, text=i18n.tr('voice.output_title'), bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='w').pack(anchor='w')
+    _out_count_lbl = tk.Label(_out_col, text=i18n.tr('voice.searching'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)))
     _out_count_lbl.pack(anchor='w')
 
-    _out_m = _HUDDropdown(hud, _out_block, ['⌛ Ожидание...'], _out_var, lambda _v: _apply_audio_settings(), accent=_MAG)
+    _out_m = _HUDDropdown(hud, _out_block, [i18n.tr('voice.waiting')], _out_var, lambda _v: _apply_audio_settings(), accent=_MAG)
     _out_m.frame.pack(fill='x', pady=(6, 6))
 
     _hp_s0 = _load_settings_json()
@@ -559,8 +577,8 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
 
     _hp_info = tk.Frame(_hp_row, bg=_PANEL)
     _hp_info.pack(side='left', fill='x', expand=True)
-    tk.Label(_hp_info, text='Режим наушников', bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='w').pack(anchor='w')
-    tk.Label(_hp_info, text='Микрофон активен пока Jarvis говорит (нет эха при наушниках)', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)), anchor='w').pack(anchor='w')
+    tk.Label(_hp_info, text=i18n.tr('voice.headphone_title'), bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='w').pack(anchor='w')
+    tk.Label(_hp_info, text=i18n.tr('voice.headphone_hint'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)), anchor='w').pack(anchor='w')
 
     def _on_hp_toggle():
         val = _hp_var.get()
@@ -570,8 +588,8 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         import core.audio_utils as _au
         _au._last_jarvis_hp_check = 0.0
         _set_aud_status(
-            '🎧 Режим наушников включён — микрофон не блокируется во время TTS' if val
-            else '🔇 Режим наушников выключен — авто-определение устройства',
+            i18n.tr('voice.headphone_on') if val
+            else i18n.tr('voice.headphone_off'),
             _MAG if val else _DIM
         )
 
@@ -609,16 +627,16 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             _out_var.set(out_init)
             _in_count_lbl.configure(text=_dev_count_label(len(ins)))
             _out_count_lbl.configure(text=_dev_count_label(len(outs)))
-            _set_aud_status(f'Найдено устройств: {len(ins)} ввод, {len(outs)} вывод', _CYAN)
+            _set_aud_status(i18n.tr('voice.devices_summary').format(inp=len(ins), out=len(outs)), _CYAN)
         except Exception: pass
 
     def _async_load():
         try:
-            _set_aud_status('Поиск аудио-устройств...', _CYAN)
+            _set_aud_status(i18n.tr('voice.scanning_audio'), _CYAN)
             ins, outs = _list_devices()
             win.after(0, lambda: _apply_scan_results(ins, outs))
         except Exception as e:
-            win.after(0, lambda: _set_aud_status(f'Ошибка сканирования: {e}', _RED))
+            win.after(0, lambda: _set_aud_status(i18n.tr('voice.scan_error').format(e=str(e)), _RED))
 
     threading.Thread(target=_async_load, daemon=True).start()
 
@@ -669,18 +687,18 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                 def _err():
                     if win.winfo_exists(): _set_aud_status(f'⚠ Ошибка применения: {e}', _RED)
                 win.after(0, _err)
-        _set_aud_status('⟳ Применяю настройки...', _AMBER)
+        _set_aud_status(i18n.tr('voice.applying'), _AMBER)
         threading.Thread(target=_do_apply, daemon=True).start()
         
     _cal_in_progress = [False]
     def _run_calibration_ui():
         if _cal_in_progress[0]: return
         _cal_in_progress[0] = True
-        cal_btn.configure(state='disabled', text='⏳ КАЛИБРОВКА...')
-        _set_aud_status('🔄  Поиск лучшей частоты…  JARVIS не реагирует на «Джарвис».', _AMBER)
+        cal_btn.configure(state='disabled', text=i18n.tr('voice.calibrating'))
+        _set_aud_status(i18n.tr('voice.cal_searching'), _AMBER)
         def _worker():
             ok = False
-            msg = 'Готово.'
+            msg = i18n.tr('voice.cal_done')
             t_result: int   = _live_params['t']
             g_result: float = _live_params['g']
             rate_used: int  = 16000
@@ -693,14 +711,14 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                     from config_pack.config import CHUNK_MS
                     from core.audio_utils import open_input_stream
                     from core.mic_calibration import run_calibration, find_best_rate, load_profile as _lp
-                    
+
                     pa = pyaudio.PyAudio()
                     s  = _load_settings_json()
                     di = s.get('audio_input_device_index')
                     di = int(di) if isinstance(di, int) else None
                     best_rate = find_best_rate(pa, CHUNK_MS, di)
                     rate_used = best_rate
-                    win.after(0, lambda r=best_rate: _set_aud_status(f'🔄 Лучшая частота: {r} Гц — открываю микрофон…', _AMBER))
+                    win.after(0, lambda r=best_rate: _set_aud_status(i18n.tr('voice.cal_best_rate').format(r=r), _AMBER))
                     chunk = max(128, int(best_rate * CHUNK_MS / 1000))
                     stream = open_input_stream(pa, best_rate, chunk, device_index=di)
                     try:
@@ -709,7 +727,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                         s2 = _load_settings_json()
                         s2['best_sample_rate'] = best_rate
                         _save_settings_json(s2)
-                        msg = (f'🔄 Калибровка завершена — {best_rate} Гц  |  Threshold={t_result}  |  Gain={g_result:.1f}×')
+                        msg = i18n.tr('voice.cal_complete').format(r=best_rate, t=t_result, g=g_result)
                     finally:
                         try: stream.close()
                         except Exception: pass
@@ -718,7 +736,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                 finally:
                     if eng: eng._calibrating = False
             except Exception as exc:
-                msg = f'Ошибка калибровки: {exc}'
+                msg = i18n.tr('voice.cal_error').format(e=str(exc))
                 ok  = False
             def _refresh_ui(t=t_result, g=g_result):
                 try:
@@ -736,26 +754,26 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                         hud._mic_gain_lbl.configure(text=f'×{g:.1f}')
                     _set_aud_status(msg, _GREEN if ok else _RED)
                     _cal_in_progress[0] = False
-                    cal_btn.configure(state='normal', text='🎙  ТЕСТ И КАЛИБРОВКА')
+                    cal_btn.configure(state='normal', text=i18n.tr('voice.test_calibrate'))
                 except Exception: pass
             win.after(0, _refresh_ui)
         threading.Thread(target=_worker, daemon=True).start()
-        
+
     _aud_row = tk.Frame(c4, bg=_PANEL)
     _aud_row.pack(fill='x', pady=(10, 0))
     _aud_btn_inner = tk.Frame(_aud_row, bg=_PANEL)
     _aud_btn_inner.pack(anchor='center')
-    
+
     cal_btn = ctk.CTkButton(
-        _aud_btn_inner, text='🎙  ТЕСТ И КАЛИБРОВКА', width=280, height=JStyle.H_HUGE,
+        _aud_btn_inner, text=i18n.tr('voice.test_calibrate'), width=280, height=JStyle.H_HUGE,
         font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color='transparent', hover_color=_blend(_AMBER, 0.12),
         text_color=_AMBER, border_color=_AMBER, border_width=2, corner_radius=JStyle.RAD_PANEL,
         command=_run_calibration_ui,
     )
     cal_btn.pack(side='left', padx=10)
-    
+
     ctk.CTkButton(
-        _aud_btn_inner, text='🔄  СИНХРОНИЗИРОВАТЬ', width=280, height=JStyle.H_HUGE,
+        _aud_btn_inner, text=i18n.tr('voice.sync_btn'), width=280, height=JStyle.H_HUGE,
         font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color='transparent', hover_color=_blend(_GREEN, 0.12),
         text_color=_GREEN, border_color=_GREEN, border_width=2, corner_radius=JStyle.RAD_PANEL,
         command=_apply_audio_settings,
@@ -769,10 +787,10 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     _out_block.lift()
     _mic_block.lift()
     
-    c_vol = _card('🔊', 'ЗВУК / ГРОМКОСТЬ ДЖАРВИСА', _MAG)
-    _vol_lbl = _label_row(c_vol, 'Мастер-громкость', _MAG)
+    c_vol = _card('🔊', i18n.tr('voice.volume_title'), _MAG)
+    _vol_lbl = _label_row(c_vol, i18n.tr('voice.master_volume'), _MAG)
     _vol_lbl.configure(text=f'{int(_cur_vol*100)}%')
-    _hint(c_vol, 'Влияет на голос и звуковые уведомления Джарвиса')
+    _hint(c_vol, i18n.tr('voice.volume_hint'))
     _vol_save_after = [None]
     
     def _on_vol(v):
@@ -790,23 +808,23 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     _on_vol(hud._settings.get('volume', 1.0))
     _slider(c_vol, 0.0, 1.0, 100, _MAG, _cur_vol, _on_vol)
 
-    c_tts = _card('🧠', 'ОПТИМИЗАЦИЯ ПАМЯТИ (TTS)', _CYAN)
-    _tts_lbl = _label_row(c_tts, 'Время удержания в ОЗУ', _CYAN)
-    
+    c_tts = _card('🧠', i18n.tr('voice.tts_title'), _CYAN)
+    _tts_lbl = _label_row(c_tts, i18n.tr('voice.tts_retention'), _CYAN)
+
     def _fmt_tout(v):
         v = int(v)
-        if v == 0: return "Бессрочно (рекомендуется)"
-        if v < 60: return f"{v} сек."
-        if v < 3600: return f"{v//60} мин."
-        return f"{v//3600} ч."
+        if v == 0: return i18n.tr('voice.tts_permanent')
+        if v < 60: return i18n.tr('voice.tts_sec').format(v=v)
+        if v < 3600: return i18n.tr('voice.tts_min').format(v=v//60)
+        return i18n.tr('voice.tts_hour').format(v=v//3600)
 
     _tout_vals = [60, 180, 300, 600, 900, 1800, 3600, 7200, 18000, 0]
     _s_json = _load_settings_json()
     _cur_tout = float(_s_json.get('tts_unload_timeout', 300.0))
     _tts_lbl.configure(text=_fmt_tout(_cur_tout))
-    
-    _hint(c_tts, 'Выгрузка модели экономит ~300МБ ОЗУ, но вызывает задержку при первом ответе после долгого молчания.')
-    _hint(c_tts, 'ℹ В игровом режиме выгрузка автоматически отключается для мгновенной реакции.')
+
+    _hint(c_tts, i18n.tr('voice.tts_hint1'))
+    _hint(c_tts, i18n.tr('voice.tts_hint2'))
 
     _tts_save_after = [None]
     def _on_tts_slider(v):
@@ -840,9 +858,9 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         
     _slider(c_tts, 0, len(_tout_vals)-1, len(_tout_vals)-1, _CYAN, _init_idx, _on_tts_slider)
 
-    c_wake = _card('🗣', 'РЕЖИМ ОБЩЕНИЯ (WAKE WORD)', _CYAN)
+    c_wake = _card('🗣', i18n.tr('voice.wake_title'), _CYAN)
     _wake_var = tk.StringVar(value=_s_json.get('wake_word_mode', 'continuous'))
-    
+
     def _on_wake_change():
         val = _wake_var.get()
         sj = _load_settings_json()
@@ -859,19 +877,19 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             pass
 
     rb_single = ctk.CTkRadioButton(
-        c_wake, text='Один ответ на имя (Без спама)', 
+        c_wake, text=i18n.tr('voice.wake_single'),
         variable=_wake_var, value='single',
-        font=(hud._F, _sf(11)), fg_color=_CYAN, command=_on_wake_change
+        font=(hud._F, _sfc(11)), fg_color=_CYAN, command=_on_wake_change
     )
     rb_single.pack(anchor='w', pady=(8, 4))
-    _hint(c_wake, 'Джарвис ответит «Да, сэр» только при пробуждении. Если сказать «Джарвис» пока он еще слушает — он просто молча обновит таймер, не спамя ответы.')
+    _hint(c_wake, i18n.tr('voice.wake_single_hint'))
 
     rb_cont = ctk.CTkRadioButton(
-        c_wake, text='Всегда отвечать на имя', 
+        c_wake, text=i18n.tr('voice.wake_continuous'),
         variable=_wake_var, value='continuous',
-        font=(hud._F, _sf(11)), fg_color=_CYAN, command=_on_wake_change
+        font=(hud._F, _sfc(11)), fg_color=_CYAN, command=_on_wake_change
     )
     rb_cont.pack(anchor='w', pady=(8, 4))
-    _hint(c_wake, 'Джарвис будет говорить «Да, сэр» каждый раз, когда вы произносите его имя, даже если он уже активен и слушает команды.')
+    _hint(c_wake, i18n.tr('voice.wake_continuous_hint'))
 
     tk.Frame(inner, bg=_BG, height=JStyle.H_NORM).pack(fill='x')
