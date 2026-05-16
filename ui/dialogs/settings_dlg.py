@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ui.hud_style import JStyle
+from core import i18n
 import json, os, threading, time, sys, subprocess
 import tkinter as tk
 import customtkinter as ctk
@@ -22,7 +23,7 @@ def open_settings(hud, reopen: bool = False) -> None:
         
     win = tk.Toplevel(hud.root)
     hud._settings_win = win
-    win.title('НАСТРОЙКИ — J.A.R.V.I.S.')
+    win.title(i18n.tr('settings.title'))
     hud._track_subwin('settings', win, lambda: open_settings(hud, reopen=True))
     
     win.configure(bg=_BG)
@@ -62,10 +63,10 @@ def open_settings(hud, reopen: bool = False) -> None:
     hdr_text = tk.Frame(hdr, bg=_hdr_bg)
     hdr_text.pack(side='left', fill='x', expand=True, anchor='nw')
     
-    title_lbl = tk.Label(hdr_text, text='НАСТРОЙКИ СИСТЕМЫ', bg=_hdr_bg, fg=_CYAN, font=(hud._F, _sf(16), 'bold'), anchor='w', justify='left')
+    title_lbl = tk.Label(hdr_text, text=i18n.tr('settings.header'), bg=_hdr_bg, fg=_CYAN, font=(hud._F, _sf(16), 'bold'), anchor='w', justify='left')
     title_lbl.pack(anchor='w', fill='x')
-    
-    sub_lbl = tk.Label(hdr_text, text='Конфигурация интерфейса, голоса и микрофона', bg=_hdr_bg, fg=_DIM, font=(hud._F, _sf(10)), anchor='w', justify='left')
+
+    sub_lbl = tk.Label(hdr_text, text=i18n.tr('settings.subtitle'), bg=_hdr_bg, fg=_DIM, font=(hud._F, _sf(10)), anchor='w', justify='left')
     sub_lbl.pack(anchor='w', fill='x')
 
     def _upd_hdr_wrap(e, t=title_lbl, s=sub_lbl):
@@ -161,7 +162,7 @@ def open_settings(hud, reopen: bool = False) -> None:
             build_func = getattr(mod, f'build_{name}_tab')
             build_func(inner_scroll, win, hud, _save_hud_settings)
         except Exception as e:
-            tk.Label(tab_frames[name], text=f"Ошибка загрузки: {e}", fg=_RED, bg=_BG).pack(expand=True)
+            tk.Label(tab_frames[name], text=i18n.tr('settings.tab_error').format(e=e), fg=_RED, bg=_BG).pack(expand=True)
 
     def make_scrollable(parent):
         scroll_canvas = tk.Canvas(parent, bg=_BG, highlightthickness=0, borderwidth=0)
@@ -170,23 +171,36 @@ def open_settings(hud, reopen: bool = False) -> None:
         cw = scroll_canvas.create_window((0, 0), window=inner_f, anchor='nw')
         vsb = _HudScrollbar(parent, scroll_canvas, color=_CYAN)
         scroll_canvas.configure(yscrollcommand=vsb.set)
-        
+
         def _upd_scroll(*_):
             if not scroll_canvas.winfo_exists(): return
-            scroll_canvas.configure(scrollregion=scroll_canvas.bbox('all'))
-            
+            inner_f.update_idletasks()
+            h = inner_f.winfo_reqheight()
+            cw_w = scroll_canvas.winfo_width()
+            ch = scroll_canvas.winfo_height()
+            if cw_w > 10:
+                scroll_canvas.itemconfig(cw, width=cw_w)
+            scroll_canvas.configure(scrollregion=(0, 0, cw_w, max(h, ch)))
+            scroll_canvas.yview_scroll(0, 'units')
+
         _last_w = [0]
         def _on_cfg(e):
             if not scroll_canvas.winfo_exists(): return
             if abs(e.width - _last_w[0]) < 2: return
             _last_w[0] = e.width
             scroll_canvas.itemconfig(cw, width=e.width)
-            # Use after to break potential recursion
-            scroll_canvas.after(10, _upd_scroll)
-            
-        inner_f.bind('<Configure>', _upd_scroll)
+            # Aggressive updates
+            scroll_canvas.after(50, _upd_scroll)
+            scroll_canvas.after(350, _upd_scroll)
+            scroll_canvas.after(800, _upd_scroll)
+
+        inner_f.bind('<Configure>', lambda e: (
+            scroll_canvas.after(50, _upd_scroll),
+            scroll_canvas.after(350, _upd_scroll),
+            scroll_canvas.after(800, _upd_scroll)
+        ))
         scroll_canvas.bind('<Configure>', _on_cfg)
-        
+
         def _bind_mw(w):
             try:
                 if w.winfo_class() not in ('Listbox', 'Text'):
@@ -197,11 +211,11 @@ def open_settings(hud, reopen: bool = False) -> None:
         return inner_f
 
     tab_meta = [
-        ('appearance', '◈ ИНТЕРФЕЙС', _CYAN),
-        ('voice', '🎙 ГОЛОС', _CYAN),
-        ('modules', '🧩 МОДУЛИ', _CYAN),
-        ('dev', '⬡ РАЗРАБОТКА', _CYAN),
-        ('tools', '🛠 ИНСТРУМЕНТЫ', _CYAN)
+        ('appearance', i18n.tr('tab.appearance'), _CYAN),
+        ('voice', i18n.tr('tab.voice'), _CYAN),
+        ('modules', i18n.tr('tab.modules'), _CYAN),
+        ('dev', i18n.tr('tab.dev'), _CYAN),
+        ('tools', i18n.tr('tab.tools'), _CYAN)
     ]
 
     for key, label, col in tab_meta:

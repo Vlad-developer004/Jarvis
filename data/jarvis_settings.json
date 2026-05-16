@@ -56,7 +56,10 @@
     "calendar_reminders_enabled": true
   },
   "first_run_done": true,
-  "programming_file_extensions": [],
+  "programming_file_extensions": [
+    "py",
+    "tsx"
+  ],
   "audio_input_device_index": 1,
   "context_apps": [
     "antigravity.exe"
@@ -73,5 +76,6 @@
     "brave": "switch",
     "youtube": "switch"
   },
-  "wake_word_mode": "continuous"
+  "wake_word_mode": "continuous",
+  "language": "ru"
 }

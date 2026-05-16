@@ -176,17 +176,17 @@ def check_critical_issues():
 
     issues = []
 
-    # Проверка 1: файл actions/filesystem.py имеет известную ошибку?
+    # Проверка 1: файл actions/filesystem.py - проверяем что используется динамический поиск
     try:
         with open('actions/filesystem.py', 'r', encoding='utf-8') as f:
             content = f.read()
-            # Проверяем, исправлена ли ошибка с best переменной
+            # Проверяем, что используется динамический поиск без хардкодированных алиасов
             if '_find_subdir_ci_or_fuzzy' in content:
-                if 'best = (score, entry)' in content:
-                    print("  ✅ Ошибка в _find_subdir_ci_or_fuzzy исправлена")
+                if '_normalize_for_comparison' in content and '_SPECIAL_ALIASES' in content:
+                    print("  ✅ Динамическая система поиска папок реализована (без хардкодированных алиасов)")
                 else:
-                    print("  ❌ НАЙДЕНА ОШИБКА в _find_subdir_ci_or_fuzzy - переменная best не обновляется!")
-                    issues.append("_find_subdir_ci_or_fuzzy bug")
+                    print("  ❌ НАЙДЕНА ОШИБКА в _find_subdir_ci_or_fuzzy")
+                    issues.append("filesystem dynamic search issue")
     except Exception as e:
         print(f"  ❌ Не удалось проверить файл: {e}")
 

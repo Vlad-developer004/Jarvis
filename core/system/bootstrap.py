@@ -16,6 +16,28 @@ def bootstrap():
         except Exception:
             pass
 
+    # --- GLOBAL LOGGING SYSTEM ---
+    class _Logger:
+        def __init__(self, filename, original_stream):
+            self.terminal = original_stream
+            self.log = open(filename, "a", encoding="utf-8")
+        def write(self, message):
+            self.terminal.write(message)
+            if message.strip(): # Avoid double timestamps on empty lines
+                ts = time.strftime("[%Y-%m-%d %H:%M:%S] ")
+                self.log.write(ts + message)
+            else:
+                self.log.write(message)
+            self.log.flush()
+        def flush(self):
+            self.terminal.flush()
+            self.log.flush()
+
+    os.makedirs('logs', exist_ok=True)
+    log_file = os.path.join('logs', 'jarvis.log')
+    sys.stdout = _Logger(log_file, sys.stdout)
+    sys.stderr = _Logger(log_file, sys.stderr)
+
     if getattr(sys, 'frozen', False):
         os.chdir(os.path.dirname(sys.executable))
     else:
@@ -68,14 +90,27 @@ def bootstrap():
             if add_defender_exclusion():
                 mark_defender_exclusion_done()
         threading.Thread(target=_add_excl, daemon=True).start()
+
+    try:
+        from config_pack.config import get_settings_path
+        from core import i18n
+        import json
+        settings_path = get_settings_path()
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            lang = settings.get('language', 'ru')
+            i18n.set_language(lang)
+    except Exception:
+        pass
 def play_early_greeting(volume=1.0):
     def _task():
         wavs = [f for f in ['audio/Джарвис - приветствие.wav'] if os.path.exists(f)]
         if not wavs: return
         try:
             import pygame
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
+            from core.audio_utils import ensure_mixer_init
+            ensure_mixer_init()
             snd = pygame.mixer.Sound(random.choice(wavs))
             hour = time.localtime().tm_hour
             is_night = (hour >= 22 or hour < 7)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ui.hud_style import JStyle
+from core import i18n
 import os
 import queue as _q_mod
 import threading
@@ -24,9 +25,10 @@ _hud: Optional[JarvisHUD] = None
 def show_hud() -> None:
     if _hud is None:
         return
-    _hud._hud_queue.put(_hud.root.deiconify)
-    _hud._hud_queue.put(_hud.root.lift)
-    _hud._hud_queue.put(_hud.root.focus_set)
+    # Используем window.show_main_win для корректного восстановления всех окон
+    _hud._hud_queue.put(lambda: window.show_main_win(_hud))
+    # Принудительно разворачиваем на весь экран
+    _hud._hud_queue.put(lambda: _hud.root.state('zoomed'))
 class JarvisHUD:
     def __init__(self) -> None:
         self._settings = _load_hud_settings()
@@ -35,7 +37,10 @@ class JarvisHUD:
         else:
             self.zoom_factor = float(self._settings.get('zoom_factor', 1.0))
         if self.zoom_factor <= 0.0: self.zoom_factor = 1.0
-        self._font_scale: float = 1.0
+        self._font_scale_left: float = 1.0
+        self._font_scale_right: float = 1.0
+        JStyle.apply_zoom(self.zoom_factor)
+        _c._SCROLLBAR_WIDTH = int(self._settings.get('scrollbar_width', 10))
 
         # Framework scaling MUST be set before or during root creation
         from .hud_themes import get_current_theme_name
@@ -87,7 +92,16 @@ class JarvisHUD:
         self._keybind_win = None
         self._ui_scale = self._get_dpi_scale()
         self._widget_vis: dict = {**_c._DEFAULT_VIS, **self._settings.get('widget_vis', {})}
-        self._panel_w = self._calc_panel_w()
+        self._monitoring_enabled: bool = self._settings.get('monitoring_enabled', True)
+        
+        # --- Separate Widths ---
+        self._panel_w_left = self._calc_panel_w('left')
+        self._panel_w_right = self._calc_panel_w('right')
+        
+        # 🔥 ФИКС: Рассчитываем масштаб шрифтов сразу при старте
+        self._font_scale_left = self._get_font_scale('left')
+        self._font_scale_right = self._get_font_scale('right')
+        
         self._last_weather_data = None
         self._tick = 0
         self._resize_timer: Optional[str] = None
@@ -128,16 +142,64 @@ class JarvisHUD:
         # Left Sidebar Container
         self._left_outer = tk.Frame(body, bg=_BG)
         self._left_outer.pack(side='left', fill='y')
-        self._left = layout.glass_panel(self, self._left_outer, 'left', self._panel_w)
-        self._left_sep = tk.Frame(self._left_outer, bg=_BRD, width=1)
+        self._left = layout.glass_panel(self, self._left_outer, 'left', self._panel_w_left)
+        
+        # Resize Handle (Left)
+        self._left_sep = tk.Frame(self._left_outer, bg=_BRD, width=4, cursor='size_we')
         self._left_sep.pack(side='left', fill='y')
         
         # Right Sidebar Container
         self._right_outer = tk.Frame(body, bg=_BG)
         self._right_outer.pack(side='right', fill='y')
-        self._right = layout.glass_panel(self, self._right_outer, 'right', self._panel_w)
-        self._right_sep = tk.Frame(self._right_outer, bg=_BRD, width=1)
+        self._right = layout.glass_panel(self, self._right_outer, 'right', self._panel_w_right)
+        
+        # Resize Handle (Right)
+        self._right_sep = tk.Frame(self._right_outer, bg=_BRD, width=4, cursor='size_we')
         self._right_sep.pack(side='right', fill='y')
+
+        # --- Resize Bindings ---
+        def _start_drag(e, side):
+            cur_w = self._panel_w_left if side == 'left' else self._panel_w_right
+            self._drag_data = {'side': side, 'x': e.x_root, 'w': cur_w}
+            
+        def _on_drag(e):
+            if not hasattr(self, '_drag_data'): return
+            side = self._drag_data['side']
+            dx = e.x_root - self._drag_data['x']
+            if side == 'right': dx = -dx
+            
+            new_w = self._drag_data['w'] + dx
+            sw = self.root.winfo_screenwidth()
+            
+            # Constraints: 18% - 38% of screen
+            limit_min = int(sw * 0.18)
+            limit_max = int(sw * 0.38)
+            new_w = max(limit_min, min(new_w, limit_max))
+            
+            if side == 'left':
+                if new_w != self._panel_w_left:
+                    self._panel_w_left = new_w
+                    self._settings['sidebar_width_left'] = new_w
+                    self._left.outer.configure(width=new_w)
+            else:
+                if new_w != self._panel_w_right:
+                    self._panel_w_right = new_w
+                    self._settings['sidebar_width_right'] = new_w
+                    self._right.outer.configure(width=new_w)
+        
+        def _stop_drag(e):
+            if hasattr(self, '_drag_data'):
+                delattr(self, '_drag_data')
+                _save_hud_settings(self._settings)
+                self._apply_zoom_rebuild()
+
+        self._left_sep.bind('<Button-1>', lambda e: _start_drag(e, 'left'))
+        self._left_sep.bind('<B1-Motion>', _on_drag)
+        self._left_sep.bind('<ButtonRelease-1>', _stop_drag)
+        
+        self._right_sep.bind('<Button-1>', lambda e: _start_drag(e, 'right'))
+        self._right_sep.bind('<B1-Motion>', _on_drag)
+        self._right_sep.bind('<ButtonRelease-1>', _stop_drag)
         
         # Center Area
         self._mid = tk.Frame(body, bg=_BG)
@@ -174,21 +236,15 @@ class JarvisHUD:
         self.root.after(50, self._poll_hud_queue)
         self.root.after(200, self._start_tray)
         self.root.after(250, self.root.deiconify)
+
+        i18n.register_refresh(self._refresh_ui_text)
+
         self.root.bind_all('<MouseWheel>', self._route_wheel)
         self.root.bind_all('<Control-equal>', lambda e: self._zoom_step(+0.1))
         self.root.bind_all('<Control-plus>', lambda e: self._zoom_step(+0.1))
         self.root.bind_all('<Control-minus>', lambda e: self._zoom_step(-0.1))
         self.root.bind_all('<Control-0>', lambda e: self._zoom_reset())
 
-    def _px(self, n: int) -> int:
-        # We scale for internal canvases. CTK widgets will use logical pixels.
-        return int(n * self.zoom_factor)
-    def _fs(self, n: int) -> int:
-        # Standard tk.Labels need font scaling as CTK doesn't auto-scale them.
-        # Use negative values so Tkinter treats them as pixels. 
-        # We use a 1.33 factor to match the standard point-to-pixel ratio (96/72) 
-        # so that base sizes (like 11) look natural on standard screens.
-        return -max(6, int(n * 1.33 * self.zoom_factor * self._font_scale))
     def _auto_detect_zoom(self) -> float:
         try:
             import ctypes
@@ -204,7 +260,43 @@ class JarvisHUD:
     def _get_dpi_scale(self) -> float:
         # Framework handles DPI natively.
         return 1.0
-    def _calc_panel_w(self) -> int:
+    def _px(self, n: int) -> int:
+        # We scale for internal canvases. CTK widgets will use logical pixels.
+        return int(n * self.zoom_factor)
+    def _fs(self, n: int, side: str = 'left') -> int:
+        # For tk.Label/tk.Canvas: negative = pixel size. 
+        scale = self._font_scale_left if side == 'left' else self._font_scale_right
+        return -max(6, int(n * 1.33 * self.zoom_factor * scale))
+
+    def _fsc(self, n: int, side: str = 'left') -> int:
+        # For CTK widgets (CTkButton, CTkEntry, CTkLabel etc.) — positive point size.
+        return max(8, n)
+
+    def _get_font_scale(self, side: str) -> float:
+        w = self._panel_w_left if side == 'left' else self._panel_w_right
+        # Начинаем уменьшать шрифт раньше (с 320px) и позволяем сжимать сильнее (до 0.5)
+        base_w = self._px(320)
+        if w < base_w: return max(0.5, w / base_w)
+        return 1.0
+
+    def _calc_panel_w(self, side: str, force_auto: bool = False) -> int:
+        sw = self.root.winfo_screenwidth()
+        limit_min = int(sw * 0.18)
+        limit_max = int(sw * 0.38)
+        
+        # 1. Try side-specific setting (unless forcing auto)
+        if not force_auto:
+            setting_key = f'sidebar_width_{side}'
+            if setting_key in self._settings:
+                val = int(self._settings[setting_key])
+                return max(limit_min, min(val, limit_max))
+                
+            # 2. Try legacy raw setting
+            if 'sidebar_width_raw' in self._settings:
+                val = int(self._settings['sidebar_width_raw'])
+                return max(limit_min, min(val, limit_max))
+            
+        # 3. Auto-calculation (The "Old Way")
         import tkinter.font as _tf
         try:
             # Measure with base size 11 and current zoom
@@ -220,7 +312,6 @@ class JarvisHUD:
         except Exception:
             _content_w = self._px(300)
 
-        sw = self.root.winfo_screenwidth()
         # Max % of screen for sidebars
         _max_pct = 0.36
         if sw >= 1920: _max_pct = 0.32
@@ -230,16 +321,12 @@ class JarvisHUD:
         _limit_w = int(sw * _max_pct)
         _min_w   = self._px(230)
         
-        # Calculate scaling factor if content overflows
-        self._font_scale = 1.0
         if _content_w > _limit_w:
-            # Shrink font proportionally to fit the limit
-            self._font_scale = max(0.65, _limit_w / _content_w)
             _w = _limit_w
         else:
             _w = max(_min_w, _content_w)
             
-        return min(_w, self._px(550))
+        return max(limit_min, min(_w, limit_max))
     def _poll_hud_queue(self):
         try:
             while not self._hud_queue.empty():
@@ -282,21 +369,38 @@ class JarvisHUD:
             renderer.draw_static(self)
             renderer.init_anim_objects(self)
         self._resize_timer = None
+    def _toggle_monitoring(self) -> None:
+        self._monitoring_enabled = not self._monitoring_enabled
+        self._settings['monitoring_enabled'] = self._monitoring_enabled
+        _save_hud_settings(self._settings)
+
     def _zoom_step(self, delta: float) -> None:
         self.zoom_factor = round(max(0.6, min(2.5, self.zoom_factor + delta)), 1)
         self._settings['zoom_factor'] = self.zoom_factor
         _save_hud_settings(self._settings)
-        self._apply_zoom_rebuild()
+        self._apply_zoom_rebuild(force_auto=True)
     def _zoom_reset(self) -> None:
         self.zoom_factor = 1.0
         self._settings['zoom_factor'] = self.zoom_factor
         _save_hud_settings(self._settings)
-        self._apply_zoom_rebuild()
-    def _apply_zoom_rebuild(self) -> None:
+        self._apply_zoom_rebuild(force_auto=True)
+    def _apply_zoom_rebuild(self, force_auto: bool = False) -> None:
+        JStyle.apply_zoom(self.zoom_factor)
         ctk.set_widget_scaling(self.zoom_factor)
         ctk.set_window_scaling(self.zoom_factor)
         self.root.update_idletasks()
-        self._panel_w = self._calc_panel_w()
+        
+        # Calculate individual widths and font scales
+        self._panel_w_left = self._calc_panel_w('left', force_auto=force_auto)
+        self._panel_w_right = self._calc_panel_w('right', force_auto=force_auto)
+        self._font_scale_left = self._get_font_scale('left')
+        self._font_scale_right = self._get_font_scale('right')
+        
+        # Save auto-calculated widths ONLY if we forced auto (on zoom change)
+        if force_auto:
+            self._settings['sidebar_width_left'] = self._panel_w_left
+            self._settings['sidebar_width_right'] = self._panel_w_right
+            _save_hud_settings(self._settings)
         
         # Ensure bottom bar order is preserved during zoom
         try:
@@ -308,8 +412,14 @@ class JarvisHUD:
             self._bot_canvas.pack(in_=self._bot_strip, side='left', fill='both', expand=True)
         except: pass
 
-        if hasattr(self._left, 'outer'): self._left.outer.configure(width=self._panel_w)
-        if hasattr(self._right, 'outer'): self._right.outer.configure(width=self._panel_w)
+        if hasattr(self._left, 'outer'): self._left.outer.configure(width=self._panel_w_left)
+        if hasattr(self._right, 'outer'): self._right.outer.configure(width=self._panel_w_right)
+        try:
+            self._left_toggle.configure(font=(self._F, JStyle.TEXT_BODY, 'bold'), height=JStyle.H_TOOL)
+            self._right_toggle.configure(font=(self._F, JStyle.TEXT_BODY, 'bold'), height=JStyle.H_TOOL)
+            self._bot_strip.configure(height=JStyle.H_LARGE)
+        except Exception:
+            pass
         
         self.root.update()
         layout.rebuild_left(self)
@@ -467,6 +577,12 @@ class JarvisHUD:
     def _draw_bot_strip(self, e=None): renderer.draw_bot_strip(self)
     def _rebuild_left(self): layout.rebuild_left(self)
     def _rebuild_right(self): layout.rebuild_right(self)
+    def _refresh_ui_text(self):
+        try:
+            self.root.title(f'J.A.R.V.I.S. — HUD v1.5')
+            monitoring.clock_tick(self)
+        except Exception:
+            pass
 def _try_show_welcome(hud: 'JarvisHUD') -> None:
     try:
         from ui.dialogs.welcome_dlg import open_welcome

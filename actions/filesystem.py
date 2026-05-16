@@ -6,23 +6,10 @@ import shutil
 from rapidfuzz import process, fuzz
 from actions.explorer import open_in_explorer
 USER_HOME = str(Path.home())
-_FOLDER_QUERY_ALIASES: dict[str, str] = {
-    'проджектс': 'projects',
-    'проджетс': 'projects',
-    'проекст': 'projects',
-    'проектс': 'projects',
-    'проджект': 'project',
-    'проекты': 'projects',
-    'даунлоадс': 'downloads',
-    'даунлодс': 'downloads',
-    'загрузки': 'downloads',
-    'документс': 'documents',
-    'документы': 'documents',
-    'десктоп': 'desktop',
-    'десктопе': 'desktop',
+# Минимальные алиасы только для числовых обозначений и аббревиатур
+_SPECIAL_ALIASES: dict[str, str] = {
     'лр': 'LR',
     'лаб': 'Lab',
-    'лаба': 'Lab',
 }
 _NUM_MAP = {
     'один': '1', 'одна': '1', 'первая': '1', 'первый': '1',
@@ -69,20 +56,22 @@ def _translit_lat_to_cyr_simple(s: str) -> str:
     return ''.join(out)
 def normalize_folder_voice_query(name: str) -> str:
     s = _fold((name or '').strip())
-    # 1. Direct aliases
-    if s in _FOLDER_QUERY_ALIASES:
-        return _FOLDER_QUERY_ALIASES[s]
-    # 2. Number words replacement (e.g. "лр один" -> "лр 1")
+    if not s:
+        return s
+
+    # 1. Replace number words (один -> 1)
     words = s.split()
-    changed = False
     for i, w in enumerate(words):
         if w in _NUM_MAP:
             words[i] = _NUM_MAP[w]
-            changed = True
-    if changed:
-        s = ' '.join(words)
-    # 3. Final mapping check after number conversion
-    return _FOLDER_QUERY_ALIASES.get(s, s)
+    s = ' '.join(words)
+
+    # 2. Apply special abbreviation aliases (лр -> LR)
+    for alias, replacement in _SPECIAL_ALIASES.items():
+        if s == alias or s.startswith(alias + ' '):
+            s = s.replace(alias, replacement, 1)
+
+    return s
 def get_name_variants(s: str) -> list[str]:
     s0 = _fold(s)
     if not s0:
@@ -284,37 +273,125 @@ def _list_subdirs(base: Path) -> list[Path]:
         return [p for p in base.iterdir() if p.is_dir()]
     except Exception:
         return []
-def _find_subdir_ci_or_fuzzy(base_dir: str, name: str, fuzzy_threshold: int=80) -> Path | None:
+# Кеш результатов поиска папок (директория -> {имя -> путь})
+_FOLDER_SEARCH_CACHE: dict[str, dict[str, Path]] = {}
+_CACHE_TIMESTAMPS: dict[str, float] = {}
+
+def _normalize_for_comparison(s: str) -> str:
+    """Нормализует строку для сравнения (убирает пробелы, подчёркивания, дефисы)"""
+    s = s.casefold().strip()
+    for char in [' ', '_', '-']:
+        s = s.replace(char, '')
+    return s
+
+def _invalidate_folder_cache_if_needed(base_dir: str) -> None:
+    """Инвалидирует кеш если директория была изменена"""
+    import time
+    base_path = Path(base_dir)
+    if not base_path.exists():
+        return
+
+    try:
+        # Получаем время последнего изменения директории
+        mod_time = base_path.stat().st_mtime
+        cached_time = _CACHE_TIMESTAMPS.get(base_dir)
+
+        # Если директория изменилась - очищаем кеш
+        if cached_time is None or mod_time > cached_time:
+            if base_dir in _FOLDER_SEARCH_CACHE:
+                del _FOLDER_SEARCH_CACHE[base_dir]
+            _CACHE_TIMESTAMPS[base_dir] = time.time()
+    except Exception:
+        pass
+
+def _find_subdir_ci_or_fuzzy(base_dir: str, name: str, fuzzy_threshold: int=75) -> Path | None:
+    """
+    Динамический поиск папки без хардкодированных алиасов (с кешированием).
+
+    Стратегия:
+    1. Точное совпадение (case-insensitive, пробелы/подчёркивания игнорируются)
+    2. Транслитерационные варианты (русский <-> латиница)
+    3. Fuzzy matching на основе токенов
+
+    Результаты кешируются для улучшения производительности.
+    """
     name = normalize_folder_voice_query((name or "").strip())
     if not name:
         return None
-    query_vars = get_name_variants(name)
-    if not query_vars:
-        return None
+
     base = Path(base_dir)
-    best: tuple[int, Path] | None = None
-    for entry in _list_subdirs(base):
-        if entry.name.casefold() == name.casefold():
-            return entry
-        ev = get_name_variants(entry.name)
-        if any(q == e for q in query_vars for e in ev):
-            return entry
-        score = 0
-        for q in query_vars:
-            for e in ev:
-                s = calculate_match_score(q, e)
-                if s > score:
-                    score = s
-        if best is None or score > best[0]:
-            best = (score, entry)
-    if best is not None and best[0] >= 82:
-        return best[1]
-    names = [p.name for p in _list_subdirs(base)]
-    if not names:
+    base_str = str(base)
+
+    # Инвалидируем кеш если директория изменилась
+    _invalidate_folder_cache_if_needed(base_str)
+
+    # Проверяем кеш
+    if base_str in _FOLDER_SEARCH_CACHE:
+        cache = _FOLDER_SEARCH_CACHE[base_str]
+        name_normalized = _normalize_for_comparison(name)
+        # Проверяем точное совпадение в кеше
+        if name_normalized in cache:
+            return cache[name_normalized]
+
+    subdirs = _list_subdirs(base)
+    if not subdirs:
         return None
-    match = process.extractOne(name, names, scorer=fuzz.token_set_ratio)
-    if match and match[1] >= fuzzy_threshold:
-        return base / match[0]
+
+    # Нормализуем запрос для сравнения
+    name_normalized = _normalize_for_comparison(name)
+
+    # Шаг 1: Точное совпадение (case-insensitive, игнорируем пробелы/подчёркивания)
+    for entry in subdirs:
+        if _normalize_for_comparison(entry.name) == name_normalized:
+            # Кешируем результат
+            if base_str not in _FOLDER_SEARCH_CACHE:
+                _FOLDER_SEARCH_CACHE[base_str] = {}
+            _FOLDER_SEARCH_CACHE[base_str][name_normalized] = entry
+            return entry
+
+    # Шаг 2: Проверяем транслитерационные варианты
+    query_vars = get_name_variants(name)
+    for entry in subdirs:
+        entry_vars = get_name_variants(entry.name)
+        if any(q == e for q in query_vars for e in entry_vars):
+            if base_str not in _FOLDER_SEARCH_CACHE:
+                _FOLDER_SEARCH_CACHE[base_str] = {}
+            _FOLDER_SEARCH_CACHE[base_str][name_normalized] = entry
+            return entry
+
+    # Шаг 3: Fuzzy matching на основе транслитерационных вариантов
+    best_match: tuple[Path, int] | None = None
+    for entry in subdirs:
+        entry_vars = get_name_variants(entry.name)
+        for q in query_vars:
+            for e in entry_vars:
+                score = calculate_match_score(q, e)
+                if best_match is None or score > best_match[1]:
+                    best_match = (entry, score)
+
+    if best_match and best_match[1] >= 80:
+        if base_str not in _FOLDER_SEARCH_CACHE:
+            _FOLDER_SEARCH_CACHE[base_str] = {}
+        _FOLDER_SEARCH_CACHE[base_str][name_normalized] = best_match[0]
+        return best_match[0]
+
+    # Шаг 4: Fuzzy matching по нормализованным именам
+    dir_names_normalized = [(p.name, _normalize_for_comparison(p.name)) for p in subdirs]
+    best_fuzzy = None
+    best_score = 0
+    for orig_name, norm_name in dir_names_normalized:
+        score = fuzz.token_set_ratio(name_normalized, norm_name)
+        if score > best_score:
+            best_score = score
+            best_fuzzy = orig_name
+
+    if best_fuzzy and best_score >= fuzzy_threshold:
+        result = base / best_fuzzy
+        if base_str not in _FOLDER_SEARCH_CACHE:
+            _FOLDER_SEARCH_CACHE[base_str] = {}
+        _FOLDER_SEARCH_CACHE[base_str][name_normalized] = result
+        return result
+
     return None
 def goto_folder(base_dir: str, folder_name: str) -> tuple[bool, str]:
     try:

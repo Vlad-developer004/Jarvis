@@ -1,4 +1,5 @@
 from ui.hud_style import JStyle
+from core import i18n
 import os, json, sys, subprocess, threading, time
 import tkinter as tk
 import customtkinter as ctk
@@ -29,10 +30,10 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         def _select_all():
             entry.select_range(0, 'end')
             entry.icursor('end')
-        menu.add_command(label='Вставить (Ctrl+V)', command=_paste)
-        menu.add_command(label='Копировать (Ctrl+C)', command=_copy)
+        menu.add_command(label=i18n.tr('context_menu.paste'), command=_paste)
+        menu.add_command(label=i18n.tr('context_menu.copy'), command=_copy)
         menu.add_separator()
-        menu.add_command(label='Выделить всё (Ctrl+A)', command=_select_all)
+        menu.add_command(label=i18n.tr('context_menu.select_all'), command=_select_all)
         def _show_menu(e):
             menu.tk_popup(e.x_root, e.y_root)
         entry.bind('<Button-3>', _show_menu)
@@ -163,7 +164,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         from core.system.windows import get_installed_apps
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
-        pick_win.title("ВЫБОР ПРИЛОЖЕНИЯ")
+        pick_win.title(i18n.tr('app_picker.title'))
         pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
         from ui.hud_utils import _center_window
         _center_window(pick_win, 820, 740, hud.zoom_factor)
@@ -174,17 +175,17 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         pick_win.lift()
         top_bar = tk.Frame(pick_win, bg=_BG)
         top_bar.pack(fill='x', padx=20, pady=(20, 10))
-        tk.Label(top_bar, text="ВЫБЕРИТЕ ПРИЛОЖЕНИЕ", bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold')).pack(anchor='w')
-        h_lbl = tk.Label(top_bar, text="Выберите программу для добавления в список", bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL), justify='left', anchor='w')
+        tk.Label(top_bar, text=i18n.tr('app_picker.header'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold')).pack(anchor='w')
+        h_lbl = tk.Label(top_bar, text=i18n.tr('app_picker.hint'), bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL), justify='left', anchor='w')
         h_lbl.pack(fill='x', anchor='w')
         def _upd_p_wrap(e, l=h_lbl): l.configure(wraplength=e.width)
         top_bar.bind('<Configure>', _upd_p_wrap, add='+')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text='Поиск...', font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text=i18n.tr('app_picker.search_placeholder'), font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
-        sw_all = ctk.CTkSwitch(ctrl_f, text='Системные', variable=_show_all_var, font=(hud._F, _sf(10), 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
+        sw_all = ctk.CTkSwitch(ctrl_f, text=i18n.tr('app_picker.system_apps'), variable=_show_all_var, font=(hud._F, 16, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=hud._px(36), switch_height=hud._px(18))
         sw_all.pack(side='right')
         lb_frame = tk.Frame(pick_win, bg=_BG, highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
         lb_frame.pack(fill='both', expand=True, padx=20, pady=(0, 15))
@@ -217,7 +218,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
                 on_selected(app.get('exe') or app['name'])
                 pick_win.destroy()
         lb.bind('<Double-Button-1>', _on_pick)
-        ctk.CTkButton(pick_win, text="ВЫБРАТЬ ПРИЛОЖЕНИЕ", command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
+        ctk.CTkButton(pick_win, text=i18n.tr('app_picker.select_btn'), command=_on_pick, height=JStyle.H_LARGE, width=280, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
 
     def _on_theme_change(name):
         from ui.hud_themes import save_theme_name
@@ -234,7 +235,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         names = {'cyber': 'CYBER NEON', 'dark': 'PURE DARK', 'light': 'PURE LIGHT'}
         lbl = tk.Label(
             restart_f,
-            text=f'✓  Тема «{names.get(name, name)}» сохранена. Требуется перезапуск.',
+            text=i18n.tr('theme.saved').format(name=names.get(name, name)),
             bg=_blend(_GREEN, 0.08), fg=_GREEN,
             font=(hud._F, _sf(9), 'bold'), anchor='w', justify='left'
         )
@@ -249,7 +250,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             subprocess.Popen([sys.executable] + sys.argv)
             win.after(200, lambda: __import__('os')._exit(0))
         ctk.CTkButton(
-            restart_f, text='↺  ПЕРЕЗАПУСТИТЬ', command=_restart,
+            restart_f, text=i18n.tr('theme.restart_btn'), command=_restart,
             height=34, font=(hud._F, _sfc(9), 'bold'),
             fg_color=_blend(_GREEN, 0.15), hover_color=_blend(_GREEN, 0.25),
             text_color=_GREEN, border_color=_blend(_GREEN, 0.5),
@@ -257,8 +258,10 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         ).pack(side='right', padx=8, pady=6)
         restart_f.pack(fill='x', pady=(6, 0))
 
-    c0 = _card('◐', 'ЦВЕТ. ТЕМА (перезапуск)', _CYAN)
-    _hint(c0, 'Тема применяется полностью после перезапуска. Выбранная сохраняется автоматически.')
+    c0 = _card('◐', i18n.tr('theme.label'), _CYAN)
+    c0.master.pack_forget()
+    c0.master.pack(fill='x', padx=20, pady=(0, 0))
+    _hint(c0, i18n.tr('theme.hint'))
 
     curr_theme = hud._settings.get('theme', 'cyber')
 
@@ -269,9 +272,9 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
 
     # Theme definitions: (id, label, accent_color, bg_preview, text_preview)
     _theme_defs = [
-        ('cyber', '⬡  CYBER NEON',  '#00ffff', '#0a0b10', '#00ffff'),
-        ('dark',  '◼  PURE DARK',   '#4da6ff', '#0d0d0d', '#e8e8e8'),
-        ('light', '◻  PURE LIGHT',  '#0055cc', '#f4f6fa', '#1a1a2e'),
+        ('cyber', i18n.tr('theme.cyber'),  '#00ffff', '#0a0b10', '#00ffff'),
+        ('dark',  i18n.tr('theme.dark'),   '#4da6ff', '#0d0d0d', '#e8e8e8'),
+        ('light', i18n.tr('theme.light'),  '#0055cc', '#f4f6fa', '#1a1a2e'),
     ]
 
     def _blend_hex(c1, c2, alpha):
@@ -305,10 +308,10 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
                          highlightbackground=_blend(_GREEN, 0.3), highlightthickness=1)
 
 
-    c1 = _card('◈', 'ОТОБРАЖЕНИЕ', _CYAN)
-    _zoom_val_lbl = _label_row(c1, 'Масштаб интерфейса', _CYAN)
+    c1 = _card('◈', i18n.tr('display.label'), _CYAN)
+    _zoom_val_lbl = _label_row(c1, i18n.tr('display.zoom'), _CYAN)
     _zoom_val_lbl.configure(text=f'{hud.zoom_factor:.1f}×')
-    _hint(c1, 'Ctrl + +/−  быстро  •  Ctrl+0 сброс  •  ✦ Авто определит масштаб по экрану')
+    _hint(c1, i18n.tr('display.zoom_hint'))
     _zoom_timer_id = [None]
     def _apply_zoom(z: float) -> None:
         z = round(z, 1)
@@ -319,7 +322,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         zoom_slider.set(z)
         ctk.set_widget_scaling(z)
         ctk.set_window_scaling(z)
-        hud._apply_zoom_rebuild()
+        hud._apply_zoom_rebuild(force_auto=True)
         
         # Force settings window to update its own scaling context
         win.update()
@@ -337,6 +340,31 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
     
     # Slider comes first now
     zoom_slider = _slider(c1, 0.6, 2.5, 19, _CYAN, hud.zoom_factor, _on_zoom_slide)
+
+    _sb_val_lbl = _label_row(c1, i18n.tr('display.scrollbar'), _CYAN)
+    _sb_width = hud._settings.get('scrollbar_width', 10)
+    _sb_val_lbl.configure(text=f'{_sb_width} px')
+    
+    _sb_timer_id = [None]
+    def _on_sb_slide(v):
+        w = int(float(v))
+        _sb_val_lbl.configure(text=f'{w} px')
+        hud._settings['scrollbar_width'] = w
+        _save_hud_settings(hud._settings)
+        
+        # Задержка перед ребилдом для предотвращения рекурсии и лагов
+        if _sb_timer_id[0]:
+            win.after_cancel(_sb_timer_id[0])
+            
+        def _apply():
+            from ui import hud_constants as _hc
+            _hc._SCROLLBAR_WIDTH = w
+            hud._apply_zoom_rebuild()
+            _sb_timer_id[0] = None
+            
+        _sb_timer_id[0] = win.after(300, _apply)
+
+    _slider(c1, 4, 30, 26, _CYAN, _sb_width, _on_sb_slide)
 
     _max_var = tk.BooleanVar(value=hud._settings.get('start_maximized', True))
     def _on_max():
@@ -358,7 +386,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
     _max_sw.pack(side='right', padx=16, pady=12)
     _max_lbl = tk.Label(
         _max_row,
-        text='Запуск во весь экран  ·  Автоматическое открытие HUD на весь основной монитор при старте системы',
+        text=i18n.tr('display.fullscreen'),
         bg=_BG,
         fg=_TEXT,
         font=(hud._F, _sf(10), 'bold'),
@@ -381,10 +409,10 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         z_btns.columnconfigure(zi, weight=1, uniform='zoom_btns')
     
     _Z_OPTS = (
-        ('−', -0.1, _CYAN),
-        ('+', +0.1, _CYAN),
-        ('↺ СБРОС', 1.0, _MAG),
-        ('✦ АВТО', 0.0, _GREEN)
+        (i18n.tr('display.zoom_minus'), -0.1, _CYAN),
+        (i18n.tr('display.zoom_plus'), +0.1, _CYAN),
+        (i18n.tr('display.zoom_reset'), 1.0, _MAG),
+        (i18n.tr('display.zoom_auto'), 0.0, _GREEN)
     )
     for col, (lbl, delta, color) in enumerate(_Z_OPTS):
         def _cb(d=delta):
@@ -409,30 +437,57 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             padx=padx_z,
         )
 
-    c2 = _card('◉', 'МОДУЛИ ИНТЕРФЕЙСА', _MAG)
-    _hint(c2, 'Скрытые модули убираются из панели автоматически.')
+    c2 = _card('◉', i18n.tr('modules.label'), _MAG)
+    _hint(c2, i18n.tr('modules.hint'))
     _vis_icons = {
-        'sunrise': '☀', 'sysinfo': '◈', 'storage': '📊', 'network': '⟳', 'weather': '≋', 
+        'sunrise': '☀', 'sysinfo': '◈', 'storage': '📊', 'network': '⟳', 'weather': '≋',
         'clock': '🕐', 'camera': '📷', 'gamemode': '✦', 'meetings_btn': '🔗', 'videos_btn': '▶',
         'network_ip': '◈', 'network_ssid': '◈', 'network_traffic': '◈', 'network_ls': '◈', 'sysinfo_mic': '◈'
     }
     _vis_map = {
-        'sunrise': 'Восход / Закат  (верхняя полоса)', 
-        'sysinfo': 'Системные профили',
-        'sysinfo_mic': 'Микрофон (усиление / порог)',
-        'storage': 'Аналитика хранилища (RAM / Диск)', 
-        'network': 'Сетевая статистика', 
-        'network_ip': 'Локальный IP адрес',
-        'network_ssid': 'Название Wi-Fi сети',
-        'network_ls': 'Скорость сетевого линка',
-        'network_traffic': 'Трафик (Загрузка / Скачивание)',
-        'weather': 'Погода — Атмосфера', 
-        'clock': 'Часы, дата и аптайм', 
-        'camera': 'Видеосенсор (камера)', 
-        'gamemode': 'Игровой режим', 
-        'meetings_btn': 'Быстрые ссылки (кнопка в HUD)', 
-        'videos_btn': 'Сохранённые видео (кнопка в HUD)'
+        'sunrise': i18n.tr('modules.sunrise'),
+        'sysinfo': i18n.tr('modules.sysinfo'),
+        'sysinfo_mic': i18n.tr('modules.sysinfo_mic'),
+        'storage': i18n.tr('modules.storage'),
+        'network': i18n.tr('modules.network'),
+        'network_ip': i18n.tr('modules.network_ip'),
+        'network_ssid': i18n.tr('modules.network_ssid'),
+        'network_ls': i18n.tr('modules.network_ls'),
+        'network_traffic': i18n.tr('modules.network_traffic'),
+        'weather': i18n.tr('modules.weather'),
+        'clock': i18n.tr('modules.clock'),
+        'camera': i18n.tr('modules.camera'),
+        'gamemode': i18n.tr('modules.gamemode'),
+        'meetings_btn': i18n.tr('modules.meetings_btn'),
+        'videos_btn': i18n.tr('modules.videos_btn')
     }
+
+    c_mon = _card('▦', i18n.tr('modules.monitoring'), _GREEN)
+    _hint(c_mon, i18n.tr('modules.monitoring_hint'))
+    mon_row = tk.Frame(c_mon, bg=_PANEL)
+    mon_row.pack(fill='x', pady=4)
+    icon_mon = tk.Frame(mon_row, bg=_PANEL, width=hud._px(36), height=hud._px(36))
+    icon_mon.pack_propagate(False)
+    icon_mon.pack(side='left')
+    tk.Label(icon_mon, text='▦', bg=_PANEL, fg=_GREEN, font=(hud._F, _sf(14))).place(relx=0.5, rely=0.5, anchor='center')
+    mon_var = tk.BooleanVar(value=getattr(hud, '_monitoring_enabled', True))
+    sw_mon = ctk.CTkSwitch(mon_row, text='', variable=mon_var, onvalue=True, offvalue=False,
+                           fg_color=_BRD_I, progress_color=_GREEN, button_color=_WHITE,
+                           switch_width=48, switch_height=24, width=0)
+    sw_mon.pack(side='left', padx=(4, 5))
+    lbl_mon = tk.Label(mon_row, text=i18n.tr('modules.monitoring_text'), bg=_PANEL,
+                       fg=_TEXT, font=(hud._F, _sf(12), 'bold'), anchor='w', justify='left')
+    lbl_mon.pack(side='left', fill='x', expand=True, padx=(2, 0))
+    def _upd_mon_wrap(e, l=lbl_mon):
+        avail = e.width - hud._px(120)
+        l.configure(wraplength=max(60, avail))
+    mon_row.bind('<Configure>', _upd_mon_wrap, add='+')
+    def _on_mon_change():
+        hud._monitoring_enabled = mon_var.get()
+        hud._settings['monitoring_enabled'] = hud._monitoring_enabled
+        _save_hud_settings(hud._settings)
+    sw_mon.configure(command=_on_mon_change)
+    lbl_mon.bind('<Button-1>', lambda e: (mon_var.set(not mon_var.get()), _on_mon_change()))
     _vis_vars: dict[str, tk.BooleanVar] = {}
     for key, label in _vis_map.items():
         var = tk.BooleanVar(value=hud._widget_vis.get(key, True))
@@ -485,3 +540,37 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
                 
         sw.configure(command=lambda k=key, v=var: _on_vis_change(k, v))
         lbl.bind('<Button-1>', lambda e, k=key, v=var: (v.set(not v.get()), _on_vis_change(k, v)))
+
+    c3 = _card('🌐', i18n.tr('language.label'), _CYAN)
+    _hint(c3, i18n.tr('language.apply_note'))
+
+    lang_row = tk.Frame(c3, bg=_PANEL)
+    lang_row.pack(fill='x', pady=(8, 12))
+
+    curr_lang = hud._settings.get('language', 'ru')
+    lang_var = tk.StringVar(value=curr_lang)
+
+    def _on_lang_change(val):
+        if val != curr_lang:
+            hud._settings['language'] = val
+            _save_hud_settings(hud._settings)
+            i18n.set_language(val)
+            from ui.dialogs.settings_dlg import open_settings
+            open_settings(hud, reopen=True)
+
+    for col, (code, label) in enumerate([('ru', i18n.tr('language.ru')), ('uk', i18n.tr('language.uk'))]):
+        lang_row.columnconfigure(col, weight=1)
+        btn = ctk.CTkButton(
+            lang_row,
+            text=label,
+            command=lambda c=code: _on_lang_change(c),
+            height=JStyle.H_LARGE,
+            font=(hud._F, JStyle.TEXT_BODY),
+            fg_color=_blend(_CYAN, 0.15) if code == curr_lang else 'transparent',
+            text_color=_CYAN if code == curr_lang else _DIM,
+            hover_color=_blend(_CYAN, 0.2),
+            border_color=_CYAN if code == curr_lang else _blend(_CYAN, 0.3),
+            border_width=2 if code == curr_lang else 1,
+            corner_radius=JStyle.RAD_PANEL
+        )
+        btn.grid(row=0, column=col, sticky='ew', padx=(0, 6) if col == 0 else (0, 0))
