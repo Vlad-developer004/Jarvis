@@ -470,9 +470,9 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 if not bool(data.get('parkBrake')):
                     print(f"[INPUT] Pressing key: {hb_key!r} (duration=0.1s)", flush=True)
                     try:
-                        _input.keyDown(hb_key)
+                        _pdi.keyDown(hb_key)
                         time.sleep(0.1)
-                        _input.keyUp(hb_key)
+                        _pdi.keyUp(hb_key)
                     except Exception as e:
                         print(f"[INPUT] Error pressing {hb_key!r}: {e}", flush=True)
                     time.sleep(0.25)

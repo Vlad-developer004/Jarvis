@@ -2,7 +2,6 @@ import threading
 import random
 import time
 import os
-import pygame
 from collections import OrderedDict
 from core.system import app_state
 from core.speech import (

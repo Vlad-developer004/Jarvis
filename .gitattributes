@@ -1,1 +1,11 @@
 *.gguf filter=lfs diff=lfs merge=lfs -text
+
+# Python files - enforce LF line endings
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Binary files
+*.jpg binary
+*.png binary
+*.zip binary

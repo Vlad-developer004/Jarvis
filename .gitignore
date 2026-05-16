@@ -8,3 +8,22 @@ models/
 dist/
 logs/
 
+# Compiled Python files
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Testing & temporary
+test_*.py
+scratch/
+*.bak
+*.swp
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
