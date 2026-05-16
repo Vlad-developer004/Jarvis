@@ -161,6 +161,7 @@
   "file.name_no_ext": "ІМ'Я ФАЙЛУ (БЕЗ РОЗШИРЕННЯ):",
   "file.photo_formats": "Фото",
   "file.type": "Тип файлу",
+  "file.type_hint": "Почніть вводити: py, word, json…",
   "file.type_label": "Тип файлу",
   "file.video": "Відео",
   "file.video_formats": "Відео",

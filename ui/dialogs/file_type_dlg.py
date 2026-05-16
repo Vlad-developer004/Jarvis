@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 from ui.hud_style import JStyle
 import threading
 import tkinter as tk
@@ -46,7 +47,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
         _center_window(win, rw, rh)
     win.configure(bg=_BRD)
     _set_dark_title_bar(win)
-    win.title("Тип файла")
+    win.title(i18n.tr('file.type'))
     def _force_bounds(event=None):
         if not win.winfo_exists(): return
         if getattr(win, '_placing', True): return
@@ -89,7 +90,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     title_bar.bind("<B1-Motion>", on_move)
     tk.Frame(inner, bg=_CYAN, height=1).pack(fill="x")
     tk.Label(title_bar, text="⬡", font=(_F, _sf(12), "bold"), fg=_CYAN, bg=_PANEL).pack(side="left", padx=(12, 6))
-    tk.Label(title_bar, text="Тип файла", font=(_F, _sf(12), "bold"), fg=_TEXT, bg=_PANEL).pack(side="left")
+    tk.Label(title_bar, text=i18n.tr('file.type'), font=(_F, _sf(12), "bold"), fg=_TEXT, bg=_PANEL).pack(side="left")
     def _cancel():
         out[0] = None
         try:
@@ -104,7 +105,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     content.pack(fill="both", expand=True, padx=16, pady=(28, 14))
     tk.Label(
         content,
-        text="Фильтр или выбор в списке · Enter / двойной щелчок",
+        text=i18n.tr('file.hint'),
         font=(_F, _sf(10)),
         fg=_DIM,
         bg=_BG,
@@ -116,7 +117,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     entry = ctk.CTkEntry(
         content,
         textvariable=filter_var,
-        placeholder_text="Начните вводить: py, word, json…",
+        placeholder_text=i18n.tr('file.type_hint'),
         height=34,
         font=_FONT_UI,
         fg_color=_BG,
@@ -181,7 +182,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     btn_row.pack(fill="x", pady=(12, 0))
     ctk.CTkButton(
         btn_row,
-        text="Создать",
+        text=i18n.tr('buttons.ok'),
         width=int(140 * (hud.zoom_factor if hud else 1.0)),
         height=int(36 * (hud.zoom_factor if hud else 1.0)),
         fg_color=_blend(_CYAN, 0.15),
@@ -193,7 +194,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
     ).pack(side="left", padx=(0, 10))
     ctk.CTkButton(
         btn_row,
-        text="Отмена",
+        text=i18n.tr('buttons.cancel'),
         width=int(120 * (hud.zoom_factor if hud else 1.0)),
         height=int(36 * (hud.zoom_factor if hud else 1.0)),
         fg_color="transparent",
