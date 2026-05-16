@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 from ui.hud_style import JStyle
 import threading
 import tkinter as tk
@@ -319,7 +320,7 @@ def _ask_standalone(**kwargs) -> str | tuple[str, str] | tuple[str, str, str] | 
     root.mainloop()
     return out[0]
 
-def ask_text(*, title, header, ok_text="ОК", cancel_text="ОТМЕНА", placeholder="", width=640, height=JStyle.H_TOOL, hint_voice=_DEFAULT_HINT, voice_confirm_phrases=None, voice_cancel_phrases=None, require_message_to_confirm=False, initial_path=None, show_extension_field=False, default_extension=None, initial_value=None):
+def ask_text(*, title, header, ok_text="ОК", cancel_text=i18n.tr('buttons.cancel'), placeholder="", width=640, height=JStyle.H_TOOL, hint_voice=_DEFAULT_HINT, voice_confirm_phrases=None, voice_cancel_phrases=None, require_message_to_confirm=False, initial_path=None, show_extension_field=False, default_extension=None, initial_value=None):
     vc = tuple(voice_confirm_phrases) if voice_confirm_phrases is not None else _VOICE_DOC_CONFIRM
     vz = tuple(voice_cancel_phrases) if voice_cancel_phrases is not None else _VOICE_DOC_CANCEL
     hud, master = _hud_root()

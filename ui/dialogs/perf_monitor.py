@@ -174,7 +174,7 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             try: win.overrideredirect(False); win.iconify()
             except: pass
 
-        _btn('✕', win.destroy, hint="ЗАКРЫТЬ", h_col=_RED)
+        _btn('✕', win.destroy, hint=i18n.tr('buttons.close'), h_col=_RED)
         _btn('—', _on_minimize, hint="СВЕРНУТЬ")
         _btn('📌', _toggle_pin, hint="ЗАКРЕПИТЬ ПОВЕРХ", col=_CYAN if _pinned.get() else _DIM)
         _btn('🔝', _toggle_ghost, hint="ПРОЗРАЧНЫЙ РЕЖИМ", col=_CYAN if _ghost.get() else _DIM)

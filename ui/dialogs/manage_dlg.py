@@ -163,8 +163,8 @@ def open_meetings_manager(hud) -> None:
                 def _cancel():
                     _editing[0] = None
                     _rebuild()
-                make_dlg_btn(hud, br, 'СОХРАНИТЬ', '✓', _GREEN, _save, height=JStyle.H_NORM, width=118).pack(side='left', padx=(0, 6))
-                make_dlg_btn(hud, br, 'ОТМЕНА', '✕', _DIM, _cancel, height=JStyle.H_NORM, width=88).pack(side='left')
+                make_dlg_btn(hud, br, i18n.tr('buttons.save'), '✓', _GREEN, _save, height=JStyle.H_NORM, width=118).pack(side='left', padx=(0, 6))
+                make_dlg_btn(hud, br, i18n.tr('buttons.cancel'), '✕', _DIM, _cancel, height=JStyle.H_NORM, width=88).pack(side='left')
             else:
                 btn_col = tk.Frame(card, bg=_PANEL)
                 btn_col.pack(side='right', padx=14, pady=14)
@@ -178,7 +178,7 @@ def open_meetings_manager(hud) -> None:
                     status_lbl.configure(text='Удалено.', fg=_AMBER)
                     _rebuild()
                 make_dlg_btn(hud, btn_col, 'ИЗМЕНИТЬ', '◈', _CYAN, _edit, height=JStyle.H_LARGE, width=136).pack(fill='x', pady=(0, 6))
-                make_dlg_btn(hud, btn_col, 'УДАЛИТЬ', '✕', _RED, _delete, height=JStyle.H_LARGE, width=136).pack(fill='x')
+                make_dlg_btn(hud, btn_col, i18n.tr('buttons.delete'), '✕', _RED, _delete, height=JStyle.H_LARGE, width=136).pack(fill='x')
                 body = tk.Frame(card, bg=_PANEL)
                 body.pack(side='left', fill='both', expand=True, padx=14, pady=14)
                 name_row = tk.Frame(body, bg=_PANEL)
@@ -288,7 +288,7 @@ def open_videos_manager(hud) -> None:
     hdr.pack(fill='x', padx=20, pady=(16, 4))
     tk.Label(hdr, text='▶', bg=_BG, fg=_CYAN,
              font=(hud._F, _sf(18))).pack(side='left', padx=(0, 12))
-    tk.Label(hdr, text='СОХРАНЁННЫЕ ВИДЕО', bg=_BG, fg=_CYAN,
+    tk.Label(hdr, text=i18n.tr('manage.videos.title'), bg=_BG, fg=_CYAN,
              font=(hud._F, _sf(13), 'bold')).pack(side='left')
     count_lbl = tk.Label(hdr, text='', bg=_BG, fg=_DIM, font=(hud._F, _sf(9)))
     count_lbl.pack(side='right')
@@ -370,8 +370,8 @@ def open_videos_manager(hud) -> None:
                 _save_videos(list(reversed(videos)))
                 status_lbl.configure(text='Удалено.', fg=_AMBER)
                 _rebuild()
-            make_dlg_btn(hud, btn_col, 'ОТКРЫТЬ', '▶', _CYAN, _open, height=JStyle.H_LARGE, width=128).pack(fill='x', pady=(0, 6))
-            make_dlg_btn(hud, btn_col, 'УДАЛИТЬ', '🗑', _RED, _del, height=JStyle.H_LARGE, width=128).pack(fill='x')
+            make_dlg_btn(hud, btn_col, i18n.tr('buttons.open'), '▶', _CYAN, _open, height=JStyle.H_LARGE, width=128).pack(fill='x', pady=(0, 6))
+            make_dlg_btn(hud, btn_col, i18n.tr('buttons.delete'), '🗑', _RED, _del, height=JStyle.H_LARGE, width=128).pack(fill='x')
             
             thumb_frame = tk.Frame(card, bg=_BG, width=thumb_w, height=thumb_h)
             thumb_frame.pack(side='left', padx=(10, 0), pady=12)

@@ -43,7 +43,7 @@ def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
         command=_ok
     ).pack(side='left', padx=10)
     ctk.CTkButton(
-        btn_row, text='ОТМЕНА', width=120, height=JStyle.H_NORM,
+        btn_row, text=i18n.tr('buttons.cancel'), width=120, height=JStyle.H_NORM,
         font=(hud._F, _sf(10), 'bold'),
         fg_color=_blend(_WHITE, 0.08),
         command=dlg.destroy
@@ -275,7 +275,7 @@ def open_compose_dialog(hud, parent_win, set_status=None) -> None:
         command=_do_compose_send,
     ).pack(side='left', padx=10)
     ctk.CTkButton(
-        _btn_center, text='ОТМЕНА', width=160, height=JStyle.H_HUGE,
+        _btn_center, text=i18n.tr('buttons.cancel'), width=160, height=JStyle.H_HUGE,
         font=(hud._F, _sf(11), 'bold'),
         fg_color=_blend(_CYAN, 0.12), hover_color=_blend(_CYAN, 0.22),
         command=dlg.destroy,
@@ -351,7 +351,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         ).pack(padx=20, pady=40)
         ctk.CTkButton(
             win,
-            text='ЗАКРЫТЬ',
+            text=i18n.tr('buttons.close'),
             width=160,
             font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_CYAN, 0.2),
@@ -753,7 +753,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             fg_color=_blend(_GREEN, 0.25),
             command=_ok,
         ).pack(side='left', padx=(0, 8))
-        ctk.CTkButton(row, text='ОТМЕНА', width=hud._px(120), height=hud._px(44), font=(hud._F, _sf(10, hud.zoom_factor)), fg_color=_blend(_CYAN, 0.1), command=_cancel).pack(side='left')
+        ctk.CTkButton(row, text=i18n.tr('buttons.cancel'), width=hud._px(120), height=hud._px(44), font=(hud._F, _sf(10, hud.zoom_factor)), fg_color=_blend(_CYAN, 0.1), command=_cancel).pack(side='left')
         ent.bind('<Return>', lambda e: _ok())
         ent.focus_set()
     ctk.CTkButton(tool, text='Ссылка…', width=92, command=_add_link_dialog, **bt_kw).pack(side='left', padx=(0, 6))

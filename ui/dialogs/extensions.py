@@ -124,8 +124,8 @@ def _ask_chat_id(parent, hud, on_confirm):
         cid = entry_var.get().strip()
         if not cid.lstrip('-').isdigit(): entry.configure(border_color=_RED); return
         on_confirm(cid); dlg.destroy()
-    ctk.CTkButton(dlg, text='СОХРАНИТЬ', font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=28, pady=(0, 6))
-    ctk.CTkButton(dlg, text='ОТМЕНА', font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=28)
+    ctk.CTkButton(dlg, text=i18n.tr('buttons.save'), font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=28, pady=(0, 6))
+    ctk.CTkButton(dlg, text=i18n.tr('buttons.cancel'), font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=28)
     dlg.bind('<Return>', lambda _: _confirm())
 
 def _ask_calendar_setup(parent, hud, on_done=None):
@@ -181,8 +181,8 @@ def _ask_calendar_setup(parent, hud, on_done=None):
         s = _load_settings(); s['calendar_sources'] = sources_var; _save_settings(s)
         if on_done: on_done()
         dlg.destroy()
-    ctk.CTkButton(inner, text='СОХРАНИТЬ', font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(0, 6))
-    ctk.CTkButton(inner, text='ОТМЕНА', font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
+    ctk.CTkButton(inner, text=i18n.tr('buttons.save'), font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(0, 6))
+    ctk.CTkButton(inner, text=i18n.tr('buttons.cancel'), font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
 
 def _ask_mail_setup(parent, hud, on_done):
     dlg = tk.Toplevel(parent); dlg.title('Подключение почты к JARVIS'); dlg.configure(bg=_BG)
@@ -232,8 +232,8 @@ def _ask_mail_setup(parent, hud, on_done):
             from actions.mail_client import save_mail_account
             save_mail_account(em, pw, ih, sh, 993, 587); on_done(); dlg.destroy()
         except Exception: pass
-    ctk.CTkButton(inner, text='СОХРАНИТЬ', font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(10, 6))
-    ctk.CTkButton(inner, text='ОТМЕНА', font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
+    ctk.CTkButton(inner, text=i18n.tr('buttons.save'), font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(10, 6))
+    ctk.CTkButton(inner, text=i18n.tr('buttons.cancel'), font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
 
 def _open_commands_help(parent, hud, meta: dict) -> None:
     dlg = getattr(hud, '_ext_cmd_win', None)

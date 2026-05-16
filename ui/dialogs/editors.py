@@ -1,4 +1,5 @@
 from __future__ import annotations
+from core import i18n
 from ui.hud_style import JStyle
 import json, os, threading, time
 import tkinter as tk
@@ -95,7 +96,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     hud._keybind_win = win
     _set_dark_title_bar(win)
     win.after(50, lambda: _set_dark_title_bar(win))
-    win.title('Редактор макросов и клавиш')
+    win.title(i18n.tr('editor.title'))
     try:
         if hasattr(hud, '_ico_path'): win.iconbitmap(hud._ico_path)
     except: pass
@@ -132,10 +133,10 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     txt_f = tk.Frame(content_hdr, bg=_BG)
     txt_f.pack(side='left', fill='x')
 
-    t_lbl = tk.Label(txt_f, text='МАКРОСЫ И ГОРЯЧИЕ КЛАВИШИ', bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold'), anchor='w')
+    t_lbl = tk.Label(txt_f, text=i18n.tr('editor.header'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H1, 'bold'), anchor='w')
     t_lbl.pack(anchor='w')
     
-    s_lbl = tk.Label(txt_f, text='Глобальная настройка всех игровых профилей', bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_BODY), anchor='w')
+    s_lbl = tk.Label(txt_f, text=i18n.tr('editor.subtitle'), bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_BODY), anchor='w')
     s_lbl.pack(anchor='w')
 
     # --- TABS (Scrollable if many) ---
@@ -167,7 +168,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     
     search_pill = ctk.CTkEntry(
         search_wrap,
-        placeholder_text='ПОИСК МАКРОСА ИЛИ КЛАВИШИ...', 
+        placeholder_text=i18n.tr('editor.search'), 
         placeholder_text_color=_blend(_CYAN, 0.7),
         fg_color=_PANEL,
         text_color=_CYAN,
@@ -393,10 +394,10 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
                 conf.destroy(); d.destroy()
                 _load_game_tab(game_name)
             
-            ctk.CTkButton(btn_f, text="УДАЛИТЬ", fg_color=_RED, hover_color=_blend(_RED, 0.7), 
+            ctk.CTkButton(btn_f, text=i18n.tr('buttons.delete'), fg_color=_RED, hover_color=_blend(_RED, 0.7), 
                           text_color=_WHITE, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), height=JStyle.H_NORM, width=150,
                           command=_real_del).pack(side='left', expand=True, padx=5)
-            ctk.CTkButton(btn_f, text="ОТМЕНА", fg_color=_PANEL, hover_color=_BRD_I,
+            ctk.CTkButton(btn_f, text=i18n.tr('buttons.cancel'), fg_color=_PANEL, hover_color=_BRD_I,
                           text_color=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_NORM, width=150,
                           command=conf.destroy).pack(side='right', expand=True, padx=5)
         
