@@ -85,10 +85,10 @@ def build_left(hud) -> None:
         
         sub_p = tk.Frame(hud._bat_section, bg=_PANEL)
         sub_p.pack(fill='x', padx=14, pady=(2, 0))
-        tk.Label(sub_p, text='◈ ДОСТУП К ПИТАНИЮ', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), anchor='w').pack(fill='x', pady=(2, 0))
+        tk.Label(sub_p, text=i18n.tr('hud.power_access'), bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), anchor='w').pack(fill='x', pady=(2, 0))
         tk.Frame(sub_p, bg=_GREEN, height=1).pack(fill='x', pady=(0, 6))
         
-        _bat_txt = 'ЗАРЯД БАТАРЕИ' if hud.zoom_factor > 1.8 else 'УРОВЕНЬ ЗАРЯДА БАТАРЕИ'
+        _bat_txt = i18n.tr('hud.battery_charge') if hud.zoom_factor > 1.8 else i18n.tr('hud.battery_level')
         hud._bat_bar, hud._bat_val, hud._bat_bar_frame = bar_row(hud, hud._bat_section, _bat_txt, _GREEN)
         hud._bat_lbl = tk.Label(hud._bat_section, text='', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
         hud._bat_lbl.pack(anchor='e', padx=18, pady=(2, 6))
@@ -141,7 +141,7 @@ def build_left(hud) -> None:
         
     _ext = ExtensionManager()
     if hud._widget_vis.get('camera', True):
-        section_hdr(hud, p, 'ВИДЕОСЕНСОР ', _CYAN, pady=(12, 4))
+        section_hdr(hud, p, i18n.tr('hud.video_sensor') + ' ', _CYAN, pady=(12, 4))
         cam_outer = tk.Frame(p, bg=_BRD_I, highlightthickness=0)
         cam_outer.pack(fill='x', padx=14, pady=(2, 6))
         _cam_w = hud._panel_w_left - 28
@@ -154,25 +154,25 @@ def build_left(hud) -> None:
         hud._vis_box = hud._cam_placeholder
         hud._draw_cam_standby()
         tk.Frame(p, bg=_PANEL, height=4).pack()
-        hud._cam_btn = make_hud_btn(hud, p, 'АКТИВИРОВАТЬ ВИДЕОСЕНСОР ', '⦿', _CYAN, hud._toggle_cam, icon_fs=22)
+        hud._cam_btn = make_hud_btn(hud, p, i18n.tr('hud.camera.activate') + ' ', '⦿', _CYAN, hud._toggle_cam, icon_fs=22)
     else:
         hud._cam_placeholder = None
         hud._cam_btn = None
         
     section_hdr(hud, p, tr('commands'), _MAG, pady=(14, 10))
     make_hud_btn(hud, p, tr('system_monitor'), '▦', _GREEN, hud._open_perf_monitor, icon_fs=24)
-    make_hud_btn(hud, p, 'БАЗА КОМАНД', '◈', _MAG, hud._open_deck, icon_fs=24)
-    make_hud_btn(hud, p, 'НАСТРОЙКИ СИСТЕМЫ', '⚙', _CYAN, hud._open_settings, icon_fs=16)
-    make_hud_btn(hud, p, 'ЦЕНТР РАСШИРЕНИЙ', '⬡', _RED, hud._open_extensions, icon_fs=24)
+    make_hud_btn(hud, p, i18n.tr('hud.commands_base'), '◈', _MAG, hud._open_deck, icon_fs=24)
+    make_hud_btn(hud, p, i18n.tr('hud.system_settings'), '⚙', _CYAN, hud._open_settings, icon_fs=16)
+    make_hud_btn(hud, p, i18n.tr('hud.extensions_center'), '⬡', _RED, hud._open_extensions, icon_fs=24)
     if module_enabled('inbox_digest') and _ext.is_installed('feature_mail_client'):
-        make_hud_btn(hud, p, 'ПОЧТА', '✉', _CYAN, hud._open_mail, icon_fs=22)
+        make_hud_btn(hud, p, i18n.tr('hud.mail'), '✉', _CYAN, hud._open_mail, icon_fs=22)
     if hud._widget_vis.get('meetings_btn', True):
         from actions.meetings import get_meetings as _get_meetings
         if _get_meetings():
             def _open_meetings(h=hud):
                 from .dialogs.manage_dlg import open_meetings_manager
                 open_meetings_manager(h)
-            hud._meetings_btn_frame = make_hud_btn(hud, p, 'БЫСТРЫЕ ССЫЛКИ', '🔗', _GREEN, _open_meetings, icon_fs=18)
+            hud._meetings_btn_frame = make_hud_btn(hud, p, i18n.tr('hud.quick_links'), '🔗', _GREEN, _open_meetings, icon_fs=18)
     if hud._widget_vis.get('videos_btn', True):
         import os as _os
         _vp = _os.path.join(_os.path.expanduser('~'), 'Jarvis_YT_Saved.txt')
@@ -180,18 +180,18 @@ def build_left(hud) -> None:
             def _open_videos(h=hud):
                 from .dialogs.manage_dlg import open_videos_manager
                 open_videos_manager(h)
-            hud._videos_btn_frame = make_hud_btn(hud, p, 'СОХРАНЁННЫЕ ВИДЕО', '▶', _CYAN, _open_videos, icon_fs=20)
+            hud._videos_btn_frame = make_hud_btn(hud, p, i18n.tr('hud.saved_videos'), '▶', _CYAN, _open_videos, icon_fs=20)
             
     _as_on = autostart_enabled()
-    hud._autostart_btn = make_hud_btn(hud, p, 'АВТОЗАПУСК СИСТЕМЫ', '◉' if _as_on else '○', _GREEN if _as_on else _DIM, hud._toggle_autostart, icon_fs=24)
+    hud._autostart_btn = make_hud_btn(hud, p, i18n.tr('hud.system_autostart'), '◉' if _as_on else '○', _GREEN if _as_on else _DIM, hud._toggle_autostart, icon_fs=24)
     _has_spells = _ext.has_feature('spells')
     _has_bindings = _ext.has_feature('bindings')
     if (_has_spells or _has_bindings) and hud._widget_vis.get('gamemode', True):
-        section_hdr(hud, p, 'ИГРОВОЙ РЕЖИМ', _AMBER, pady=(14, 10))
+        section_hdr(hud, p, i18n.tr('hud.game_mode'), _AMBER, pady=(14, 10))
         if _has_spells:
-            make_hud_btn(hud, p, 'РЕДАКТОР ПАТТЕРНОВ', '✦', _AMBER, hud._open_spell_editor, icon_fs=20)
+            make_hud_btn(hud, p, i18n.tr('hud.pattern_editor'), '✦', _AMBER, hud._open_spell_editor, icon_fs=20)
         if _has_bindings:
-            hud._keybind_btn_frame = make_hud_btn(hud, p, 'МАКРОСЫ КЛАВИШ', '⌨', _AMBER, hud._open_keybind_editor, icon_fs=20)
+            hud._keybind_btn_frame = make_hud_btn(hud, p, i18n.tr('hud.key_macros'), '⌨', _AMBER, hud._open_keybind_editor, icon_fs=20)
     tk.Frame(p, bg=_PANEL, height=10).pack()
 
 def build_center(hud) -> None:

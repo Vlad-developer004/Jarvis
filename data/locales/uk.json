@@ -155,6 +155,7 @@
   "git.title": "⬡  GIT CONTROL SYSTEM",
   "git.voice_control": "Голосом: «коміт» / «відмена»  ·  Esc / Enter",
   "hud.activate_camera": "АКТИВУВАТИ ВІДЕОСЕНСОР ",
+  "hud.battery_charge": "РІВЕНЬ ЗАРЯДУ БАТАРЕЇ",
   "hud.battery_level": "РІВЕНЬ ЗАРЯДУ БАТАРЕЇ",
   "hud.battery_level_short": "РІВЕНЬ ЗАРЯДУ БАТАРЕЇ",
   "hud.battery_mode": "🔋 РОБОТА ВІД БАТАРЕЇ",

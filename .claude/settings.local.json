@@ -37,7 +37,8 @@
       "Bash(python -c \"import sys; sys.modules['Tkinter'] = None; from main import *; print\\('Main module imported successfully'\\)\")",
       "Bash(python -c \"import json; ru = json.load\\(open\\('data/locales/ru.json'\\)\\); print\\('Existing keys:', len\\(ru\\)\\); print\\('Sample keys:', list\\(ru.keys\\(\\)\\)[:20]\\)\")",
       "Bash(python -c \"from core import i18n; from ui import hud_state, hud_camera, hud_monitoring; print\\('✓ All modules loaded'\\)\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(git commit -m 'Исправлены остальные hardcoded strings в HUD и украинские переводы *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\tanja\\OneDrive\\Desktop\\projects\\Jarvis\\logs"
