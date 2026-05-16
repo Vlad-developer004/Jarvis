@@ -7,6 +7,11 @@ from .hud_widgets import _HudScrollbar, section_hdr, bar_row, kv_row, glass_pane
 from .hud_utils import _make_sun_icon
 from core.extensions import ExtensionManager
 from core.system import app_state, autostart_enabled, module_enabled
+from core import i18n
+
+def tr(key: str, default: str = None) -> str:
+    """Локализация текстов HUD"""
+    return i18n.tr(f'hud.{key}', default if default is not None else key)
 
 def build_header(hud) -> None:
     _hdr_sm = max(9, min(JStyle.TEXT_SMALL, 12))
@@ -65,7 +70,7 @@ def build_left(hud) -> None:
     _scroll_canvas.yview_moveto(0)
     
     if hud._widget_vis.get('sysinfo', True):
-        section_hdr(hud, p, 'СИСТЕМНЫЕ ПРОФИЛИ', _CYAN, pady=(2, 6))
+        section_hdr(hud, p, tr('system_profiles'), _CYAN, pady=(2, 6))
         _dummy_cpu = tk.Label(p, text='', bg=_PANEL)
         hud._cpu_bar = _dummy_cpu
         hud._cpu_val = _dummy_cpu
@@ -106,14 +111,14 @@ def build_left(hud) -> None:
             _mic_inner.pack(side='left', fill='x', expand=True, padx=6, pady=10)
             
             # Постоянно короткий заголовок для надежности
-            tk.Label(_mic_inner, text='✧ МИКРОФОН / ЧУВСТВ.', bg=_PANEL, fg=_CYAN, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), anchor='w').pack(fill='x', pady=(0, 4))
+            tk.Label(_mic_inner, text=tr('microphone_short'), bg=_PANEL, fg=_CYAN, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), anchor='w').pack(fill='x', pady=(0, 4))
             
             _mic_vals = tk.Frame(_mic_inner, bg=_PANEL)
             _mic_vals.pack(fill='x')
-            tk.Label(_mic_vals, text='УСИЛЕНИЕ', bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(side='left')
+            tk.Label(_mic_vals, text=tr('gain'), bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(side='left')
             hud._mic_gain_lbl = tk.Label(_mic_vals, text=_gain_display, bg=_PANEL, fg=_WHITE, font=(hud._F, JStyle.TEXT_BODY, 'bold'))
             hud._mic_gain_lbl.pack(side='left', padx=(4, 8))
-            tk.Label(_mic_vals, text='ПОРОГ', bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(side='left')
+            tk.Label(_mic_vals, text=tr('threshold'), bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(side='left')
             hud._mic_thresh_lbl = tk.Label(_mic_vals, text=_thresh_display, bg=_PANEL, fg=_AMBER, font=(hud._F, JStyle.TEXT_BODY, 'bold'))
             hud._mic_thresh_lbl.pack(side='left', padx=(4, 0))
         else:
@@ -140,7 +145,7 @@ def build_left(hud) -> None:
         section_hdr(hud, p, 'ВИДЕОСЕНСОР ', _CYAN, pady=(12, 4))
         cam_outer = tk.Frame(p, bg=_BRD_I, highlightthickness=0)
         cam_outer.pack(fill='x', padx=14, pady=(2, 6))
-        _cam_w = hud._panel_w - 28
+        _cam_w = hud._panel_w_left - 28
         _cam_h = min(hud._px(220), int(_cam_w * 3 / 4))
         cam_inner = tk.Frame(cam_outer, bg=_BG, width=_cam_w, height=_cam_h, highlightthickness=0)
         cam_inner.pack()
@@ -155,8 +160,8 @@ def build_left(hud) -> None:
         hud._cam_placeholder = None
         hud._cam_btn = None
         
-    section_hdr(hud, p, 'КОМАНДЫ И УПРАВЛЕНИЕ', _MAG, pady=(14, 10))
-    make_hud_btn(hud, p, 'МОНИТОР СИСТЕМЫ', '▦', _GREEN, hud._open_perf_monitor, icon_fs=24)
+    section_hdr(hud, p, tr('commands'), _MAG, pady=(14, 10))
+    make_hud_btn(hud, p, tr('system_monitor'), '▦', _GREEN, hud._open_perf_monitor, icon_fs=24)
     make_hud_btn(hud, p, 'БАЗА КОМАНД', '◈', _MAG, hud._open_deck, icon_fs=24)
     make_hud_btn(hud, p, 'НАСТРОЙКИ СИСТЕМЫ', '⚙', _CYAN, hud._open_settings, icon_fs=16)
     make_hud_btn(hud, p, 'ЦЕНТР РАСШИРЕНИЙ', '⬡', _RED, hud._open_extensions, icon_fs=24)
@@ -254,12 +259,12 @@ def build_right(hud) -> None:
     _scroll_canvas.yview_moveto(0)
     
     if hud._widget_vis.get('storage', True):
-        section_hdr(hud, p, 'АНАЛИТИКА ДАННЫХ', _MAG, pady=(0, 4))
-        tk.Label(p, text='◈ АНАЛИЗ ХРАНИЛИЩА', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), anchor='w').pack(fill='x', padx=14, pady=(6, 2))
-        hud._ram_bar, hud._ram_val, hud._ram_bar_frame = bar_row(hud, p, 'ПАМЯТЬ (RAM)', _MAG)
+        section_hdr(hud, p, tr('storage_analytics'), _MAG, pady=(0, 4))
+        tk.Label(p, text=tr('storage_analytics'), bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), anchor='w').pack(fill='x', padx=14, pady=(6, 2))
+        hud._ram_bar, hud._ram_val, hud._ram_bar_frame = bar_row(hud, p, tr('memory_ram'), _MAG)
         hud._ram_det = tk.Label(p, text='', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
         hud._ram_det.pack(anchor='e', padx=18)
-        hud._dsk_bar, hud._dsk_val, hud._dsk_bar_frame = bar_row(hud, p, 'DISK (C:)', _GREEN)
+        hud._dsk_bar, hud._dsk_val, hud._dsk_bar_frame = bar_row(hud, p, tr('disk_storage'), _GREEN)
         hud._dsk_det = tk.Label(p, text='', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
         hud._dsk_det.pack(anchor='e', padx=18)
     else:
@@ -272,27 +277,27 @@ def build_right(hud) -> None:
         hud._dsk_det = _dummy
         
     if hud._widget_vis.get('network', True):
-        _mic_txt = 'СЕТЕВАЯ СТАТИСТИКА' if hud.zoom_factor <= 1.8 else 'СЕТЬ'
+        _mic_txt = tr('network_stats') if hud.zoom_factor <= 1.8 else tr('network_stats_short')
         section_hdr(hud, p, _mic_txt, _CYAN)
         
         if hud._widget_vis.get('network_ip', True):
-            hud._ip_v = kv_row(hud, p, 'ЛОКАЛЬНЫЙ IP', _CYAN)
+            hud._ip_v = kv_row(hud, p, tr('local_ip'), _CYAN)
         else:
             hud._ip_v = tk.Label(p)
-            
+
         if hud._widget_vis.get('network_ssid', True):
-            hud._ssid_v = kv_row(hud, p, 'WI-FI СЕТЬ', _AMBER)
+            hud._ssid_v = kv_row(hud, p, tr('wifi_network'), _AMBER)
         else:
             hud._ssid_v = tk.Label(p)
-            
+
         if hud._widget_vis.get('network_ls', True):
-            hud._ls_v = kv_row(hud, p, 'СКОРОСТЬ ЛИНКА', _GREEN)
+            hud._ls_v = kv_row(hud, p, tr('link_speed'), _GREEN)
         else:
             hud._ls_v = tk.Label(p)
-        
+
         if hud._widget_vis.get('network_traffic', True):
-            hud._up_v = kv_row(hud, p, '↑ ЗАГРУЗКА', _GREEN)
-            hud._dn_v = kv_row(hud, p, '↓ СКАЧИВАНИЕ', _MAG)
+            hud._up_v = kv_row(hud, p, tr('upload'), _GREEN)
+            hud._dn_v = kv_row(hud, p, tr('download'), _MAG)
         else:
             hud._up_v = tk.Label(p)
             hud._dn_v = tk.Label(p)
@@ -305,7 +310,7 @@ def build_right(hud) -> None:
         hud._dn_v = _dummy
         
     if hud._widget_vis.get('weather', True):
-        section_hdr(hud, p, 'АТМОСФЕРА', _AMBER)
+        section_hdr(hud, p, tr('weather'), _AMBER)
         _wx_outer = tk.Frame(p, bg=_PANEL)
         _wx_outer.pack(fill='x', padx=14, pady=(0, 8))
         _wx_top = tk.Frame(_wx_outer, bg=_PANEL)
@@ -316,7 +321,7 @@ def build_right(hud) -> None:
         _wx_temp_col.pack(side='left')
         hud._wx_temp_lbl = tk.Label(_wx_temp_col, text='—°', bg=_PANEL, fg=_WHITE, font=(hud._F, hud._fs(30), 'bold'), anchor='w')
         hud._wx_temp_lbl.pack(anchor='w')
-        hud._wx_feels_lbl = tk.Label(_wx_temp_col, text='ощущается —°', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), anchor='w')
+        hud._wx_feels_lbl = tk.Label(_wx_temp_col, text=tr('feels_like') + ' —°', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), anchor='w')
         hud._wx_feels_lbl.pack(anchor='w')
         hud._wx_desc_lbl = tk.Label(_wx_outer, text='—', bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_BODY, 'bold'), anchor='center', justify='center')
         hud._wx_desc_lbl.pack(fill='x', pady=(4, 0))
@@ -337,13 +342,13 @@ def build_right(hud) -> None:
             tk.Label(f, text=label, bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY), anchor='center', justify='center').pack(fill='x')
             return lbl
             
-        hud._wx_wind_lbl = _wx_cell(_wx_grid, 0, 0, 'ВЕТЕР м/с', _CYAN)
-        hud._wx_hum_lbl = _wx_cell(_wx_grid, 0, 1, 'ВЛАЖН %', _MAG)
-        hud._wx_pres_lbl = _wx_cell(_wx_grid, 0, 2, 'ДАВЛ мм', _AMBER)
+        hud._wx_wind_lbl = _wx_cell(_wx_grid, 0, 0, tr('wind'), _CYAN)
+        hud._wx_hum_lbl = _wx_cell(_wx_grid, 0, 1, tr('humidity'), _MAG)
+        hud._wx_pres_lbl = _wx_cell(_wx_grid, 0, 2, tr('pressure'), _AMBER)
         
     if hud._widget_vis.get('clock', True):
         tk.Frame(p, bg=_SEP, height=1).pack(fill='x', padx=16, pady=8)
-        _clk_fs = max(16, min(hud._fs(32), int((hud._panel_w - 32) / 5.2)))
+        _clk_fs = max(16, min(hud._fs(32), int((hud._panel_w_right - 32) / 5.2)))
         hud._clock_lbl = tk.Label(p, text='00:00:00', bg=_PANEL, fg=_WHITE, font=(hud._F, _clk_fs, 'bold'))
         hud._clock_lbl.pack(fill='x')
         hud._date_lbl = tk.Label(p, text='01 ЯНВАРЯ', bg=_PANEL, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold'))

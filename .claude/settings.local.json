@@ -28,7 +28,9 @@
       "Bash(git reset *)",
       "Bash(xargs ls *)",
       "Bash(grep -E \"\\\\.\\(log|txt\\)$\")",
-      "Bash(python /tmp/check_code.py)"
+      "Bash(python /tmp/check_code.py)",
+      "Bash(python analyze_localization.py)",
+      "Bash(python add_missing_keys.py)"
     ],
     "additionalDirectories": [
       "C:\\Users\\tanja\\OneDrive\\Desktop\\projects\\Jarvis\\logs"

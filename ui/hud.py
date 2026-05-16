@@ -39,7 +39,6 @@ class JarvisHUD:
         if self.zoom_factor <= 0.0: self.zoom_factor = 1.0
         self._font_scale_left: float = 1.0
         self._font_scale_right: float = 1.0
-        JStyle.apply_zoom(self.zoom_factor)
         _c._SCROLLBAR_WIDTH = int(self._settings.get('scrollbar_width', 10))
 
         # Framework scaling MUST be set before or during root creation
@@ -385,7 +384,6 @@ class JarvisHUD:
         _save_hud_settings(self._settings)
         self._apply_zoom_rebuild(force_auto=True)
     def _apply_zoom_rebuild(self, force_auto: bool = False) -> None:
-        JStyle.apply_zoom(self.zoom_factor)
         ctk.set_widget_scaling(self.zoom_factor)
         ctk.set_window_scaling(self.zoom_factor)
         self.root.update_idletasks()
