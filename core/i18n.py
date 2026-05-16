@@ -5,6 +5,13 @@ _language = 'ru'
 _translations = {}
 _refresh_callbacks = []
 
+# Инициализируем локализацию при импорте
+def _init():
+    global _translations
+    _translations = _load_locale(_language)
+
+_init()
+
 def _load_locale(lang: str) -> dict:
     locale_dir = Path(__file__).parent.parent / 'data' / 'locales'
     locale_file = locale_dir / f'{lang}.json'

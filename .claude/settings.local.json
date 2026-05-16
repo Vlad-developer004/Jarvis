@@ -30,7 +30,8 @@
       "Bash(grep -E \"\\\\.\\(log|txt\\)$\")",
       "Bash(python /tmp/check_code.py)",
       "Bash(python analyze_localization.py)",
-      "Bash(python add_missing_keys.py)"
+      "Bash(python add_missing_keys.py)",
+      "Bash(python auto_localize_ui.py)"
     ],
     "additionalDirectories": [
       "C:\\Users\\tanja\\OneDrive\\Desktop\\projects\\Jarvis\\logs"

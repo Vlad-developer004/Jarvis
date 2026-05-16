@@ -6,6 +6,7 @@ from ..hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN
 from .. import hud_constants as _hc
 from ..hud_state import HudState, STATE
 from ..hud_utils import _blend, _set_dark_title_bar, _draw_grid, _draw_hex_grid, _center_window
+from core import i18n
 
 def open_perf_monitor(hud, reopen: bool = False) -> None:
     if not reopen and hud._perf_win and hud._perf_win.winfo_exists():

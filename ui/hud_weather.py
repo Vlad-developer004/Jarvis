@@ -2,6 +2,7 @@ from __future__ import annotations
 import threading
 from .hud_constants import _WHITE, _TEXT, _DIM
 from . import hud_renderer as renderer
+from core import i18n
 def weather_tick(hud) -> None:
     if not hud._widget_vis.get('weather', True):
         return

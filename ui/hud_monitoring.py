@@ -14,6 +14,7 @@ import os
 import sys
 import subprocess
 import json
+from core import i18n
 
 def _log_monitor_msg(msg: str):
     try:

@@ -1,17 +1,16 @@
 from __future__ import annotations
 from ui.hud_style import JStyle
 import tkinter as tk
-import tkinter.font as _tkfont
 from .hud_constants import _BG, _PANEL, _BRD, _CYAN, _MAG, _TEXT, _DIM, _SEP, _AMBER, _GREEN, _RED, _BRD_I, _WHITE
 from .hud_widgets import _HudScrollbar, section_hdr, bar_row, kv_row, glass_panel, make_hud_btn
 from .hud_utils import _make_sun_icon
 from core.extensions import ExtensionManager
-from core.system import app_state, autostart_enabled, module_enabled
+from core.system import autostart_enabled, module_enabled
 from core import i18n
 
-def tr(key: str, default: str = None) -> str:
+def tr(key: str) -> str:
     """Локализация текстов HUD"""
-    return i18n.tr(f'hud.{key}', default if default is not None else key)
+    return i18n.tr(f'hud.{key}')
 
 def build_header(hud) -> None:
     _hdr_sm = max(9, min(JStyle.TEXT_SMALL, 12))
