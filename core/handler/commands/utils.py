@@ -65,7 +65,7 @@ def handle_utils(handler, cmd, text_lower):
         from actions.git_commit import detect_repo_and_status, git_commit_push
         import win32gui
         fg_hwnd = win32gui.GetForegroundWindow()
-        
+
         def _show_and_commit(hwnd=fg_hwnd):
             # 1. Detect environment
             repo, status = detect_repo_and_status(hwnd)
@@ -73,33 +73,41 @@ def handle_utils(handler, cmd, text_lower):
                 handler.speak('Репозиторий не найден. Откройте папку проекта.')
                 return
             if not status:
-                handler.speak('Нет изменений для комм+ита.')
+                handler.speak('Нет изменений для коммита.')
                 return
-            
-            # 2. Unified Staging & Message
+
+            # 2. Show dialog with file selection and options
             from ui.dialogs.git_stage_dlg import ask_git_stage
-            dlg_res = ask_git_stage(repo, status) # Returns (selected_files, message) or None
-            
-            if dlg_res is None: # Cancelled
-                handler.speak('Комм+ит отменён.')
+            dlg_res = ask_git_stage(repo, status)
+
+            if dlg_res is None:
+                handler.speak('Коммит отменён.')
                 return
-            
-            selected_files, msg_input = dlg_res
-            
-            if not selected_files:
-                handler.speak('Вы не выбр+али ни одного файла.')
+
+            if not dlg_res['files']:
+                handler.speak('Вы не выбрали ни одного файла.')
                 return
-            
-            # 3. Final step
-            # Note: msg_input might be empty, git_commit_push handles generation
-            all_selected = (len(selected_files) == len(status))
-            to_stage = selected_files if not all_selected else None
-            
-            ok, msg = git_commit_push(active_hwnd=hwnd, custom_msg=msg_input, files_to_add=to_stage)
+
+            # 3. Perform commit with options
+            all_selected = (len(dlg_res['files']) == len(status))
+            to_stage = dlg_res['files'] if not all_selected else None
+
+            ok, msg = git_commit_push(
+                active_hwnd=hwnd,
+                custom_msg=dlg_res['message'],
+                files_to_add=to_stage,
+                target_branch=dlg_res['branch'],
+                push_enabled=dlg_res['push'],
+                force_push=dlg_res['force'],
+                set_upstream=dlg_res['upstream']
+            )
             handler.speak(msg)
             if ok:
                 handler.play_response()
-        
+                if dlg_res.get('open_pr'):
+                    from actions.git_commit import open_pull_request_url
+                    open_pull_request_url(repo, dlg_res['branch'], dlg_res['pr_title'])
+
         threading.Thread(target=_show_and_commit, daemon=True).start()
     elif cmd == 'today_summary':
         def _run():

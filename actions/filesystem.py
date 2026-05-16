@@ -15,7 +15,9 @@ _FOLDER_QUERY_ALIASES: dict[str, str] = {
     'проекты': 'projects',
     'даунлоадс': 'downloads',
     'даунлодс': 'downloads',
+    'загрузки': 'downloads',
     'документс': 'documents',
+    'документы': 'documents',
     'десктоп': 'desktop',
     'десктопе': 'desktop',
     'лр': 'LR',
@@ -303,6 +305,8 @@ def _find_subdir_ci_or_fuzzy(base_dir: str, name: str, fuzzy_threshold: int=80) 
                 s = calculate_match_score(q, e)
                 if s > score:
                     score = s
+        if best is None or score > best[0]:
+            best = (score, entry)
     if best is not None and best[0] >= 82:
         return best[1]
     names = [p.name for p in _list_subdirs(base)]
