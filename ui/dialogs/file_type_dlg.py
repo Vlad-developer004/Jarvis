@@ -45,7 +45,7 @@ def _mount_picker(win: tk.Misc, out: list[str | None], master_wait: tk.Misc | No
         from ui.hud_utils import _center_window
         rw, rh = win.winfo_reqwidth(), win.winfo_reqheight()
         _center_window(win, rw, rh)
-    win.configure(bg=_BRD)
+    win.configure(bg=_BRD)  # type: ignore[call-arg]
     _set_dark_title_bar(win)
     win.title(i18n.tr('file.type'))
     def _force_bounds(event=None):

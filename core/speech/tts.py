@@ -16,10 +16,11 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'jarvis_tts_cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
 _MODEL_DIR  = os.path.join('models', 'silero_tts')
-_MODEL_FILE = os.path.join(_MODEL_DIR, 'v4_ru.pt')
-_MODEL_URL  = 'https://models.silero.ai/models/tts/ru/v4_ru.pt'
-_SPEAKER    = 'eugene'
 _SAMPLE_RATE = 48000
+_LANG_CONFIG = {
+    'ru': {'model': 'v4_ru.pt', 'url': 'https://models.silero.ai/models/tts/ru/v4_ru.pt', 'speaker': 'eugene'},
+    'uk': {'model': 'v4_ua.pt', 'url': 'https://models.silero.ai/models/tts/ua/v4_ua.pt', 'speaker': 'mykyta'}
+}
 _UNLOAD_AFTER_SEC = 300.0  # Fallback, overridden by config
 _SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 _SPLIT_THRESHOLD = 90
@@ -33,14 +34,37 @@ _ABBREV = {'vlc': 'вэ эл си', 'cpu': 'си пи ю', 'gpu': 'джи пи �
 _UNIT_EXPANSIONS = {'gb': 'гигабайт', 'mb': 'мегабайт', 'kb': 'килобайт', 'km/h': 'километров в час', 'км/ч': 'километров в час', 'kg': 'килограмм', 'cm': 'сантиметров', 'mm': 'миллиметров'}
 _ARB = {'AA': 'а', 'AE': 'э', 'AH': 'а', 'AO': 'о', 'AW': 'ау', 'AY': 'ай', 'EH': 'э', 'ER': 'ер', 'EY': 'эй', 'IH': 'и', 'IY': 'и', 'OW': 'оу', 'OY': 'ой', 'UH': 'у', 'UW': 'у', 'B': 'б', 'CH': 'ч', 'D': 'д', 'DH': 'з', 'F': 'ф', 'G': 'г', 'HH': 'х', 'JH': 'дж', 'K': 'к', 'L': 'л', 'M': 'м', 'N': 'н', 'NG': 'нг', 'P': 'п', 'R': 'р', 'S': 'с', 'SH': 'ш', 'T': 'т', 'TH': 'т', 'V': 'в', 'W': 'в', 'Y': 'й', 'Z': 'з', 'ZH': 'ж'}
 _tts_engine = None
+_tts_models = {}  # Cache for models by language
 _g2p, _g2p_lock = None, threading.Lock()
 _MASTER_VOLUME = 1.0
 _warmup_started = False
 _warmup_lock = threading.Lock()
 _mixer_lock = threading.RLock()
-# Cached audio device name — read once, not on every playback
 _cached_audio_device: str | None = None
 _cached_audio_device_loaded: bool = False
+
+def _get_lang() -> str:
+    try:
+        from core.i18n import get_language
+        return get_language()
+    except Exception:
+        return 'ru'
+
+def _get_model_config(lang: str = None) -> dict:
+    if lang is None: lang = _get_lang()
+    return _LANG_CONFIG.get(lang, _LANG_CONFIG['ru'])
+
+def _get_model_file(lang: str = None) -> str:
+    config = _get_model_config(lang)
+    return os.path.join(_MODEL_DIR, config['model'])
+
+def _get_model_url(lang: str = None) -> str:
+    config = _get_model_config(lang)
+    return config['url']
+
+def _get_speaker(lang: str = None) -> str:
+    config = _get_model_config(lang)
+    return config['speaker']
 try:
     if not pygame.mixer.get_init():
         pygame.mixer.pre_init(48000, -16, 2, 2048)
@@ -72,6 +96,16 @@ class TTSManager:
         self.worker_thread = threading.Thread(target=self._worker, daemon=True, name='TTS-Worker')
         self.worker_thread.start()
         self.unload_timer = None
+        try:
+            from core.i18n import register_refresh
+            register_refresh(self._on_language_change)
+        except Exception:
+            pass
+
+    def _on_language_change(self):
+        global _tts_models
+        _tts_models.clear()
+        print("[TTS] Language changed, clearing model cache.", flush=True)
 
     def _worker(self):
         pythoncom.CoInitialize()
@@ -323,12 +357,12 @@ class TTSManager:
                 _tts_engine = None
                 gc.collect()
 def _get_tts():
-    global _tts_engine
-    if _tts_engine is not None: return _tts_engine
+    lang = _get_lang()
+    if lang in _tts_models: return _tts_models[lang]
     with TTSManager._lock:
-        if _tts_engine is not None: return _tts_engine
+        if lang in _tts_models: return _tts_models[lang]
         import torch
-        _ensure_model()
+        _ensure_model(lang)
         phys = psutil.cpu_count(logical=False) or 2
         torch_threads = 1 if phys <= 4 else 2
         torch.set_num_threads(torch_threads)
@@ -336,24 +370,29 @@ def _get_tts():
             torch.set_num_interop_threads(1)
         except Exception:
             pass
-        model = torch.package.PackageImporter(_MODEL_FILE).load_pickle('tts_models', 'model')
+        model_file = _get_model_file(lang)
+        model = torch.package.PackageImporter(model_file).load_pickle('tts_models', 'model')
         model.to(torch.device('cpu'))
-        _tts_engine = model
-        return _tts_engine
-def _ensure_model() -> None:
-    if os.path.exists(_MODEL_FILE): return
+        _tts_models[lang] = model
+        return model
+def _ensure_model(lang: str = None) -> None:
+    if lang is None: lang = _get_lang()
+    model_file = _get_model_file(lang)
+    if os.path.exists(model_file): return
     import torch
     os.makedirs(_MODEL_DIR, exist_ok=True)
-    torch.hub.download_url_to_file(_MODEL_URL, _MODEL_FILE)
+    torch.hub.download_url_to_file(_get_model_url(lang), model_file)
 def _generate_cached(text: str) -> str | None:
-    key = f'{text}|{_SPEAKER}|{_SAMPLE_RATE}'
+    lang = _get_lang()
+    speaker = _get_speaker(lang)
+    key = f'{text}|{speaker}|{lang}|{_SAMPLE_RATE}'
     h = hashlib.md5(key.encode('utf-8')).hexdigest()[:12]
     path = os.path.join(CACHE_DIR, f'silero_{h}.wav')
     if os.path.exists(path): return path
     try:
         model = _get_tts()
         tmp_path = path + '.tmp'
-        model.save_wav(text=text, speaker=_SPEAKER, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
+        model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
         if os.path.exists(tmp_path):
             os.replace(tmp_path, path)
             return path
