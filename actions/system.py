@@ -33,7 +33,7 @@ from actions.system_parts.input_hw import (
     _switch_to_hwnd,
     _send_hotkey,
 )
-from actions.app_launcher import open_app, close_app, APPS, SYSTEM_WHITELIST
+
 from actions.system_control import (
     shutdown_pc,
     restart_pc,

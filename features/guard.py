@@ -64,17 +64,32 @@ def _alert(image_path):
                 requests.post(url, data={'chat_id': TELEGRAM_CHAT_ID, 'caption': 'Обнаружен посторонний!'}, files={'photo': photo}, timeout=5)
         except Exception:
             pass
+    try:
+        from ui import hud as _hud_mod
+        h = getattr(_hud_mod, '_hud', None)
+        if h:
+            from ui.dialogs.guard_alert_dlg import show_guard_alert
+            h._hud_queue.put(lambda: show_guard_alert(h, image_path))
+    except Exception:
+        pass
     for _ in range(3):
         winsound.Beep(ALERT_FREQ, ALERT_DURATION // 2)
         time.sleep(0.1)
-    wav = os.path.join('audio', 'Чего вы пытаетесь добиться сэр.wav')
-    if os.path.exists(wav):
-        winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_NODEFAULT)
+    from core.speech import speak
+    from core.i18n import get_speech_language
+    if get_speech_language() == 'uk':
+        speak("Чого ви намагаєтеся досягти?")
+    else:
+        from core.address import get_address as _ga
+        speak(f"Чего вы пытаетесь добиться, {_ga()}?")
+STRANGER_CONFIRM_FRAMES = 2
+
 def _guard_loop():
     global _stop_flag
     import cv2
     prev = _capture()
     last_t = 0.0
+    consec_stranger = 0
     while not _stop_flag:
         if _stop_event.wait(timeout=GUARD_INTERVAL):
             break
@@ -87,13 +102,24 @@ def _guard_loop():
         prev = frame
         faces = _extract_faces(frame)
         if not faces:
+            consec_stranger = 0
             continue
         if all((_is_owner(f) for f in faces)):
+            consec_stranger = 0
+            continue
+        # A single frame here is a crude grayscale-histogram comparison, not
+        # real face recognition — bad lighting, angle or motion blur alone
+        # is enough to misjudge the owner as a stranger. Require it to
+        # happen on STRANGER_CONFIRM_FRAMES separate polls (~GUARD_INTERVAL
+        # apart) before alerting, instead of firing on the very first miss.
+        consec_stranger += 1
+        if consec_stranger < STRANGER_CONFIRM_FRAMES:
             continue
         now = time.time()
         if now - last_t < ALERT_COOLDOWN:
             continue
         last_t = now
+        consec_stranger = 0
         tmp = os.path.join('data', '_tmp_alert.jpg')
         cv2.imwrite(tmp, frame)
         import shutil

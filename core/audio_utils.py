@@ -1,6 +1,5 @@
 import time
 import numpy as np
-from typing import Optional
 def rms_int16(data_bytes: bytes) -> float:
     if not data_bytes:
         return 0.0

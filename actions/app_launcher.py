@@ -240,10 +240,12 @@ def open_app(app_name: str) -> tuple[bool, str]:
             for folder in folder_candidates:
                 lnk_dir = os.path.join(start_menu, folder) if folder else start_menu
                 if os.path.isdir(lnk_dir):
-                    for f in os.listdir(lnk_dir):
-                        if f.lower().endswith('.lnk') and name.lower() in f.lower():
-                            lnk_path = os.path.join(lnk_dir, f)
-                            break
+                    _candidates = [f for f in os.listdir(lnk_dir)
+                                   if f.lower().endswith('.lnk') and name.lower() in f.lower()]
+                    # Prefer exact "Name.lnk" over duplicates like "Name (1).lnk"
+                    _candidates.sort(key=lambda f: (f.lower() != f'{name.lower()}.lnk', f))
+                    if _candidates:
+                        lnk_path = os.path.join(lnk_dir, _candidates[0])
                 if lnk_path: break
             if lnk_path:
                 os.startfile(lnk_path)

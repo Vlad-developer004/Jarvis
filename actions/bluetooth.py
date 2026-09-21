@@ -252,18 +252,32 @@ def _bt_exec(action: str, dev: dict, speak) -> None:
         _pnp_disable(name)
     global _devices_cache_ts
     _devices_cache_ts = 0.0
-    verb = 'подключён' if enable else 'отключён'
+    from core.i18n import get_speech_language
+    if get_speech_language() == 'uk':
+        verb = 'підключено' if enable else 'відключено'
+    else:
+        verb = 'подключён' if enable else 'отключён'
     speak(f'{name} {verb}.')
 def _bt_handle_result(ok, result, action: str, speak, handler=None) -> None:
+    from core.i18n import get_speech_language
+    lang = get_speech_language()
     if ok is True:
-        verb = 'подключён' if action == 'connect' else 'отключён'
+        if lang == 'uk':
+            verb = 'підключено' if action == 'connect' else 'відключено'
+        else:
+            verb = 'подключён' if action == 'connect' else 'отключён'
         speak(f'{result} {verb}.')
     elif ok is False:
         speak(result)
     else:
         candidates = result
-        names_str = ' или '.join((d['name'] for d in candidates))
-        verb = 'подключить' if action == 'connect' else 'отключить'
+        if lang == 'uk':
+            names_str = ' або '.join(d['name'] for d in candidates)
+            verb = 'підключити' if action == 'connect' else 'відключити'
+            speak(f'У вас кілька пристроїв: {names_str}. Який {verb}?')
+        else:
+            names_str = ' или '.join(d['name'] for d in candidates)
+            verb = 'подключить' if action == 'connect' else 'отключить'
+            speak(f'У вас несколько устройств: {names_str}. Какое {verb}?')
         if handler is not None:
             handler._bt_pending = {'action': action, 'candidates': candidates}
-        speak(f'У вас несколько устройств: {names_str}. Какое {verb}?')

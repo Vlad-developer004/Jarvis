@@ -18,6 +18,7 @@ from . import hud_layout as layout
 from . import hud_renderer as renderer
 from . import hud_monitoring as monitoring
 from . import hud_camera as camera
+from . import hud_reactor_fx as reactor_fx
 from . import hud_weather as weather
 from . import hud_window as window
 _UPDATE_ASR_CALLBACK: callable | None = None
@@ -44,7 +45,7 @@ class JarvisHUD:
         # Framework scaling MUST be set before or during root creation
         from .hud_themes import get_current_theme_name
         _theme = get_current_theme_name()
-        ctk.set_appearance_mode('light' if _theme == 'light' else 'dark')
+        ctk.set_appearance_mode('light' if _theme in ('neon_white', 'minimal') else 'dark')
         ctk.set_default_color_theme('dark-blue')
         ctk.set_widget_scaling(self.zoom_factor)
         ctk.set_window_scaling(self.zoom_factor)
@@ -105,6 +106,7 @@ class JarvisHUD:
         self._tick = 0
         self._resize_timer: Optional[str] = None
         self._cam_run = False
+        self._guard_active = False
         _cpu_phys = psutil.cpu_count(logical=False) or 2
         _low_perf = _cpu_phys <= 2
         self._PARTICLE_COUNT = 2 if _low_perf else 8
@@ -225,13 +227,21 @@ class JarvisHUD:
         renderer.init_anim_objects(self)
         renderer.animate(self)
         if module_enabled('system_monitoring'):
-            monitoring.start_perf_collector(self)
-            monitoring.start_sys_thread(self)
+            # Delay GPU monitoring until PyTorch DLLs are fully loaded to prevent
+            # concurrent CUDA initialization (pynvml + PyTorch = 0xC0000005 on Windows).
+            _hud_self = self
+            def _start_monitoring_safe():
+                from core.system import app_state as _app_state
+                _app_state.pytorch_loaded.wait()
+                monitoring.start_perf_collector(_hud_self)
+                monitoring.start_sys_thread(_hud_self)
+            threading.Thread(target=_start_monitoring_safe, daemon=True).start()
         monitoring.clock_tick(self)
         monitoring.net_tick(self)
         monitoring.refresh_ip(self)
         monitoring.state_tick(self)
         weather.weather_tick(self)
+        weather.register_weather_lang_refresh(self)
         self.root.after(50, self._poll_hud_queue)
         self.root.after(200, self._start_tray)
         self.root.after(250, self.root.deiconify)
@@ -347,7 +357,7 @@ class JarvisHUD:
             try:
                 px, py = panel.winfo_rootx(), panel.winfo_rooty()
                 if px <= wx <= px + panel.winfo_width() and py <= wy <= py + panel.winfo_height():
-                    canvas.yview_scroll(-1 * (e.delta // 120), 'units')
+                    canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units')
                     return
             except: pass
     def _on_resize(self, evt: tk.Event) -> None:
@@ -535,6 +545,14 @@ class JarvisHUD:
         autostart_set(on)
         try: self._autostart_btn.hud_update(i18n.tr('hud.system_autostart'), '◉' if on else '○', _c._GREEN if on else _c._DIM)
         except: pass
+    def _toggle_mic_mute(self): reactor_fx.toggle_mic_mute(self)
+    def _reactor_hit(self, evt: tk.Event) -> bool: return reactor_fx.reactor_hit(self, evt)
+    def _on_reactor_click(self, evt: tk.Event) -> None: reactor_fx.on_reactor_click(self, evt)
+    def _on_reactor_motion(self, evt: tk.Event) -> None: reactor_fx.on_reactor_motion(self, evt)
+    def _set_reactor_color(self, name: str) -> None: reactor_fx.set_reactor_color(self, name)
+    def _reset_reactor_color(self) -> None: reactor_fx.reset_reactor_color(self)
+    def _trigger_reactor_pulse(self) -> None: reactor_fx.trigger_reactor_pulse(self)
+    def _trigger_reactor_glitch(self) -> None: reactor_fx.trigger_reactor_glitch(self)
     def _open_settings(self, reopen=False):
         from .dialogs.settings_dlg import open_settings
         if not reopen:
@@ -556,17 +574,17 @@ class JarvisHUD:
             self._close_other_subwins(keep='extensions')
         open_extensions(self, reopen=reopen)
     def _open_mail(self, reopen=False):
-        from .dialogs.mail_dlg import open_mail_client
+        from .dialogs.mail_client_dlg import open_mail_client
         if not reopen:
             self._close_other_subwins(keep='mail')
         open_mail_client(self, reopen=reopen)
     def _open_spell_editor(self, reopen=False):
-        from .dialogs.editors import open_spell_editor
+        from .dialogs.spell_editor import open_spell_editor
         if not reopen:
             self._close_other_subwins(keep='spell_editor')
         open_spell_editor(self, reopen=reopen)
     def _open_keybind_editor(self, reopen=False):
-        from .dialogs.editors import open_keybind_editor
+        from .dialogs.keybind_editor import open_keybind_editor
         if not reopen:
             self._close_other_subwins(keep='keybind_editor')
         open_keybind_editor(self, reopen=reopen)
@@ -579,6 +597,12 @@ class JarvisHUD:
         try:
             self.root.title(f'J.A.R.V.I.S. — HUD v1.5')
             monitoring.clock_tick(self)
+            layout.rebuild_left(self)
+            layout.rebuild_right(self)
+            renderer.draw_bot_strip(self)
+            renderer.draw_top_strip(self)
+            renderer.draw_static(self)
+            self._update_sys_widgets()
         except Exception:
             pass
 def _try_show_welcome(hud: 'JarvisHUD') -> None:

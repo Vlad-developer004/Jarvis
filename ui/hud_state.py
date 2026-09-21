@@ -6,7 +6,8 @@ class HudState:
     IDLE = 'IDLE'
     LISTENING = 'LISTENING'
     SPEAKING = 'SPEAKING'
-    _LABELS = {'IDLE': 'hud.state.waiting', 'LISTENING': 'hud.state.listening', 'SPEAKING': 'hud.state.speaking'}
+    LOADING = 'LOADING'
+    _LABELS = {'IDLE': 'hud.state.waiting', 'LISTENING': 'hud.state.listening', 'SPEAKING': 'hud.state.speaking', 'LOADING': 'hud.state.loading'}
     def __init__(self):
         self._lock = threading.Lock()
         self._mode = self.IDLE

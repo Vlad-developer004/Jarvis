@@ -106,6 +106,9 @@ def _calc_sun(lat: float, lon: float) -> tuple[str, str]:
 @lru_cache(maxsize=512)
 def _bar_color(pct: float) -> str:
     pct = max(0.0, min(100.0, round(float(pct), 1)))
+    theme = getattr(_hud_c, '_CURRENT_THEME', 'cyber')
+    if theme in ('dark', 'minimal'):
+        return _hud_c._CYAN
     if pct <= 50:
         t = pct / 50.0
         r = int(0x00 + (0xff - 0x00) * t)
@@ -258,6 +261,9 @@ def _set_dark_title_bar(window: tk.Toplevel | tk.Tk) -> None:
         on = ctypes.c_int(1)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 19, ctypes.byref(on), 4)
+        if hwnd != hwnd_tk:
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd_tk, 20, ctypes.byref(on), 4)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd_tk, 19, ctypes.byref(on), 4)
         
         if is_light:
             # Light theme: Light grey/white title bar, dark text
@@ -270,6 +276,9 @@ def _set_dark_title_bar(window: tk.Toplevel | tk.Tk) -> None:
             
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption_col), 4)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text_col), 4)
+        if hwnd != hwnd_tk:
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd_tk, 35, ctypes.byref(caption_col), 4)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd_tk, 36, ctypes.byref(text_col), 4)
     except Exception:
         pass
 
@@ -318,31 +327,6 @@ def _draw_hex_grid(c: tk.Canvas, w: int, h: int, col: str, size: int = 32, tags=
                 ang = math.radians(i * 60 + 30)
                 _pts.extend([x + _off + size * math.cos(ang), y + size * math.sin(ang)])
             c.create_polygon(_pts, outline=_col, fill='', width=1, tags=tags)
-def autostart_enabled() -> bool:
-    import winreg
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run', 0, winreg.KEY_READ)
-        try:
-            val, _ = winreg.QueryValueEx(key, 'JarvisHUD')
-            winreg.CloseKey(key)
-            return True
-        except FileNotFoundError:
-            winreg.CloseKey(key)
-            return False
-    except Exception:
-        return False
-def autostart_set(enabled: bool) -> None:
-    import winreg
-    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run', 0, winreg.KEY_SET_VALUE)
-    if enabled:
-        path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(sys.argv[0])
-        winreg.SetValueEx(key, 'JarvisHUD', 0, winreg.REG_SZ, f'"{path}" --minimized')
-    else:
-        try:
-            winreg.DeleteValue(key, 'JarvisHUD')
-        except FileNotFoundError:
-            pass
-    winreg.CloseKey(key)
 
 def _get_work_area() -> tuple[int, int, int, int]:
     """Returns (left, top, right, bottom) of the Windows work area in LOGICAL pixels."""
@@ -373,20 +357,54 @@ def _get_work_area() -> tuple[int, int, int, int]:
         return (0, 0, sw, sh - 40)
     except: return (0, 0, 1920, 1040)
 
+def _screen_safe_size(width: int, height: int, margin: float = 0.92) -> tuple[int, int]:
+    """Return (w, h) capped to margin of the work area.  Use for logical-pixel sizes passed to CTK."""
+    l, t, r, b = _get_work_area()
+    max_w = int((r - l) * margin)
+    max_h = int((b - t) * margin)
+    return min(width, max_w), min(height, max_h)
+
+def _place_dialog(dlg, hud, base_w: int, base_h: int, grab: bool = True) -> tuple[int, int]:
+    """Size + center a tk.Toplevel (not CTkToplevel).
+    Scales base_w/base_h by hud.zoom_factor then caps to 92% of work area.
+    Returns the final (w, h) used.
+    """
+    zoom = hud.zoom_factor if hud is not None else 1.0
+    w = int(base_w * zoom)
+    h = int(base_h * zoom)
+    w, h = _screen_safe_size(w, h)
+    l, t, r, b = _get_work_area()
+    aw, ah = r - l, b - t
+    x = l + aw // 2 - w // 2
+    y = t + ah // 2 - h // 2
+    x = max(l, min(x, r - w))
+    y = max(t, min(y, b - h))
+    dlg.geometry(f'{w}x{h}+{x}+{y}')
+    if grab:
+        try: dlg.grab_set()
+        except Exception: pass
+    return w, h
+
 def _center_window(window: tk.Toplevel | tk.Tk, width: int, height: int, zoom: float = 1.0) -> None:
-    """Centers the window within the usable Work Area (avoiding taskbars)."""
+    """Centers the window within the usable Work Area, capped to 92% of screen.
+
+    width/height semantics:
+      zoom=1.0 (default) → values are already in physical pixels
+      zoom>1.0           → values are CTK logical units; multiplied by zoom here
+
+    Uses tk.Toplevel.geometry directly to bypass CTK double-scaling.
+    """
     window.update_idletasks()
     l, t, r, b = _get_work_area()
     aw, ah = (r - l), (b - t)
-    
-    x = l + (aw // 2) - (width // 2)
-    y = t + (ah // 2) - (height // 2)
-    
-    # Ensure it's not off-screen even if work area is weird
-    x = max(l, min(x, r - width))
-    y = max(t, min(y, b - height))
-    
-    window.geometry(f'{width}x{height}+{x}+{y}')
+
+    w = min(int(width * zoom),  int(aw * 0.92))
+    h = min(int(height * zoom), int(ah * 0.92))
+
+    x = max(l, min(l + (aw - w) // 2, r - w))
+    y = max(t, min(t + (ah - h) // 2, b - h))
+
+    tk.Toplevel.geometry(window, f'{w}x{h}+{x}+{y}')
 
 def _constrain_window(win: tk.Toplevel | tk.Tk, x: int, y: int) -> tuple[int, int]:
     """Constrains coordinates with jitter protection and DPI awareness."""

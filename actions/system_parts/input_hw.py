@@ -3,13 +3,11 @@ import time
 import subprocess
 import ctypes
 import pygetwindow as gw
+from actions import keysend
 from actions.system_parts.game_mode import deactivate_game_mode
 def press_enter() -> tuple[bool, str]:
     try:
-        user32 = ctypes.windll.user32
-        user32.keybd_event(13, 0, 0, 0)
-        time.sleep(0.05)
-        user32.keybd_event(13, 0, 2, 0)
+        keysend.press('enter')
         return (True, 'Отправлено')
     except Exception as e:
         return (False, str(e))
@@ -77,11 +75,7 @@ def _switch_to_hwnd(hwnd: int):
         user32.SetForegroundWindow(hwnd)
     time.sleep(0.35)
 def _send_hotkey(vk1: int, vk2: int):
-    user32 = ctypes.windll.user32
-    user32.keybd_event(vk1, 0, 0, 0)
-    user32.keybd_event(vk2, 0, 0, 0)
-    user32.keybd_event(vk2, 0, 2, 0)
-    user32.keybd_event(vk1, 0, 2, 0)
+    keysend.hotkey(vk1, vk2)
 def open_browser_history():
     hwnd = None
     for win in gw.getAllWindows():
@@ -158,7 +152,8 @@ def enable_keyboards_hardware() -> tuple[bool, str]:
         os.remove(state_file)
     except Exception as e:
         return (False, f"Ошибка при активации: {e}")
-    return (True, "Клавиатура снова активна. Рад вас слышать, сэр.")
+    from core.address import get_address as _ga
+    return (True, f"Клавиатура снова активна. Рад вас слышать, {_ga()}.")
 def close_active_game() -> tuple[bool, str]:
     try:
         import pyautogui

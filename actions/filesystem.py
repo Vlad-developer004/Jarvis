@@ -72,6 +72,50 @@ def normalize_folder_voice_query(name: str) -> str:
             s = s.replace(alias, replacement, 1)
 
     return s
+def _english_to_cyrillic_phonetic(s: str) -> list[str]:
+    s = s.lower().strip()
+    rules_base = [
+        ('tion', 'шн'),
+        ('sion', 'шн'),
+        ('ture', 'чер'),
+        ('ch', 'ч'),
+        ('sh', 'ш'),
+        ('ph', 'ф'),
+        ('th', 'т'),
+        ('kh', 'х'),
+        ('ck', 'к'),
+        ('qu', 'кв'),
+        ('c', 'к'),
+        ('x', 'кс'),
+        ('j', 'дж'),
+        ('w', 'в'),
+    ]
+    temp = s
+    for eng, rus in rules_base:
+        temp = temp.replace(eng, rus)
+        
+    variants = []
+    
+    # 1. Standard vowels
+    vow1 = [('ea', 'и'), ('ee', 'и'), ('oo', 'у'), ('ou', 'у'), ('ai', 'ей'), ('ay', 'ей'), ('y', 'и'), ('u', 'у'), ('a', 'э'), ('e', 'е'), ('i', 'и'), ('o', 'о')]
+    res1 = temp
+    for eng, rus in vow1: res1 = res1.replace(eng, rus)
+    variants.append(res1)
+    
+    # 2. Alternative: "ea" -> "ью" (covers "features" -> "фьючерс")
+    vow2 = [('ea', 'ью'), ('ee', 'и'), ('oo', 'у'), ('ou', 'у'), ('ai', 'ей'), ('ay', 'ей'), ('y', 'и'), ('u', 'у'), ('a', 'э'), ('e', 'е'), ('i', 'и'), ('o', 'о')]
+    res2 = temp
+    for eng, rus in vow2: res2 = res2.replace(eng, rus)
+    variants.append(res2)
+    
+    # 3. Alternative: "u" -> "ю" (covers "utils" -> "ютилс")
+    vow3 = [('ea', 'и'), ('ee', 'и'), ('oo', 'у'), ('ou', 'у'), ('ai', 'ей'), ('ay', 'ей'), ('y', 'и'), ('u', 'ю'), ('a', 'э'), ('e', 'е'), ('i', 'и'), ('o', 'о')]
+    res3 = temp
+    for eng, rus in vow3: res3 = res3.replace(eng, rus)
+    variants.append(res3)
+    
+    return list(set(variants))
+
 def get_name_variants(s: str) -> list[str]:
     s0 = _fold(s)
     if not s0:
@@ -84,6 +128,11 @@ def get_name_variants(s: str) -> list[str]:
     # Common English-Russian technical homophones
     if s0 == 'спич': v.add('speech')
     if s0 == 'speech': v.add('спич')
+    
+    # Generic English-to-Cyrillic phonetic mapping to support pronouncing any English folder in Cyrillic
+    if any(ord(c) < 128 and c.isalpha() for c in s0):
+        for var in _english_to_cyrillic_phonetic(s0):
+            v.add(var)
 
     # Phonetic normalization for Slavic 'i' variations
     # 1. Normalize 'slavic' letters (i/y variants) to Russian 'и'
@@ -113,6 +162,21 @@ def get_name_variants(s: str) -> list[str]:
     if alias and alias != s0:
         v.add(_fold(alias))
         v.add(_translit_cyr_to_lat(_fold(alias)))
+
+    # Strip common Russian/Ukrainian case endings so that the voice query
+    # "диплома" (genitive) fast-matches the folder "Диплом" without fuzzy walk.
+    # Ordered longest-first so we don't over-strip multi-char endings.
+    # Minimum stem length 4 prevents stripping short words like "лаб" → "л".
+    _CYR_CASE_SUFFIXES = ('ами', 'ями', 'ого', 'его', 'ому', 'ему',
+                          'ом', 'ем', 'ой', 'ей', 'ах', 'ях',
+                          'а', 'я', 'ы', 'и', 'у', 'е')
+    for suffix in _CYR_CASE_SUFFIXES:
+        if s0.endswith(suffix) and len(s0) - len(suffix) >= 4:
+            stem = s0[: -len(suffix)]
+            v.add(stem)
+            v.add(_translit_cyr_to_lat(stem))
+            break  # only strip the longest matching suffix
+
     return [x for x in v if x]
 def calculate_match_score(q: str, e: str) -> int:
     score = max(
@@ -129,7 +193,21 @@ def calculate_match_score(q: str, e: str) -> int:
         if ratio < 0.8:
             score = int(score * (ratio ** 0.5))
     return int(score)
+def _get_search_depth() -> int:
+    """Read folder search depth from settings (default 4, range 1-10)."""
+    try:
+        import json
+        from config_pack.config import get_settings_path
+        p = get_settings_path()
+        if os.path.exists(p):
+            with open(p, encoding='utf-8') as f:
+                return max(1, min(int(json.load(f).get('folder_search_depth', 4)), 10))
+    except Exception:
+        pass
+    return 4
+
 def folder_search_roots_and_depth(base_ctx: str) -> tuple[list[str], int]:
+    depth = _get_search_depth()
     try:
         base = Path(base_ctx).resolve()
     except Exception:
@@ -143,7 +221,7 @@ def folder_search_roots_and_depth(base_ctx: str) -> tuple[list[str], int]:
             base = Path(dk)
         else:
             base = Path(USER_HOME) / "Desktop"
-    return ([str(base)], 5)
+    return ([str(base)], depth)
 def _depth_limited_walk(root: str, max_depth: int):
     root = os.path.abspath(root)
     base_depth = root.rstrip(os.sep).count(os.sep)

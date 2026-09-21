@@ -34,15 +34,17 @@ def _wait_mixer_idle(timeout: float = 90.0) -> None:
 def _part_greeting(prefs: dict) -> str | None:
     if not prefs.get('include_greeting', True):
         return None
+    from core.address import get_address as _ga
+    addr = _ga()
     hour = datetime.now().hour
     if 6 <= hour < 12:
         return random.choice([
-            'Доброе утро, сэр. Все системы функционируют в штатном режиме. Вот краткая сводка.',
+            f'Доброе утро, {addr}. Все системы функционируют в штатном режиме. Вот краткая сводка.',
             'Доброе утро. Подготовил для вас отчет о состоянии систем и внешней среде.',
-            'С добрым утром, сэр. Системы в норме. Текущие показатели следующие:',
+            f'С добрым утром, {addr}. Системы в норме. Текущие показатели следующие:',
         ])
     return random.choice([
-        'Добрый день, сэр. Актуальная статистика по состоянию на текущий момент.',
+        f'Добрый день, {addr}. Актуальная статистика по состоянию на текущий момент.',
         'Системы онлайн. Вот актуальный статус ресурсов и окружения.',
         'Добрый день. Все службы работают стабильно. Краткий отчет:',
     ])
@@ -77,7 +79,8 @@ def _part_sysload(prefs: dict) -> str | None:
         cpu = psutil.cpu_percent()
         ram = psutil.virtual_memory().percent
         if cpu > 80 or ram > 85:
-            return (f'Внимание, сэр. Наблюдается повышенная нагрузка на ресурсы. '
+            from core.address import get_address as _ga
+            return (f'Внимание, {_ga()}. Наблюдается повышенная нагрузка на ресурсы. '
                     f'Процессор загружен на {int(cpu)} процентов.')
     except Exception:
         pass

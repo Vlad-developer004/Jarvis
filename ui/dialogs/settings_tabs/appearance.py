@@ -165,10 +165,9 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
         pick_win.title(i18n.tr('app_picker.title'))
-        pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
         from ui.hud_utils import _center_window
         _center_window(pick_win, 820, 740, hud.zoom_factor)
-        pick_win.configure(bg=_BG)
+        pick_win.configure(fg_color=_BG)  # type: ignore[call-arg]
         _set_dark_title_bar(pick_win)
         pick_win.attributes("-topmost", True)
         _apply_window_icon(pick_win, hud)
@@ -232,7 +231,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         # Show a restart notice banner
         for w in restart_f.winfo_children():
             w.destroy()
-        names = {'cyber': 'CYBER NEON', 'dark': 'PURE DARK', 'light': 'PURE LIGHT'}
+        names = {'cyber': 'CYBER NEON', 'dark': 'PURE DARK', 'neon_white': 'NEON WHITE', 'minimal': 'MINIMAL'}
         lbl = tk.Label(
             restart_f,
             text=i18n.tr('theme.saved').format(name=names.get(name, name)),
@@ -246,9 +245,9 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             l.configure(wraplength=max(100, e.width - hud._px(190)))
         restart_f.bind('<Configure>', _upd_restart_wrap, add='+')
         def _restart():
-            import subprocess, sys
+            import subprocess, sys, os as _os
             subprocess.Popen([sys.executable] + sys.argv)
-            win.after(200, lambda: __import__('os')._exit(0))
+            win.after(200, lambda: _os._exit(0))
         ctk.CTkButton(
             restart_f, text=i18n.tr('theme.restart_btn'), command=_restart,
             height=34, font=(hud._F, _sfc(9), 'bold'),
@@ -267,14 +266,15 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
 
     theme_f = tk.Frame(c0, bg=_PANEL)
     theme_f.pack(fill='x', pady=(5, 4))
-    for i in range(3):
-        theme_f.columnconfigure(i, weight=1)
+    theme_f.columnconfigure(0, weight=1)
+    theme_f.columnconfigure(1, weight=1)
 
-    # Theme definitions: (id, label, accent_color, bg_preview, text_preview)
+    # Theme definitions: (id, label, accent, bg_preview, text_preview)
     _theme_defs = [
-        ('cyber', i18n.tr('theme.cyber'),  '#00ffff', '#0a0b10', '#00ffff'),
-        ('dark',  i18n.tr('theme.dark'),   '#4da6ff', '#0d0d0d', '#e8e8e8'),
-        ('light', i18n.tr('theme.light'),  '#0055cc', '#f4f6fa', '#1a1a2e'),
+        ('cyber',      i18n.tr('theme.cyber'),      '#00ffff', '#0a0b10', '#00ffff'),
+        ('dark',       i18n.tr('theme.dark'),        '#5b9cf6', '#0a0a0a', '#ffffff'),
+        ('neon_white', i18n.tr('theme.neon_white'),  '#0077cc', '#f4f4f6', '#111111'),
+        ('minimal',    i18n.tr('theme.minimal'),     '#1a56db', '#fafafa', '#111111'),
     ]
 
     def _blend_hex(c1, c2, alpha):
@@ -288,7 +288,9 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
 
     for i, (tid, tname, accent, tbg, tfg) in enumerate(_theme_defs):
         is_sel = (tid == curr_theme)
-        padx = (0, 4) if i == 0 else (4, 4) if i == 1 else (4, 0)
+        row, col = divmod(i, 2)
+        padx = (0, 4) if col == 0 else (4, 0)
+        pady = (0, 4) if row == 0 else (4, 0)
         t_btn = ctk.CTkButton(
             theme_f, text=tname,
             command=lambda n=tid: _on_theme_change(n),
@@ -297,11 +299,11 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             fg_color=tbg,
             hover_color=_blend_hex(tbg, accent, 0.25),
             text_color=tfg if not is_sel else accent,
-            border_color=accent if is_sel else '#333333',
+            border_color=accent if is_sel else _blend_hex(tbg, '#888888', 0.3),
             border_width=2 if is_sel else 1,
             corner_radius=JStyle.RAD_PANEL
         )
-        t_btn.grid(row=0, column=i, padx=padx, sticky='ew')
+        t_btn.grid(row=row, column=col, padx=padx, pady=pady, sticky='ew')
 
     # Restart notice frame (hidden until needed)
     restart_f = tk.Frame(c0, bg=_blend(_GREEN, 0.08),

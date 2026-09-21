@@ -43,18 +43,6 @@ def _find_best_link(driver, title: str) -> str | None:
     if links:
         return links[0].get_attribute('href')
     return None
-def _get_player_coords(driver) -> tuple[int, int] | None:
-    from selenium.webdriver.common.by import By
-    selectors = ['iframe[allowfullscreen]', "iframe[src*='player']", "iframe[data-src*='player']", '#player iframe', '.video-box iframe', '#oframecdnplayer iframe']
-    for sel in selectors:
-        elems = driver.find_elements(By.CSS_SELECTOR, sel)
-        for el in elems:
-            if el.is_displayed():
-                rect = el.rect
-                x = int(rect['x'] + rect['width'] / 2)
-                y = int(rect['y'] + rect['height'] / 2)
-                return (x, y)
-    return None
 def _search_movie_url(title: str) -> str | None:
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait

@@ -1,6 +1,6 @@
 from ui.hud_style import JStyle
 from core import i18n
-import os, json, sys, subprocess, threading, time
+import os, json, sys, threading, time
 import tkinter as tk
 import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
@@ -11,12 +11,14 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     _sf  = lambda n: hud._fs(n + 6)   # для tk.Label / tk.Canvas (отрицательные пиксели)
     _sfc = lambda n: n + 6             # для CTK виджетов (CTK сам масштабирует)
 
+    _tab_dropdowns: list = []
+
     def _close_dropdowns(*args):
-        from ui.hud_widgets import _active_dropdown
-        if _active_dropdown and hasattr(_active_dropdown, 'close'):
+        for _dd in _tab_dropdowns:
             try:
-                _active_dropdown.close()
-            except:
+                if _dd.is_open:
+                    _dd.close()
+            except Exception:
                 pass
 
     def _on_scroll(_e=None):
@@ -192,10 +194,9 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
         pick_win.title(i18n.tr('app_picker.title'))
-        pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
         from ui.hud_utils import _center_window
         _center_window(pick_win, 820, 740, hud.zoom_factor)
-        pick_win.configure(bg=_BG)
+        pick_win.configure(fg_color=_BG)  # type: ignore[call-arg]
         _set_dark_title_bar(pick_win)
         pick_win.attributes("-topmost", True)
         _apply_window_icon(pick_win, hud)
@@ -209,7 +210,9 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         top_bar.bind('<Configure>', _upd_p_wrap, add='+')
         ctrl_f = tk.Frame(pick_win, bg=_BG)
         ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text=i18n.tr('app_picker.search_placeholder'), font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
+        ent_search = ctk.CTkEntry(ctrl_f, placeholder_text=i18n.tr('app_picker.search_placeholder'),
+                                  placeholder_text_color=_blend(_WHITE, 0.35),
+                                  font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=JStyle.H_LARGE, corner_radius=JStyle.RAD_PANEL)
         ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
         _show_all_var = tk.BooleanVar(value=False)
         sw_all = ctk.CTkSwitch(ctrl_f, text=i18n.tr('app_picker.system_apps'), variable=_show_all_var, font=(hud._F, JStyle.TEXT_BODY, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_WHITE, switch_width=36, switch_height=18)
@@ -268,19 +271,22 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         hud._settings['stt_engine'] = engine
         _save_hud_settings(hud._settings)
         for val, card, col in _active_stt_cards:
-            card.configure(highlightbackground=_blend(col, 0.35) if engine == val else _BRD)
-            
+            card.configure(highlightbackground=_blend(col, 0.35) if engine == val else _BRD)  # type: ignore[call-arg]
+
     _stt_restart_warn = tk.Frame(c3, bg=_blend(_RED, 0.08), highlightbackground=_blend(_RED, 0.3), highlightthickness=1)
     tk.Label(_stt_restart_warn, text=i18n.tr('voice.stt_restart_warn'), bg=_blend(_RED, 0.08), fg=_RED, font=(hud._F, _sf(9)), justify='left').pack(padx=10, pady=6)
-    
+
     def _on_stt_change_plus():
         _on_stt_change()
         if _stt_var.get() != _cur_stt:
             _stt_restart_warn.pack(fill='x', pady=(6, 0))
         else:
             _stt_restart_warn.pack_forget()
-            
-    _stt_options = [('gigaam', '☁', 'GigaAM', i18n.tr('voice.gigaam_badge'), i18n.tr('voice.gigaam_desc'), _GREEN), ('vosk', '📦', 'Vosk', i18n.tr('voice.vosk_badge'), i18n.tr('voice.vosk_desc'), _AMBER)]
+
+    _stt_options = [
+        ('gigaam', '☁',  'GigaAM', i18n.tr('voice.gigaam_badge'), i18n.tr('voice.gigaam_desc'), _GREEN),
+        ('vosk',   '📦', 'Vosk',   i18n.tr('voice.vosk_badge'),   i18n.tr('voice.vosk_desc'),   _AMBER),
+    ]
     for val, icon, name, badge_txt, desc, col in _stt_options:
         rb_card = tk.Frame(c3, bg=_BG, highlightbackground=_blend(col, 0.3) if _stt_var.get() == val else _BRD, highlightthickness=1)
         rb_card.pack(fill='x', pady=(4, 0))
@@ -298,7 +304,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         tk.Label(info, text=name, bg=_BG, fg=col, font=(hud._F, _sf(13), 'bold'), anchor='w').pack(anchor='w')
         desc_lbl = tk.Label(info, text=desc, bg=_BG, fg=_DIM, font=(hud._F, _sf(10)), anchor='w', justify='left')
         desc_lbl.pack(anchor='w')
-        
+
         _last_stt_w = [0]
         def _upd_desc(e, l=desc_lbl):
             if abs(e.width - _last_stt_w[0]) < 10: return
@@ -316,10 +322,11 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             except: pass
         _bind_safe(rb_card)
         rb.configure(command=_on_stt_change_plus)
-        
+
+    # Apply initial visibility
     if _cur_stt == 'vosk':
         _vosk_warn_frame.pack(fill='x', pady=(6, 0))
-        
+
     c4 = _card('◈', i18n.tr('voice.mic_title'), _AMBER)
     try:
         from core.mic_calibration import load_profile as _load_mp
@@ -424,15 +431,15 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     def _set_aud_status(t: str, col: str = _DIM):
         try:
             if not t:
-                _status_f.configure(bg=_PANEL)
-                _status_accent.configure(bg=_PANEL)
-                _aud_status.configure(text='', bg=_PANEL, fg=_DIM)
+                _status_f.configure(bg=_PANEL)  # type: ignore[call-arg]
+                _status_accent.configure(bg=_PANEL)  # type: ignore[call-arg]
+                _aud_status.configure(text='', bg=_PANEL, fg=_DIM)  # type: ignore[call-arg]
                 return
             _is_solid = col in (_GREEN, _AMBER, _CYAN, _RED)
             _bg = _blend(col, 0.08) if _is_solid else _PANEL
-            _status_f.configure(bg=_bg)
-            _status_accent.configure(bg=col if _is_solid else _PANEL)
-            _aud_status.configure(text=t, bg=_bg, fg=col)
+            _status_f.configure(bg=_bg)  # type: ignore[call-arg]
+            _status_accent.configure(bg=col if _is_solid else _PANEL)  # type: ignore[call-arg]
+            _aud_status.configure(text=t, bg=_bg, fg=col)  # type: ignore[call-arg]
         except Exception:
             pass
             
@@ -545,6 +552,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
 
     _in_m = _HUDDropdown(hud, _mic_block, [i18n.tr('voice.waiting')], _in_var, lambda _v: _apply_audio_settings(), accent=_AMBER)
     _in_m.frame.pack(fill='x', pady=(6, 12))
+    _tab_dropdowns.append(_in_m)
 
     _out_block = tk.Frame(c4, bg=_PANEL)
     _out_block.pack(fill='x', pady=(10, 0))
@@ -563,6 +571,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
 
     _out_m = _HUDDropdown(hud, _out_block, [i18n.tr('voice.waiting')], _out_var, lambda _v: _apply_audio_settings(), accent=_MAG)
     _out_m.frame.pack(fill='x', pady=(6, 6))
+    _tab_dropdowns.append(_out_m)
 
     _hp_s0 = _load_settings_json()
     _hp_var = tk.BooleanVar(value=bool(_hp_s0.get('headphone_mode', False)))
@@ -636,7 +645,8 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             ins, outs = _list_devices()
             win.after(0, lambda: _apply_scan_results(ins, outs))
         except Exception as e:
-            win.after(0, lambda: _set_aud_status(i18n.tr('voice.scan_error').format(e=str(e)), _RED))
+            err_msg = str(e)
+            win.after(0, lambda: _set_aud_status(i18n.tr('voice.scan_error').format(e=err_msg), _RED))
 
     threading.Thread(target=_async_load, daemon=True).start()
 
@@ -684,8 +694,9 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                     if win.winfo_exists(): _set_aud_status(msg, col)
                 win.after(0, _res)
             except Exception as e:
+                err_msg = str(e)
                 def _err():
-                    if win.winfo_exists(): _set_aud_status(f'⚠ Ошибка применения: {e}', _RED)
+                    if win.winfo_exists(): _set_aud_status(f'⚠ Ошибка применения: {err_msg}', _RED)
                 win.after(0, _err)
         _set_aud_status(i18n.tr('voice.applying'), _AMBER)
         threading.Thread(target=_do_apply, daemon=True).start()
@@ -858,6 +869,164 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         
     _slider(c_tts, 0, len(_tout_vals)-1, len(_tout_vals)-1, _CYAN, _init_idx, _on_tts_slider)
 
+    # --- TTS Speed ---
+    tk.Frame(c_tts, bg=_BRD, height=1).pack(fill='x', pady=(10, 0))
+    _speed_lbl = _label_row(c_tts, i18n.tr('voice.tts_speed'), _CYAN)
+    _hint(c_tts, i18n.tr('voice.tts_speed_hint'))
+    _cur_speed = float(_s_json.get('tts_speed', 1.0))
+    _speed_lbl.configure(text=f'{_cur_speed:.2f}×')
+    _speed_save_after = [None]
+
+    def _on_speed(v):
+        spd = round(float(v), 2)
+        _speed_lbl.configure(text=f'{spd:.2f}×')
+        if _speed_save_after[0]:
+            win.after_cancel(_speed_save_after[0])
+        def _save():
+            sj = _load_settings_json()
+            sj['tts_speed'] = spd
+            _save_settings_json(sj)
+            try:
+                from core.speech.tts import invalidate_tts_caches
+                invalidate_tts_caches()
+            except Exception:
+                pass
+        _speed_save_after[0] = win.after(400, _save)
+
+    _slider(c_tts, 0.6, 1.4, 16, _CYAN, _cur_speed, _on_speed)
+
+    # --- Night mode ---
+    tk.Frame(c_tts, bg=_BRD, height=1).pack(fill='x', pady=(10, 0))
+    tk.Label(c_tts, text=i18n.tr('voice.tts_night_title'),
+             bg=_PANEL, fg=_CYAN, font=(hud._F, _sf(10), 'bold'), anchor='w').pack(fill='x', pady=(6, 0))
+    _hint(c_tts, i18n.tr('voice.tts_night_hint'))
+
+    _night_row = tk.Frame(c_tts, bg=_PANEL)
+    _night_row.pack(fill='x', pady=(4, 0))
+
+    # Center container inside night row
+    _hour_frame = tk.Frame(_night_row, bg=_PANEL)
+    _hour_frame.pack(side='top', anchor='center', pady=4)
+
+    _start_h = int(_s_json.get('tts_night_start', 22))
+    _start_m = int(_s_json.get('tts_night_start_min', 0))
+    _end_h   = int(_s_json.get('tts_night_end', 7))
+    _end_m   = int(_s_json.get('tts_night_end_min', 0))
+
+    _night_start_str = tk.StringVar(value=f"{_start_h:02d}:{_start_m:02d}")
+    _night_end_str   = tk.StringVar(value=f"{_end_h:02d}:{_end_m:02d}")
+
+    def _parse_and_save_time(time_str: str, default_h: int, default_m: int) -> tuple[int, int]:
+        import re
+        s = time_str.strip().replace(' ', '')
+        match = re.match(r'^(\d{1,2})[:.-]?(\d{2})?$', s)
+        if match:
+            h = int(match.group(1))
+            m = int(match.group(2)) if match.group(2) else 0
+            if 0 <= h < 24 and 0 <= m < 60:
+                return h, m
+        return default_h, default_m
+
+    def _save_night(*_):
+        sh, sm = _parse_and_save_time(_night_start_str.get(), 22, 0)
+        eh, em = _parse_and_save_time(_night_end_str.get(), 7, 0)
+        
+        # update display string
+        _night_start_str.set(f"{sh:02d}:{sm:02d}")
+        _night_end_str.set(f"{eh:02d}:{em:02d}")
+        
+        sj = _load_settings_json()
+        sj['tts_night_start']  = sh
+        sj['tts_night_start_min'] = sm
+        sj['tts_night_end']    = eh
+        sj['tts_night_end_min']  = em
+        _save_settings_json(sj)
+        
+        try:
+            from core.speech.tts import invalidate_tts_caches
+            invalidate_tts_caches()
+        except Exception:
+            pass
+
+    for _txt, _var, _def_h, _def_m in (
+        (i18n.tr('voice.tts_night_from'), _night_start_str, 22, 0),
+        (i18n.tr('voice.tts_night_to'),   _night_end_str, 7, 0)
+    ):
+        _f = tk.Frame(_hour_frame, bg=_PANEL)
+        _f.pack(side='left', padx=16)
+        tk.Label(_f, text=_txt, bg=_PANEL, fg=_DIM,
+                 font=(hud._F, _sf(9))).pack(anchor='center', pady=(0, 4))
+        
+        _stepper = tk.Frame(_f, bg=_PANEL)
+        _stepper.pack(anchor='center')
+        
+        def _dec(v=_var, dh=_def_h, dm=_def_m):
+            h, m = _parse_and_save_time(v.get(), dh, dm)
+            tot = (h * 60 + m - 30) % (24 * 60)
+            v.set(f"{tot // 60:02d}:{tot % 60:02d}")
+            _save_night()
+            
+        def _inc(v=_var, dh=_def_h, dm=_def_m):
+            h, m = _parse_and_save_time(v.get(), dh, dm)
+            tot = (h * 60 + m + 30) % (24 * 60)
+            v.set(f"{tot // 60:02d}:{tot % 60:02d}")
+            _save_night()
+            
+        btn_dec = ctk.CTkButton(
+            _stepper, text='−', width=28, height=28,
+            font=(hud._F, _sfc(12), 'bold'), fg_color='transparent',
+            hover_color=_blend(_CYAN, 0.12), text_color=_CYAN,
+            border_color=_blend(_CYAN, 0.35), border_width=1,
+            corner_radius=6, command=_dec
+        )
+        btn_dec.pack(side='left')
+        
+        ent_val = ctk.CTkEntry(
+            _stepper, textvariable=_var, width=64, height=28,
+            font=(hud._F, _sfc(11), 'bold'),
+            fg_color=_BG, text_color=_WHITE,
+            border_color=_blend(_CYAN, 0.35), border_width=1,
+            justify='center', corner_radius=4
+        )
+        ent_val.pack(side='left', padx=6)
+        ent_val.bind('<FocusOut>', lambda e: _save_night())
+        ent_val.bind('<Return>', lambda e: _save_night())
+        
+        btn_inc = ctk.CTkButton(
+            _stepper, text='+', width=28, height=28,
+            font=(hud._F, _sfc(12), 'bold'), fg_color='transparent',
+            hover_color=_blend(_CYAN, 0.12), text_color=_CYAN,
+            border_color=_blend(_CYAN, 0.35), border_width=1,
+            corner_radius=6, command=_inc
+        )
+        btn_inc.pack(side='left')
+
+    # Night volume slider
+    _night_vol_frame = tk.Frame(c_tts, bg=_PANEL)
+    _night_vol_frame.pack(fill='x', pady=(6, 0))
+    _nvol_lbl = _label_row(_night_vol_frame, i18n.tr('voice.tts_night_volume'), _CYAN)
+    _cur_nvol = float(_s_json.get('tts_night_volume', 0.7))
+    _nvol_lbl.configure(text=f'{int(_cur_nvol * 100)}%')
+    _nvol_save_after = [None]
+
+    def _on_nvol(v):
+        nv = round(float(v), 2)
+        _nvol_lbl.configure(text=f'{int(nv * 100)}%')
+        if _nvol_save_after[0]:
+            win.after_cancel(_nvol_save_after[0])
+        def _save():
+            sj = _load_settings_json()
+            sj['tts_night_volume'] = nv
+            _save_settings_json(sj)
+            try:
+                from core.speech.tts import invalidate_tts_caches
+                invalidate_tts_caches()
+            except Exception:
+                pass
+        _nvol_save_after[0] = win.after(400, _save)
+
+    _slider(_night_vol_frame, 0.1, 1.0, 18, _CYAN, _cur_nvol, _on_nvol)
+
     c_wake = _card('🗣', i18n.tr('voice.wake_title'), _CYAN)
     _wake_var = tk.StringVar(value=_s_json.get('wake_word_mode', 'continuous'))
 
@@ -872,7 +1041,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
             from core.engine.jarvis import get_engine
             eng = get_engine()
             if eng:
-                eng.active_timeout_sec = 0 if val == 'single' else 30
+                eng.active_timeout_sec = 0 if val == 'single' else float(sj.get('wake_active_timeout_sec', 30.0))
         except Exception:
             pass
 
@@ -891,5 +1060,187 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     )
     rb_cont.pack(anchor='w', pady=(8, 4))
     _hint(c_wake, i18n.tr('voice.wake_continuous_hint'))
+
+    _wake_timeout_frame = tk.Frame(c_wake, bg=_PANEL)
+    _wake_timeout_frame.pack(fill='x', pady=(6, 0))
+    _wt_lbl = _label_row(_wake_timeout_frame, i18n.tr('voice.wake_timeout'), _CYAN)
+    _cur_wt = float(_s_json.get('wake_active_timeout_sec', 30.0))
+    _wt_lbl.configure(text=f'{int(_cur_wt)} сек')
+    _wt_save_after = [None]
+
+    def _on_wake_timeout(v):
+        secs = round(float(v) / 5.0) * 5.0
+        _wt_lbl.configure(text=f'{int(secs)} сек')
+        if _wt_save_after[0]:
+            win.after_cancel(_wt_save_after[0])
+
+        def _save():
+            sj = _load_settings_json()
+            sj['wake_active_timeout_sec'] = secs
+            _save_settings_json(sj)
+            try:
+                import config_pack.config as _cfg
+                _cfg.WAKE_ACTIVE_TIMEOUT_SEC = secs
+                from core.engine.jarvis import get_engine
+                eng = get_engine()
+                if eng and _wake_var.get() == 'continuous':
+                    eng.active_timeout_sec = secs
+            except Exception:
+                pass
+        _wt_save_after[0] = win.after(400, _save)
+
+    _slider(_wake_timeout_frame, 10.0, 120.0, 22, _CYAN, _cur_wt, _on_wake_timeout)
+    _hint(c_wake, i18n.tr('voice.wake_timeout_hint'))
+
+    # --- Address card ---
+    c_addr = _card('👤', i18n.tr('voice.addr_title'), _MAG)
+    _addr_s   = _load_settings_json()
+    _addr_mode = _addr_s.get('address_mode', 'male')
+    _addr_custom_var = tk.StringVar(value=_addr_s.get('custom_address', ''))
+
+    _ADDR_OPTIONS = [
+        ('male',   i18n.tr('voice.addr_male'),   _CYAN),
+        ('female', i18n.tr('voice.addr_female'),  _MAG),
+        ('custom', i18n.tr('voice.addr_custom'),  _AMBER),
+    ]
+
+    # --- Preview row ---
+    _preview_row = tk.Frame(c_addr, bg=_PANEL)
+    _preview_row.pack(fill='x', pady=(0, 10))
+    tk.Label(_preview_row, text=i18n.tr('voice.addr_preview_label'),
+             bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9))).pack(side='left')
+    _preview_val = tk.Label(_preview_row, text='', bg=_PANEL, fg=_MAG,
+                            font=(hud._F, _sf(9), 'bold'))
+    _preview_val.pack(side='left', padx=(5, 0))
+
+    _cur_mode: list[str] = [_addr_mode]
+    _addr_btns: dict[str, ctk.CTkButton] = {}
+
+    def _get_preview_text(mode: str) -> str:
+        if mode == 'custom':
+            return f'«{_addr_custom_var.get().strip() or "—"}»'
+        is_uk = i18n.get_language() == 'uk'
+        return '«пані»' if (mode == 'female' and is_uk) else \
+               '«леди»' if mode == 'female' else \
+               '«сер»'  if is_uk else '«сэр»'
+
+    def _refresh_preview():
+        mode = _cur_mode[0]
+        col = next((c for v, _, c in _ADDR_OPTIONS if v == mode), _MAG)
+        _preview_val.configure(text=_get_preview_text(mode), fg=col)
+
+    def _flash_saved():
+        saved_text = _get_preview_text(_cur_mode[0])
+        _preview_val.configure(text=saved_text, fg=_GREEN)
+        _preview_val.after(1800, _refresh_preview)
+
+    def _update_btn_styles(active: str):
+        for val, _, col in _ADDR_OPTIONS:
+            btn = _addr_btns.get(val)
+            if btn is None:
+                continue
+            if val == active:
+                btn.configure(fg_color=_blend(col, 0.22), border_color=col,
+                              text_color=col)
+            else:
+                btn.configure(fg_color='transparent',
+                              border_color=_blend(_DIM, 0.25),
+                              text_color=_DIM)
+
+    def _select_mode(val: str, save: bool = True):
+        _cur_mode[0] = val
+        _update_btn_styles(val)
+        _refresh_preview()
+        if val == 'custom':
+            _addr_custom_frame.pack(fill='x', pady=(10, 2))
+        else:
+            _addr_custom_frame.pack_forget()
+            if save:
+                sj = _load_settings_json()
+                sj['address_mode'] = val
+                _save_settings_json(sj)
+                _flash_saved()
+                try:
+                    from core.speech.tts import invalidate_tts_caches
+                    invalidate_tts_caches()
+                except Exception:
+                    pass
+
+    # --- Toggle button group ---
+    _btn_row = tk.Frame(c_addr, bg=_PANEL)
+    _btn_row.pack(fill='x', pady=(0, 4))
+    _btn_row.columnconfigure(0, weight=1)
+    _btn_row.columnconfigure(1, weight=1)
+    _btn_row.columnconfigure(2, weight=1)
+
+    for _ci, (_val, _label, _col) in enumerate(_ADDR_OPTIONS):
+        _b = ctk.CTkButton(
+            _btn_row, text=_label,
+            height=JStyle.H_NORM,
+            font=(hud._F, _sfc(11), 'bold'),
+            fg_color='transparent',
+            hover_color=_blend(_col, 0.14),
+            text_color=_DIM,
+            border_color=_blend(_DIM, 0.25),
+            border_width=1,
+            corner_radius=JStyle.RAD_BTN,
+            command=lambda v=_val: _select_mode(v),
+        )
+        _b.grid(row=0, column=_ci, padx=(0, 6) if _ci < 2 else 0, sticky='ew')
+        _addr_btns[_val] = _b
+
+    # --- Custom input (shown only when 'custom' selected) ---
+    _addr_custom_frame = tk.Frame(c_addr, bg=_PANEL)
+
+    tk.Label(_addr_custom_frame, text=i18n.tr('voice.addr_custom_hint'),
+             bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9))).pack(anchor='w', pady=(0, 6))
+
+    _entry_row = tk.Frame(_addr_custom_frame, bg=_PANEL)
+    _entry_row.pack(fill='x')
+    _entry_row.columnconfigure(0, weight=1)
+
+    _addr_entry = ctk.CTkEntry(
+        _entry_row, textvariable=_addr_custom_var,
+        height=JStyle.H_NORM,
+        font=(hud._F, _sfc(11)),
+        fg_color=_BG, text_color=_WHITE, placeholder_text_color=_DIM,
+        border_color=_blend(_AMBER, 0.45), border_width=1,
+        corner_radius=JStyle.RAD_BTN,
+        placeholder_text='господин / мастер / ...',
+    )
+    _addr_entry.grid(row=0, column=0, sticky='ew', padx=(0, 8))
+
+    def _save_custom_addr():
+        val = _addr_custom_var.get().strip()
+        sj = _load_settings_json()
+        sj['address_mode'] = 'custom'
+        sj['custom_address'] = val
+        _save_settings_json(sj)
+        _cur_mode[0] = 'custom'
+        _refresh_preview()
+        _flash_saved()
+        try:
+            from core.speech.tts import invalidate_tts_caches
+            invalidate_tts_caches()
+        except Exception:
+            pass
+
+    ctk.CTkButton(
+        _entry_row, text=i18n.tr('voice.addr_apply'),
+        command=_save_custom_addr,
+        width=100, height=JStyle.H_NORM,
+        font=(hud._F, _sfc(10), 'bold'),
+        fg_color=_blend(_AMBER, 0.18), hover_color=_blend(_AMBER, 0.28),
+        text_color=_AMBER, border_color=_blend(_AMBER, 0.55),
+        border_width=1, corner_radius=JStyle.RAD_BTN,
+    ).grid(row=0, column=1)
+
+    _addr_entry.bind('<Return>', lambda _e: _save_custom_addr())
+
+    # Apply initial state (no save)
+    _select_mode(_addr_mode, save=False)
+    if _addr_mode == 'custom':
+        _addr_custom_frame.pack(fill='x', pady=(10, 2))
+
 
     tk.Frame(inner, bg=_BG, height=JStyle.H_NORM).pack(fill='x')

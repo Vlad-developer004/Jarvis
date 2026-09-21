@@ -4,7 +4,7 @@ import subprocess
 import threading
 from pathlib import Path
 import ctypes
-import urllib.parse
+
 import pyautogui
 import pyperclip
 import pygetwindow as gw

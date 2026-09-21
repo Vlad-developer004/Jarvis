@@ -26,7 +26,7 @@ def open_settings(hud, reopen: bool = False) -> None:
     win.title(i18n.tr('settings.title'))
     hud._track_subwin('settings', win, lambda: open_settings(hud, reopen=True))
     
-    win.configure(bg=_BG)
+    win.configure(bg=_BG)  # type: ignore[call-arg]
     _set_dark_title_bar(win)
     win.after(150, lambda: _set_dark_title_bar(win))
     _apply_window_icon(win, hud)
@@ -143,14 +143,14 @@ def open_settings(hud, reopen: bool = False) -> None:
     def switch_tab(name: str):
         for k, f in tab_frames.items():
             f.pack_forget()
-            tab_btns[k].configure(fg_color='transparent', text_color=_DIM)
+            tab_btns[k].configure(fg_color='transparent', text_color=_DIM)  # type: ignore[call-arg]
         
         if name not in built_tabs:
             _build_tab_content(name)
             built_tabs.add(name)
 
         tab_frames[name].pack(fill='both', expand=True)
-        tab_btns[name].configure(fg_color=_blend(_CYAN, 0.1), text_color=_CYAN)
+        tab_btns[name].configure(fg_color=_blend(_CYAN, 0.1), text_color=_CYAN)  # type: ignore[call-arg]
         _ensure_active_visible(name)
 
     def _build_tab_content(name: str):

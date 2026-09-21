@@ -1,13 +1,14 @@
 import os
 import re
+import wave
 import hashlib
 import tempfile
 import threading
 import time
 import queue
 import gc
+from collections import OrderedDict
 from datetime import datetime
-from functools import lru_cache
 import pygame
 import psutil
 import pythoncom
@@ -15,15 +16,43 @@ import json
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide'
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'jarvis_tts_cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
-_MODEL_DIR  = os.path.join('models', 'silero_tts')
+
+_BIG_STACK_BYTES = 32 * 1024 * 1024  # PyTorch/Silero need deep call stacks on
+# Windows — the default 1 MB causes STATUS_STACK_OVERFLOW (0xC00000FD). This
+# used to be set globally for the whole process (every thread, forever); now
+# it's only applied for the few thread-creation sites below that actually run
+# Silero inference, then immediately reverted so unrelated threads (timers,
+# reminders, ...) keep the normal small stack.
+_stack_size_lock = threading.Lock()
+
+def _spawn_with_big_stack(target, *, name: str | None = None, daemon: bool = True) -> threading.Thread:
+    """Create+start a thread with the enlarged stack, then restore the
+    process-wide default for whoever creates a thread next. Locked because
+    threading.stack_size() is a single global setting, not per-thread."""
+    with _stack_size_lock:
+        old = threading.stack_size(_BIG_STACK_BYTES)
+        try:
+            t = threading.Thread(target=target, name=name, daemon=daemon)
+            t.start()
+            return t
+        finally:
+            threading.stack_size(old)
+def _get_project_root() -> str:
+    import sys
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+_MODEL_DIR = os.path.join(_get_project_root(), 'models', 'silero_tts')
 _SAMPLE_RATE = 48000
 _LANG_CONFIG = {
-    'ru': {'model': 'v4_ru.pt', 'url': 'https://models.silero.ai/models/tts/ru/v4_ru.pt', 'speaker': 'eugene'},
+    'ru': {'model': 'v5_5_ru.pt', 'url': 'https://models.silero.ai/models/tts/ru/v5_5_ru.pt', 'speaker': 'eugene'},
     'uk': {'model': 'v4_ua.pt', 'url': 'https://models.silero.ai/models/tts/ua/v4_ua.pt', 'speaker': 'mykyta'}
 }
 _UNLOAD_AFTER_SEC = 300.0  # Fallback, overridden by config
 _SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 _SPLIT_THRESHOLD = 90
+_MAX_CHUNK_CHARS = 250
 _CYR_LETTERS = {'А': 'а', 'Б': 'бэ', 'В': 'вэ', 'Г': 'гэ', 'Д': 'дэ', 'Е': 'е', 'Ё': 'ё', 'Ж': 'жэ', 'З': 'зэ', 'И': 'и', 'Й': 'й', 'К': 'ка', 'Л': 'эл', 'М': 'эм', 'Н': 'эн', 'О': 'о', 'П': 'пэ', 'Р': 'эр', 'С': 'эс', 'Т': 'тэ', 'У': 'у', 'Ф': 'эф', 'Х': 'ха', 'Ц': 'цэ', 'Ч': 'чэ', 'Ш': 'ша', 'Щ': 'ща', 'Э': 'э', 'Ю': 'ю', 'Я': 'я'}
 _CYR_ABBREV  = {'США': 'сешеа', 'РФ': 'эрэф', 'ООН': 'оон', 'НАТО': 'нато', 'ТАСС': 'тасс', 'МВД': 'эмвэдэ', 'ФСБ': 'эфэсбэ', 'КГБ': 'кэгэбэ', 'ЦРУ': 'цээру', 'ФБР': 'эфбэр', 'МИД': 'мид', 'ВВП': 'вэвэпэ', 'ВВС': 'вэвээс', 'ФНС': 'фээнэс', 'МЧС': 'эмчээс', 'ДТП': 'дэтэпэ', 'СМИ': 'сми', 'НЛО': 'энэло', 'ПК': 'пэка', 'ОС': 'оэс', 'ИП': 'ип', 'ООО': 'ооо', 'ЧС': 'чээс', 'ВМФ': 'вэмэ эф', 'ФСО': 'эфэсэ', 'ГРУ': 'гэрэу', 'СВР': 'эсвээр', 'МГУ': 'эм гэ у', 'РАН': 'ран', 'ВЦИОМ': 'вциом', 'ЦБ': 'цэ бэ', 'ЕС': 'е эс', 'СНГ': 'эс эн гэ', 'БРИКС': 'брикс', 'СССР': 'эс эс эс эр', 'ТВ': 'тэ вэ', 'ДНР': 'дэ эн эр', 'ЛНР': 'эл эн эр'}
 _LETTER_NAMES = {'A': 'эй', 'B': 'би', 'C': 'си', 'D': 'ди', 'E': 'и', 'F': 'эф', 'G': 'джи', 'H': 'эйч', 'I': 'ай', 'J': 'джей', 'K': 'кей', 'L': 'эл', 'M': 'эм', 'N': 'эн', 'O': 'оу', 'P': 'пи', 'Q': 'кью', 'R': 'ар', 'S': 'эс', 'T': 'ти', 'U': 'ю', 'V': 'ви', 'W': 'дабл-ю', 'X': 'экс', 'Y': 'вай', 'Z': 'зет'}
@@ -33,22 +62,154 @@ _EXCEPTIONS = {'openai': 'опен эй ай', 'chatgpt': 'чат джи пи т
 _ABBREV = {'vlc': 'вэ эл си', 'cpu': 'си пи ю', 'gpu': 'джи пи ю', 'ram': 'рэм', 'rom': 'ром', 'ssd': 'эс эс ди', 'hdd': 'эйч ди ди', 'usb': 'ю эс би', 'hdmi': 'эйч ди эм ай', 'fps': 'эф пи эс', 'api': 'эй пи ай', 'url': 'ю эр эл', 'gui': 'джи ю ай', 'ai': 'эй ай', 'pc': 'пи си', 'os': 'оу эс', 'ok': 'окей', 'vpn': 'вэ пэ эн', 'ip': 'ай пи', 'id': 'ай ди', 'vs': 'версус', 'gta': 'гта', 'rpg': 'эрпэгэ', 'ui': 'юай', 'ux': 'юикс', 'tv': 'тиви'}
 _UNIT_EXPANSIONS = {'gb': 'гигабайт', 'mb': 'мегабайт', 'kb': 'килобайт', 'km/h': 'километров в час', 'км/ч': 'километров в час', 'kg': 'килограмм', 'cm': 'сантиметров', 'mm': 'миллиметров'}
 _ARB = {'AA': 'а', 'AE': 'э', 'AH': 'а', 'AO': 'о', 'AW': 'ау', 'AY': 'ай', 'EH': 'э', 'ER': 'ер', 'EY': 'эй', 'IH': 'и', 'IY': 'и', 'OW': 'оу', 'OY': 'ой', 'UH': 'у', 'UW': 'у', 'B': 'б', 'CH': 'ч', 'D': 'д', 'DH': 'з', 'F': 'ф', 'G': 'г', 'HH': 'х', 'JH': 'дж', 'K': 'к', 'L': 'л', 'M': 'м', 'N': 'н', 'NG': 'нг', 'P': 'п', 'R': 'р', 'S': 'с', 'SH': 'ш', 'T': 'т', 'TH': 'т', 'V': 'в', 'W': 'в', 'Y': 'й', 'Z': 'з', 'ZH': 'ж'}
-_tts_engine = None
 _tts_models = {}  # Cache for models by language
+_tts_inference_lock = threading.Lock()  # Silero models are NOT thread-safe; serialise all save_wav calls
 _g2p, _g2p_lock = None, threading.Lock()
+_morph_ru = None
+_morph_uk = None
+_morph_lock = threading.Lock()
+_normalize_cache: 'OrderedDict[tuple[str, str], str]' = OrderedDict()
+_NORMALIZE_CACHE_MAX = 512
+_normalize_cache_lock = threading.Lock()
+_silero_supports_speech_rate: bool | None = None
+
+# --- TTS speed cache ---------------------------------------------------
+_tts_speed_cache: float | None = None
+_tts_speed_lock = threading.Lock()
+
+def invalidate_tts_speed_cache() -> None:
+    global _tts_speed_cache
+    with _tts_speed_lock:
+        _tts_speed_cache = None
+
+# --- Night volume cache ------------------------------------------------
+_night_vol_cache: tuple[int, int, int, int, float] | None = None
+_night_vol_lock = threading.Lock()
+
+def _invalidate_night_vol_cache() -> None:
+    global _night_vol_cache
+    with _night_vol_lock:
+        _night_vol_cache = None
+
+def _get_night_vol_settings() -> tuple[int, int, int, int, float]:
+    global _night_vol_cache
+    with _night_vol_lock:
+        if _night_vol_cache is not None:
+            return _night_vol_cache
+        try:
+            from config_pack.config import get_settings_path as _gsp
+            _s = json.load(open(_gsp(), encoding='utf-8'))
+            result: tuple[int, int, int, int, float] = (
+                int(_s.get('tts_night_start', 22)),
+                int(_s.get('tts_night_start_min', 0)),
+                int(_s.get('tts_night_end', 7)),
+                int(_s.get('tts_night_end_min', 0)),
+                float(_s.get('tts_night_volume', 0.7)),
+            )
+        except Exception:
+            result = (22, 0, 7, 0, 0.7)
+        _night_vol_cache = result
+        return result
+
+# --- WAV cache eviction ------------------------------------------------
+_CACHE_MAX_FILES = 300  # Keep newest N files; extras are deleted.
+_CACHE_EVICT_INTERVAL = 1800  # Seconds between automatic eviction runs.
+
+def _evict_wav_cache() -> None:
+    try:
+        files = sorted(
+            (f for f in os.scandir(CACHE_DIR) if f.name.endswith('.wav')),
+            key=lambda e: e.stat().st_mtime,
+            reverse=True,
+        )
+        for entry in files[_CACHE_MAX_FILES:]:
+            try:
+                os.remove(entry.path)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+def _schedule_cache_eviction() -> None:
+    _evict_wav_cache()
+    t = threading.Timer(_CACHE_EVICT_INTERVAL, _schedule_cache_eviction)
+    t.daemon = True
+    t.start()
+
+# Run once at import time and then on a recurring timer.
+threading.Thread(target=_schedule_cache_eviction, daemon=True).start()
+
+def _get_morph(lang: str = 'ru'):
+    global _morph_ru, _morph_uk
+    try:
+        import pymorphy3 as _pm3
+        if lang == 'uk':
+            if _morph_uk is None:
+                with _morph_lock:
+                    if _morph_uk is None:
+                        _morph_uk = _pm3.MorphAnalyzer(lang='uk')
+            return _morph_uk
+        else:
+            if _morph_ru is None:
+                with _morph_lock:
+                    if _morph_ru is None:
+                        _morph_ru = _pm3.MorphAnalyzer()
+            return _morph_ru
+    except Exception:
+        return None
 _MASTER_VOLUME = 1.0
 _warmup_started = False
 _warmup_lock = threading.Lock()
+_text_warmup_started = False
+_text_warmup_lock = threading.Lock()
 _mixer_lock = threading.RLock()
 _cached_audio_device: str | None = None
 _cached_audio_device_loaded: bool = False
 
 def _get_lang() -> str:
+    # Voice/model language — deliberately get_speech_language(), not
+    # get_language() (on-screen UI text). See core.i18n.get_speech_language.
     try:
-        from core.i18n import get_language
-        return get_language()
+        from core.i18n import get_speech_language
+        return get_speech_language()
     except Exception:
         return 'ru'
+
+def _get_tts_speed() -> float:
+    global _tts_speed_cache
+    with _tts_speed_lock:
+        if _tts_speed_cache is not None:
+            return _tts_speed_cache
+        try:
+            from config_pack.config import get_settings_path
+            with open(get_settings_path(), 'r', encoding='utf-8') as _f:
+                val = max(0.6, min(1.4, float(json.load(_f).get('tts_speed', 1.0))))
+        except Exception:
+            val = 1.0
+        _tts_speed_cache = val
+        return val
+
+def _apply_wav_speed(src: str, speed: float) -> str:
+    """Return path to WAV with modified framerate for playback speed control.
+    speed < 1.0 → slower (lower pitch); speed > 1.0 → faster (higher pitch)."""
+    if abs(speed - 1.0) < 0.02:
+        return src
+    spct = int(round(speed * 100))
+    dst = src.replace('.wav', f'_sp{spct}.wav')
+    if os.path.exists(dst):
+        return dst
+    try:
+        with wave.open(src, 'rb') as r:
+            p = r.getparams()
+            data = r.readframes(p.nframes)
+        with wave.open(dst, 'wb') as w:
+            w.setnchannels(p.nchannels)
+            w.setsampwidth(p.sampwidth)
+            w.setframerate(max(1, int(p.framerate * speed)))
+            w.writeframes(data)
+        return dst
+    except Exception:
+        return src
 
 def _get_model_config(lang: str = None) -> dict:
     if lang is None: lang = _get_lang()
@@ -67,12 +228,128 @@ def _get_speaker(lang: str = None) -> str:
     return config['speaker']
 try:
     if not pygame.mixer.get_init():
-        pygame.mixer.pre_init(48000, -16, 2, 2048)
+        # Buffer of 4096 samples (~85ms @ 48kHz) gives the audio thread enough
+        # headroom to survive CPU spikes from concurrent Silero inference without
+        # underrunning — a too-small buffer here is the classic cause of crackle.
+        pygame.mixer.pre_init(48000, -16, 2, 4096)
 except Exception: pass
+
+def _chunk_text(text: str) -> list[str]:
+    """Split text into chunks safe for Silero: first by sentence, then by word boundary."""
+    raw = _SENTENCE_SPLIT_RE.split(text) if len(text) > _SPLIT_THRESHOLD else [text]
+    chunks: list[str] = []
+    for s in raw:
+        s = s.strip()
+        if not s:
+            continue
+        # Skip chunks that are only punctuation (remnants of "..." separators)
+        if all(c in '.!?—- ' for c in s):
+            continue
+        if len(s) <= _MAX_CHUNK_CHARS:
+            chunks.append(s)
+            continue
+        words = s.split()
+        current: list[str] = []
+        current_len = 0
+        for word in words:
+            added = len(word) + (1 if current else 0)
+            if current_len + added > _MAX_CHUNK_CHARS and current:
+                chunks.append(' '.join(current))
+                current = [word]
+                current_len = len(word)
+            else:
+                current.append(word)
+                current_len += added
+        if current:
+            chunks.append(' '.join(current))
+    return chunks
+
+
+class _OrderedBatch:
+    """Parallel generation with guaranteed in-order release to the playback queue.
+
+    Each sentence gets an index. When generation finishes (in any order),
+    finished() is called. Items are only released to the queue once all
+    earlier indices have also finished — so the worker always plays in order.
+    Gaps from failed generation (path=None) are skipped so later sentences
+    are never blocked.
+
+    A watchdog timer fires after _BATCH_TIMEOUT seconds and forcibly flushes
+    any remaining buffered items so a single hung generation cannot block the
+    entire batch indefinitely.
+    """
+    _BATCH_TIMEOUT = 15.0  # seconds before watchdog flushes stuck batch
+
+    __slots__ = ('_priority', '_base_ts', '_mgr', '_lock', '_buf', '_next', '_watchdog', '_epoch', '_pending')
+
+    def __init__(self, priority: int, base_ts: float, mgr: 'TTSManager', epoch: int) -> None:
+        self._priority = priority
+        self._base_ts = base_ts
+        self._mgr = mgr
+        self._epoch = epoch
+        self._lock = threading.Lock()
+        self._buf: dict[int, str | None] = {}
+        self._next = 0
+        self._pending: list[tuple[str, int]] = []
+        self._watchdog = threading.Timer(self._BATCH_TIMEOUT, self._flush_remaining)
+        self._watchdog.daemon = True
+        self._watchdog.start()
+
+    def _pop_pending(self) -> tuple[str, int] | None:
+        # Self-throttling queue depth: speak() only submits the first
+        # _MAX_INFLIGHT sentences to the executor up front; each finished
+        # generation pulls the next one instead of all sentences sitting as
+        # submitted tasks at once (matters for long AI answers, ~20 sentences,
+        # with only 2 workers).
+        with self._lock:
+            if self._pending:
+                return self._pending.pop(0)
+            return None
+
+    def _stale(self) -> bool:
+        # True if stop() was called (a new epoch started) after this batch began —
+        # discard results instead of queuing leftover audio from a cancelled answer.
+        return self._mgr.gen_epoch != self._epoch
+
+    def _flush_remaining(self) -> None:
+        with self._lock:
+            if not self._buf:
+                return
+            # Hold the manager's gen_lock across the stale-check + put_item so
+            # this can't race with stop() bumping gen_epoch and draining the
+            # queue from another thread (e.g. a rapid second "Джарвис" while
+            # this batch's audio is still generating) — without this, a check
+            # that passes just before stop()'s epoch bump could still enqueue
+            # its item just after stop()'s drain loop already finished,
+            # leaving stale audio to play alongside/over the new response.
+            with self._mgr._gen_lock:
+                if not self._stale():
+                    for idx in sorted(self._buf):
+                        item = self._buf[idx]
+                        if item:
+                            self._mgr.put_item(self._priority, self._base_ts + idx * 0.001, item)
+            self._buf.clear()
+
+    def finished(self, index: int, path: str | None) -> None:
+        with self._lock:
+            self._buf[index] = path
+            while self._next in self._buf:
+                item = self._buf.pop(self._next)
+                idx = self._next
+                self._next += 1
+                if item:
+                    # See _flush_remaining() above for why this needs gen_lock.
+                    with self._mgr._gen_lock:
+                        if not self._stale():
+                            self._mgr.put_item(self._priority, self._base_ts + idx * 0.001, item)
+        if not self._buf:
+            self._watchdog.cancel()
+
 
 class TTSManager:
     _instance = None
     _lock = threading.Lock()
+    _MAX_INFLIGHT = 4  # cap on sentences submitted to the executor at once per speak() batch
     def __new__(cls):
         with cls._lock:
             if cls._instance is None:
@@ -82,19 +359,57 @@ class TTSManager:
 
     def _init_manager(self):
         print("[TTS] Initializing Manager...", flush=True)
-        self.model = None
         self.queue = queue.PriorityQueue()
         self.stop_event = threading.Event()
         self.active_playback = False
         self._gen_count = 0
         self._gen_lock = threading.Lock()
+        self.gen_epoch = 0  # bumped by stop() so in-flight generations from a
+                             # cancelled answer know to discard their result
+        # pycaw/comtypes COM objects are apartment-bound — even non-concurrent
+        # use from a different thread than where they were created is unsafe.
+        # stop() can be called from the recognition thread, not just the TTS
+        # worker thread, so it only raises this flag; only the worker thread
+        # itself ever actually calls force_unduck()/duck_volume().
+        self._unduck_requested = threading.Event()
         self._last_items = {}
         self._last_items_lock = threading.Lock()
         from concurrent.futures import ThreadPoolExecutor
         self.executor = ThreadPoolExecutor(max_workers=2)
+        # ThreadPoolExecutor spawns its worker threads lazily on first submit(),
+        # and a thread's stack size can't change after creation — so force both
+        # workers to spawn right now, while the big stack is active, instead of
+        # whenever the first real TTS request happens to arrive. A plain
+        # submit() x2 doesn't *guarantee* 2 distinct threads (a fast first
+        # worker can become idle again before the second submit() lands, so
+        # the pool just reuses it) — a 2-party barrier forces both submitted
+        # jobs to be in flight *simultaneously*, which only 2 real threads can
+        # satisfy.
+        with _stack_size_lock:
+            _old_stack = threading.stack_size(_BIG_STACK_BYTES)
+            try:
+                _barrier = threading.Barrier(2, timeout=5)
+                def _rendezvous():
+                    # Lower OS priority of the inference worker so the audio
+                    # playback thread wins CPU contention during generation
+                    # spikes — underruns there are what cause audible crackle.
+                    try:
+                        import ctypes
+                        THREAD_PRIORITY_BELOW_NORMAL = -1
+                        ctypes.windll.kernel32.SetThreadPriority(
+                            ctypes.windll.kernel32.GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL)
+                    except Exception:
+                        pass
+                    try: _barrier.wait()
+                    except Exception: pass
+                futures = [self.executor.submit(_rendezvous) for _ in range(2)]
+                for f in futures:
+                    try: f.result(timeout=5)
+                    except Exception: pass
+            finally:
+                threading.stack_size(_old_stack)
         print("[TTS] Starting Worker thread...", flush=True)
-        self.worker_thread = threading.Thread(target=self._worker, daemon=True, name='TTS-Worker')
-        self.worker_thread.start()
+        self.worker_thread = _spawn_with_big_stack(self._worker, name='TTS-Worker')
         self.unload_timer = None
         try:
             from core.i18n import register_refresh
@@ -105,7 +420,8 @@ class TTSManager:
     def _on_language_change(self):
         global _tts_models
         _tts_models.clear()
-        print("[TTS] Language changed, clearing model cache.", flush=True)
+        invalidate_tts_caches()
+        print("[TTS] Language changed, clearing model and speed cache.", flush=True)
 
     def _worker(self):
         pythoncom.CoInitialize()
@@ -116,36 +432,90 @@ class TTSManager:
             duck_volume = lambda x: None
             force_unduck = lambda: None
         self.channel = None
-        _unduck_timer = {'id': None}
+        # Safety-net unduck retry, ~2s after idle cleanup, deliberately run on
+        # THIS worker thread's own polling loop instead of a separate
+        # threading.Timer thread. A second OS thread meant a second COM
+        # apartment touching the same Windows Core Audio objects as
+        # duck_volume() — that cross-thread race crashed combase.dll under
+        # rapid-fire AI-streaming TTS even with locking around each call.
+        _pending_unduck_retry: list[float | None] = [None]
+        _is_ducked = False
+
+        def _do_idle_cleanup():
+            nonlocal _is_ducked
+            if not _is_ducked:
+                return
+            _is_ducked = False
+            try: force_unduck()
+            except: pass
+            _pending_unduck_retry[0] = time.time() + 2.0
+            self._safe_hud_set_mode('idle')
+            self.active_playback = False
+
         while True:
             try:
-                # Wait for task
+                # Handle any stop()-requested unduck here, on this thread's own
+                # COM apartment, regardless of whether we're idle or about to
+                # process a new item.
+                if self._unduck_requested.is_set():
+                    self._unduck_requested.clear()
+                    try: force_unduck()
+                    except: pass
+
+                # Short timeout so idle detection is responsive
                 try:
-                    pri, ts, item = self.queue.get(timeout=0.5)
+                    pri, ts, item = self.queue.get(timeout=0.05)
                 except queue.Empty:
+                    # Check if the channel finished playing and nothing is pending
+                    ch_busy = False
+                    with _mixer_lock:
+                        try:
+                            if pygame.mixer.get_init() and self.channel:
+                                ch_busy = bool(self.channel.get_busy() or self.channel.get_queue() is not None)
+                        except: pass
+                    if not ch_busy and self._gen_count == 0 and self.queue.empty():
+                        _do_idle_cleanup()
+                    if _pending_unduck_retry[0] is not None and time.time() >= _pending_unduck_retry[0]:
+                        _pending_unduck_retry[0] = None
+                        try: force_unduck()
+                        except: pass
                     continue
-                    
+
                 if item is None: break
-                
+
                 now = time.time()
                 print(f"[TTS-WORKER] [{now:.3f}] Processing: {item}", flush=True)
                 self.active_playback = True
                 self.stop_event.clear()
-                
+
+                # ---------------------------------------------------------------
+                # Prepare audio file and acquire channel inside mixer lock
+                # ---------------------------------------------------------------
+                _sound = None
+                _need_queue = False  # True when channel is busy → use channel.queue()
                 with _mixer_lock:
                     try:
                         ensure_mixer_init()
                         self.active_playback = True
-                        
-                        try:
-                            self.channel = pygame.mixer.find_channel(force=True)
-                            if self.channel is None:
-                                self.channel = pygame.mixer.Channel(7)
-                        except Exception:
-                            try: pygame.mixer.quit()
-                            except: pass
-                            ensure_mixer_init()
-                            self.channel = pygame.mixer.find_channel(force=True) or pygame.mixer.Channel(7)
+
+                        # Reuse the existing channel while it is still playing so that
+                        # consecutive chunks go to channel.queue() rather than a second
+                        # free channel (which would make two voices play simultaneously).
+                        ch_occupied = (
+                            self.channel is not None
+                            and pygame.mixer.get_init()
+                            and (self.channel.get_busy() or self.channel.get_queue() is not None)
+                        )
+                        if not ch_occupied:
+                            try:
+                                self.channel = pygame.mixer.find_channel(force=True)
+                                if self.channel is None:
+                                    self.channel = pygame.mixer.Channel(7)
+                            except Exception:
+                                try: pygame.mixer.quit()
+                                except: pass
+                                ensure_mixer_init()
+                                self.channel = pygame.mixer.find_channel(force=True) or pygame.mixer.Channel(7)
 
                         if self.channel is None:
                             print("[TTS-WORKER] ERROR: Could not acquire audio channel.", flush=True)
@@ -154,29 +524,39 @@ class TTSManager:
                             continue
 
                         duck_volume(True)
+                        _is_ducked = True
+                        _pending_unduck_retry[0] = None  # cancel any stale retry from a previous idle cycle
                         audio_path = str(item)
                         if not os.path.exists(audio_path):
                             print(f"[TTS-WORKER] Generating audio for: {item[:20]}...", flush=True)
                             audio_path = _generate_cached(item)
-                        
+
                         if not audio_path or not os.path.exists(audio_path):
                             print(f"[TTS-WORKER] ERROR: Audio path invalid: {audio_path}", flush=True)
                             self.active_playback = False
                             self.queue.task_done()
                             continue
 
-                        h = datetime.now().hour
-                        is_night = (h >= 22 or h < 7)
-                        vol = _MASTER_VOLUME * 0.7 if is_night else _MASTER_VOLUME
-                        if is_night: vol = max(vol, min(_MASTER_VOLUME, 0.2))
-                        
+                        now_dt = datetime.now()
+                        current_m = now_dt.hour * 60 + now_dt.minute
+                        _n_start_h, _n_start_m, _n_end_h, _n_end_m, _night_vol = _get_night_vol_settings()
+                        start_m = _n_start_h * 60 + _n_start_m
+                        end_m = _n_end_h * 60 + _n_end_m
+                        if start_m <= end_m:
+                            is_night = (start_m <= current_m < end_m)
+                        else:
+                            is_night = (current_m >= start_m or current_m < end_m)
+                        vol = _MASTER_VOLUME * _night_vol if is_night else _MASTER_VOLUME
+                        if is_night:
+                            vol = max(vol, min(_MASTER_VOLUME, 0.2))
+
                         self.channel.set_volume(vol)
                         self._safe_hud_set_mode('speaking')
-                        
+
                         now = time.time()
                         print(f"[TTS-WORKER] [{now:.3f}] Playing: {audio_path}", flush=True)
                         try:
-                            sound = pygame.mixer.Sound(audio_path)
+                            _sound = pygame.mixer.Sound(audio_path)
                         except Exception as e:
                             print(f"[TTS-WORKER] Sound creation error: {e}", flush=True)
                             if "device hasn't been opened" in str(e).lower():
@@ -187,14 +567,10 @@ class TTSManager:
                             continue
 
                         if self.channel.get_busy():
-                            while self.channel.get_queue() is not None and not self.stop_event.is_set():
-                                with _mixer_lock:
-                                    if not pygame.mixer.get_init(): break
-                                time.sleep(0.01)
-                            if not self.stop_event.is_set() and pygame.mixer.get_init():
-                                self.channel.queue(sound)
+                            _need_queue = True  # Queue after releasing lock
                         else:
-                            self.channel.play(sound)
+                            self.channel.play(_sound)
+
                     except Exception as e:
                         err_str = str(e)
                         print(f"TTS-WORKER: EXCEPTION inside lock: {err_str}", flush=True)
@@ -205,33 +581,28 @@ class TTSManager:
                         self.queue.task_done()
                         continue
 
-                # Playback loop
-                while not self.stop_event.is_set():
-                    busy = False
-                    with _mixer_lock:
-                        try:
-                            if pygame.mixer.get_init() and self.channel and (self.channel.get_busy() or self.channel.get_queue()):
-                                busy = True
-                        except: pass
-                    if not busy: break
-                    time.sleep(0.05)
-                
-                # Cleanup if queue is finally empty
-                if self.queue.empty() and self._gen_count == 0:
-                    try: force_unduck()
-                    except: pass
-                    try:
-                        if _unduck_timer['id'] is not None:
-                            _unduck_timer['id'].cancel()
-                    except: pass
-                    try:
-                        _unduck_timer['id'] = threading.Timer(2.0, lambda: (force_unduck(),))
-                        _unduck_timer['id'].daemon = True
-                        _unduck_timer['id'].start()
-                    except: pass
-                    self._safe_hud_set_mode('idle')
-                    self.active_playback = False
+                # ---------------------------------------------------------------
+                # Seamless queuing: wait for channel queue slot, then hand off
+                # ---------------------------------------------------------------
+                if _need_queue and _sound is not None:
+                    while not self.stop_event.is_set():
+                        with _mixer_lock:
+                            if not pygame.mixer.get_init(): break
+                            ch = self.channel
+                            if ch is None: break
+                            if ch.get_queue() is None:
+                                if ch.get_busy():
+                                    ch.queue(_sound)
+                                else:
+                                    ch.play(_sound)
+                                break
+                        time.sleep(0.005)
+
+                # Mark done immediately — worker fetches next item without waiting
+                # for current sound to finish.  Idle detection happens in the
+                # queue.Empty branch above once the channel goes silent.
                 self.queue.task_done()
+
             except queue.Empty:
                 continue
             except Exception as e:
@@ -243,22 +614,29 @@ class TTSManager:
             time.sleep(0.05)
 
     def speak(self, text: str, priority: int = 10, wait: bool = False):
-        # normalize on calling thread (often already a background thread) so worker loop stays lean
-        text = normalize_for_tts(text).strip()
+        # Chunk on the calling thread (cheap, just regex splitting) but defer
+        # normalize_for_tts() to the executor pool (see _gen_sentence). The
+        # calling thread is often itself a streaming/UI-updating thread (e.g.
+        # the AI-answer streaming loop) — normalize_for_tts() can cold-start
+        # pymorphy3's MorphAnalyzer (1-3s) or block on _morph_lock if another
+        # thread is mid-load, which used to freeze that caller's whole loop
+        # (text AND speech) on the very first AI answer of a session.
+        text = text.strip()
         if not text: return
         self.active_playback = True
         self.stop_event.clear()
-        sentences = _SENTENCE_SPLIT_RE.split(text) if len(text) > _SPLIT_THRESHOLD else [text]
-        sentences = [s.strip() for s in sentences if s.strip()]
+        sentences = _chunk_text(text)
         if not sentences:
             self.active_playback = False
             return
         with self._gen_lock: self._gen_count += len(sentences)
-        base_ts = time.time()
-        for i, s in enumerate(sentences): self.executor.submit(self._queue_sentence, s, priority, base_ts + i * 0.001)
+        batch = _OrderedBatch(priority, time.time(), self, self.gen_epoch)
+        indexed = list(enumerate(sentences))
+        batch._pending = indexed[self._MAX_INFLIGHT:]
+        for i, s in indexed[:self._MAX_INFLIGHT]:
+            self.executor.submit(self._gen_sentence, s, i, batch)
         self._reset_unload_timer()
         if wait: self.wait_until_finished()
-        # No sleep needed here — generation is async and already queued
 
     def put_item(self, priority: int, ts: float, item: str):
         if not hasattr(self, '_last_items_lock'):
@@ -277,23 +655,45 @@ class TTSManager:
         self.queue.put((priority, ts, item))
         self.active_playback = True # Signal active immediately
 
-    def _queue_sentence(self, text: str, priority: int, ts: float):
+    def _gen_sentence(self, text: str, index: int, batch: _OrderedBatch) -> None:
         try:
-            path = _generate_cached(text)
-            if path: self.put_item(priority, ts, path)
+            text = normalize_for_tts(text).strip()
+            if not text:
+                batch.finished(index, None)
+                return
+            speed_pct = int(round(_get_tts_speed() * 100))
+            path = _generate_cached(text, speed_pct)
+            batch.finished(index, path)
         finally:
+            # _gen_count was already incremented for every sentence in the
+            # batch up front (in speak()), including ones still sitting in
+            # _pending — only decrement here, don't re-add when resubmitting
+            # the next pending one below, or _gen_count never reaches 0 for
+            # batches bigger than _MAX_INFLIGHT and the HUD stays stuck on
+            # "speaking" forever (idle cleanup gates on _gen_count == 0).
             with self._gen_lock:
                 self._gen_count = max(0, self._gen_count - 1)
+            nxt = batch._pop_pending()
+            if nxt is not None:
+                next_idx, next_text = nxt
+                self.executor.submit(self._gen_sentence, next_text, next_idx, batch)
 
     def stop(self):
         self.stop_event.set()
         cleared = 0
-        while not self.queue.empty():
-            try:
-                self.queue.get_nowait()
-                self.queue.task_done()
-                cleared += 1
-            except queue.Empty: break
+        # gen_epoch bump and the queue drain share gen_lock with
+        # _OrderedBatch.finished()/_flush_remaining()'s stale-check + put_item,
+        # so a batch from just before this stop() can't slip an item into the
+        # queue after the drain loop below has already finished (see the
+        # comment in _OrderedBatch._flush_remaining() for the failure mode).
+        with self._gen_lock:
+            self.gen_epoch += 1  # any batch created before this point is now stale
+            while not self.queue.empty():
+                try:
+                    self.queue.get_nowait()
+                    self.queue.task_done()
+                    cleared += 1
+                except queue.Empty: break
         if cleared:
             print(f"[TTS] Stopped: cleared {cleared} items from queue", flush=True)
         with _mixer_lock:
@@ -303,10 +703,10 @@ class TTSManager:
                 if pygame.mixer.get_init():
                     pygame.mixer.music.stop()
             except Exception: pass
-        try:
-            from actions.volume import force_unduck
-            force_unduck()
-        except: pass
+        # Don't touch pycaw/COM from this (caller's) thread — just flag it for
+        # the TTS worker thread to handle on its own apartment. See
+        # _unduck_requested above for why.
+        self._unduck_requested.set()
         self._safe_hud_set_mode('idle')
         self.active_playback = False
 
@@ -325,25 +725,26 @@ class TTSManager:
         except Exception:
             pass
     def _reset_unload_timer(self):
-        if self.unload_timer:
-            self.unload_timer.cancel()
-        
-        # Load timeout from config
-        try:
-            from config_pack.config import TTS_UNLOAD_TIMEOUT as _tout
-            tout = _tout
-        except Exception:
-            tout = 300.0
-            
-        if tout <= 0:
-            return
+        with TTSManager._lock:
+            if self.unload_timer:
+                self.unload_timer.cancel()
+                self.unload_timer = None
 
-        self.unload_timer = threading.Timer(tout, self._unload_model)
-        self.unload_timer.daemon = True
-        self.unload_timer.start()
+            try:
+                from config_pack.config import TTS_UNLOAD_TIMEOUT as _tout
+                tout = _tout
+            except Exception:
+                tout = 300.0
+
+            if tout <= 0:
+                return
+
+            self.unload_timer = threading.Timer(tout, self._unload_model)
+            self.unload_timer.daemon = True
+            self.unload_timer.start()
     def _unload_model(self):
-        global _tts_engine
-        
+        global _tts_models, _warmup_started
+
         # Prevent unloading in Game Mode
         from core.system import app_state as _as
         if getattr(_as, 'game_mode', False):
@@ -352,10 +753,18 @@ class TTSManager:
             return
 
         with TTSManager._lock:
-            if _tts_engine is not None:
+            if _tts_models:
                 print("[TTS] Unloading model to free memory...", flush=True)
-                _tts_engine = None
+                _tts_models.clear()
+                # Allow warmup_tts() to reload on next AI query
+                with _warmup_lock:
+                    _warmup_started = False
                 gc.collect()
+                try:
+                    from core.system.bootstrap import trim_memory
+                    trim_memory()
+                except Exception:
+                    pass
 def _get_tts():
     lang = _get_lang()
     if lang in _tts_models: return _tts_models[lang]
@@ -364,43 +773,103 @@ def _get_tts():
         import torch
         _ensure_model(lang)
         phys = psutil.cpu_count(logical=False) or 2
-        torch_threads = 1 if phys <= 4 else 2
+        # Give Silero enough intra-op threads to finish generation before playback ends.
+        # 1 thread was the original conservative setting but causes 15-20s generation
+        # times on 4-core CPUs, producing audible gaps between TTS chunks.
+        torch_threads = min(phys, max(2, phys // 2))
         torch.set_num_threads(torch_threads)
+        # Inference-only: no backward pass ever happens, so disable the JIT
+        # profiling executor to avoid it caching per-shape execution graphs.
         try:
-            torch.set_num_interop_threads(1)
+            torch._C._jit_set_profiling_mode(False)
         except Exception:
             pass
+        try:
+            torch.set_num_interop_threads(max(1, phys // 4))
+        except Exception:
+            pass
+        # Evict any other language model before loading new one — keep only 1 in RAM
+        if _tts_models:
+            _tts_models.clear()
+            gc.collect()
         model_file = _get_model_file(lang)
         model = torch.package.PackageImporter(model_file).load_pickle('tts_models', 'model')
         model.to(torch.device('cpu'))
         _tts_models[lang] = model
         return model
+_MODEL_MIN_BYTES = 30 * 1024 * 1024  # Silero models are >30 MB; smaller = corrupt download
+
 def _ensure_model(lang: str = None) -> None:
-    if lang is None: lang = _get_lang()
+    if lang is None:
+        lang = _get_lang()
     model_file = _get_model_file(lang)
-    if os.path.exists(model_file): return
+
+    # Validate existing file — delete if suspiciously small (interrupted download).
+    if os.path.exists(model_file):
+        if os.path.getsize(model_file) >= _MODEL_MIN_BYTES:
+            return
+        print(f'[TTS] Model file {model_file} is too small — re-downloading.', flush=True)
+        os.remove(model_file)
+
     import torch
     os.makedirs(_MODEL_DIR, exist_ok=True)
-    torch.hub.download_url_to_file(_get_model_url(lang), model_file)
-def _generate_cached(text: str) -> str | None:
+    tmp_file = model_file + '.tmp'
+    try:
+        torch.hub.download_url_to_file(_get_model_url(lang), tmp_file)
+        if not os.path.exists(tmp_file):
+            raise RuntimeError('Download produced no output file')
+        if os.path.getsize(tmp_file) < _MODEL_MIN_BYTES:
+            os.remove(tmp_file)
+            raise RuntimeError(
+                f'Downloaded model is too small ({os.path.getsize(tmp_file) if os.path.exists(tmp_file) else 0} bytes) — likely a corrupt or incomplete download'
+            )
+        os.replace(tmp_file, model_file)
+        print(f'[TTS] Model {lang} downloaded OK ({os.path.getsize(model_file) // 1024 // 1024} MB).', flush=True)
+    except Exception:
+        if os.path.exists(tmp_file):
+            try:
+                os.remove(tmp_file)
+            except OSError:
+                pass
+        raise
+def _generate_cached(text: str, _speed_pct: int = 100) -> str | None:
+    global _silero_supports_speech_rate
+    speed = _speed_pct / 100.0
     lang = _get_lang()
     speaker = _get_speaker(lang)
-    key = f'{text}|{speaker}|{lang}|{_SAMPLE_RATE}'
-    h = hashlib.md5(key.encode('utf-8')).hexdigest()[:12]
+    # Cache key includes speed so each rate has its own file
+    cache_key = f'{text}|{speaker}|{lang}|{_SAMPLE_RATE}|{_speed_pct}'
+    h = hashlib.md5(cache_key.encode('utf-8')).hexdigest()[:12]
     path = os.path.join(CACHE_DIR, f'silero_{h}.wav')
-    if os.path.exists(path): return path
-    try:
-        model = _get_tts()
-        tmp_path = path + '.tmp'
-        model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
-        if os.path.exists(tmp_path):
-            os.replace(tmp_path, path)
-            return path
-    except Exception as e:
+    if not os.path.exists(path):
+        try:
+            model = _get_tts()
+            tmp_path = path + '.tmp'
+            want_native_speed = abs(speed - 1.0) >= 0.02 and _silero_supports_speech_rate is not False
+            import torch
+            with _tts_inference_lock, torch.inference_mode():
+                if want_native_speed:
+                    try:
+                        model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path, speech_rate=speed)
+                        _silero_supports_speech_rate = True
+                    except TypeError:
+                        _silero_supports_speech_rate = False
+                        model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
+                else:
+                    model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
+            if os.path.exists(tmp_path):
+                os.replace(tmp_path, path)
+        except Exception as e:
             print(f"TTS-GENERATOR: Error generating audio for '{text[:30]}...': {e}")
             import traceback
             traceback.print_exc()
-    return None
+            return None
+    if not os.path.exists(path):
+        return None
+    # Framerate fallback when Silero doesn't support speech_rate (changes pitch slightly)
+    if _silero_supports_speech_rate is False and abs(speed - 1.0) >= 0.02:
+        return _apply_wav_speed(path, speed)
+    return path
 def _resolve_sdl_device_name(preferred_name: str | None) -> str | None:
     """Find the exact SDL2 device name that best matches *preferred_name*.
     pygame.mixer uses SDL2 device strings which can differ from PyAudio/WASAPI names.
@@ -492,12 +961,11 @@ def ensure_mixer_init() -> None:
                     try: pygame.mixer.quit()
                     except: pass
             
-            # Use cached device name (avoids json.load on every playback)
-            dev = _get_audio_device_name()
-            
             def _try_init(dname=None, freq=48000):
                 try:
-                    pygame.mixer.init(frequency=freq, devicename=dname, buffer=2048)
+                    # buffer=4096 (~85ms @ 48kHz) avoids underrun crackle while
+                    # Silero inference competes for CPU with the audio thread.
+                    pygame.mixer.init(frequency=freq, devicename=dname, buffer=4096)
                     pygame.mixer.set_num_channels(24)
                     return True
                 except Exception:
@@ -505,6 +973,13 @@ def ensure_mixer_init() -> None:
                     except: pass
                     return False
 
+            # NOTE: deliberately not resolving/passing the user's configured output
+            # device here. Doing so previously called _resolve_sdl_device_name(),
+            # which talks to SDL2 directly via ctypes — racing with pygame's own
+            # SDL audio subsystem on this hot reinit path crashed the process
+            # (0xC0000005) immediately on the very first chunk. The configured
+            # device is still applied correctly via apply_audio_devices(), which
+            # does a single controlled quit+reinit instead of this fast path.
             success = False
             if _try_init(None, 48000): success = True
             elif _try_init(None, 44100): success = True
@@ -539,9 +1014,9 @@ def apply_audio_devices(output_device_name: str | None = None, input_device_inde
             def _try_init_local(dname=None):
                 try:
                     if dname:
-                        pygame.mixer.init(frequency=_SAMPLE_RATE, devicename=dname)
+                        pygame.mixer.init(frequency=_SAMPLE_RATE, devicename=dname, buffer=4096)
                     else:
-                        pygame.mixer.init(frequency=_SAMPLE_RATE)
+                        pygame.mixer.init(frequency=_SAMPLE_RATE, buffer=4096)
                     pygame.mixer.set_num_channels(24)
                     return True
                 except Exception:
@@ -614,48 +1089,334 @@ def wait_for_pygame_mixer_idle(timeout: float = 90.0, poll: float = 0.08) -> Non
         except Exception:
             return
         time.sleep(poll)
-@lru_cache(maxsize=512)
+# ---------------------------------------------------------------------------
+# Stress-mark dictionary for Silero v5.
+# Format: 'word_lowercase' → 'wо+rd'  where + precedes the stressed vowel.
+# Applied case-insensitively; original capitalisation is preserved.
+# Add any proper noun or word the model mis-stresses here.
+# ---------------------------------------------------------------------------
+_STRESS_MAP: dict[str, str] = {
+    # Assistant name — stress on А (ДжА́рвис, not ДжарвИ́с)
+    'джарвис':  'Дж+арвис',
+    'джарвіс':  'Дж+арвіс',
+    # Common words that Silero v5 sometimes mis-stresses
+    'интерфейс':    'интерф+ейс',
+    'центр':        'ц+ентр',
+    'включить':     'включ+ить',
+    'включи':       'включ+и',
+    'включите':     'включ+ите',
+    'открыть':      'откр+ыть',
+    'открой':       'откр+ой',
+    'закрой':       'закр+ой',
+    'закрыть':      'закр+ыть',
+    'запусти':      'запуст+и',
+    'запустить':    'запуст+ить',
+    'перезапусти':  'перезапуст+и',
+    'выключи':      'выключ+и',
+    'выключить':    'выключ+ить',
+    'скачать':      'скач+ать',
+    'скачай':       'скач+ай',
+    'найди':        'найд+и',
+    'поищи':        'поищ+и',
+    'покажи':       'покаж+и',
+    'сорок':        'с+орок',
+    # Ukrainian
+    'джарвіс':      'Дж+арвіс',
+    'інтерфейс':    'інтерф+ейс',
+    'увімкни':      'увімкн+и',
+    'увімкнути':    'увімкн+ути',
+    'вимкни':       'вимкн+и',
+    'вимкнути':     'вимкн+ути',
+    'відкрий':      'відкр+ий',
+    'відкрити':     'відкр+ити',
+    'закрий':       'закр+ий',
+    'закрити':      'закр+ити',
+    'запустити':    'запуст+ити',
+    'знайди':       'знайд+и',
+    'покажи':       'покаж+и',
+    'скачати':      'скач+ати',
+}
+
+# Precompile pattern — whole-word, case-insensitive
+_STRESS_PAT = re.compile(
+    r'\b(' + '|'.join(re.escape(w) for w in _STRESS_MAP) + r')\b',
+    re.IGNORECASE,
+)
+
+def _apply_stress(text: str) -> str:
+    """Replace known mis-stressed words with stress-marked variants."""
+    def _repl(m: re.Match) -> str:
+        word = m.group(0)
+        key  = word.lower()
+        replacement = _STRESS_MAP.get(key, word)
+        # Preserve original capitalisation (first letter)
+        if word[0].isupper() and not replacement[0].isupper():
+            replacement = replacement[0].upper() + replacement[1:]
+        return replacement
+    return _STRESS_PAT.sub(_repl, text)
+
+
 def normalize_for_tts(text: str) -> str:
-    """Normalize text for TTS. LRU-cached — repeated phrases (responses, game commands) are free."""
-    if not text: return ''
+    if not text:
+        return ''
+    lang = _get_lang()
+    key = (text, lang)
+    with _normalize_cache_lock:
+        cached = _normalize_cache.get(key)
+        if cached is not None:
+            _normalize_cache.move_to_end(key)
+            return cached
+    text = _apply_stress(text)
+    # Convert phrase pause markers to sentence boundaries so Silero pauses naturally
+    text = re.sub(r'\s+\.\.\.\s+', '. ', text)
     if not hasattr(normalize_for_tts, '_nlp_cache'):
         from core.nlp import format_time_russian, get_russian_plural
         from num2words import num2words
         normalize_for_tts._nlp_cache = (format_time_russian, get_russian_plural, num2words)
     format_time_russian, get_russian_plural, num2words = normalize_for_tts._nlp_cache
     text = re.sub(r'\b([A-Za-z]):\\', lambda m: f'диск {_PHONETIC_DRIVES.get(m.group(1).upper(), m.group(1).upper())} ', text)
-    text = re.sub(r'\b(ГБ|МБ|КБ|км/ч|км/час|кг|см|мм)\b', lambda m: _UNIT_EXPANSIONS.get(m.group(0).lower(), m.group(0)), text, flags=re.IGNORECASE)
-    text = re.sub(r'(\d+)\s*%', lambda m: f"{num2words(int(m.group(1)), lang='ru')} {get_russian_plural(int(m.group(1)), ['процент', 'процента', 'процентов'])}", text)
-    def _ru_genitive_ordinal(phrase: str) -> str:
-        p = phrase.strip()
-        for suf, rep in (('ый', 'ого'), ('ий', 'его'), ('ой', 'ого')):
-            if p.endswith(suf):
-                return p[:-2] + rep
-        return p
-    def _year_repl(m: re.Match) -> str:
+    nw_lang = 'uk' if lang == 'uk' else 'ru'
+    _km_word = 'кілометрів' if lang == 'uk' else 'километров'
+    _all_units = {**_UNIT_EXPANSIONS, 'км': _km_word}
+    text = re.sub(r'\b(ГБ|МБ|КБ|км/ч|км/час|кг|см|мм|км)\b', lambda m: _all_units.get(m.group(0).lower(), m.group(0)), text, flags=re.IGNORECASE)
+    text = text.replace('€', 'євро' if lang == 'uk' else 'евро')
+
+    # --- Minus sign: -5 → минус 5 (before any number conversion) ---
+    _minus = 'мінус ' if nw_lang == 'uk' else 'минус '
+    text = re.sub(r'(?<!\d)(?<!\w)-(\d)', lambda m: _minus + m.group(1), text)
+
+    # --- Degree symbols: 20°C, -5°, 20° → spoken form with proper pluralization ---
+    def _degree_repl(m: re.Match) -> str:
+        n = int(m.group(1))
+        abs_n = abs(n)
+        sign = _minus if n < 0 else ''
+        last2, last1 = abs_n % 100, abs_n % 10
+        if 11 <= last2 <= 19:   form = 'градусів' if nw_lang == 'uk' else 'градусов'
+        elif last1 == 1:         form = 'градус'
+        elif 2 <= last1 <= 4:   form = 'градуси' if nw_lang == 'uk' else 'градуса'
+        else:                    form = 'градусів' if nw_lang == 'uk' else 'градусов'
+        return f"{sign}{abs_n} {form}"
+    text = re.sub(r'(-?\d+)\s*°[CcFfСс]?', _degree_repl, text)
+
+    # --- Percentages ---
+    def _uk_pct_word(n: int) -> str:
+        last2, last1 = n % 100, n % 10
+        if 11 <= last2 <= 19: return 'відсотків'
+        if last1 == 1: return 'відсоток'
+        if 2 <= last1 <= 4: return 'відсотки'
+        return 'відсотків'
+    if lang == 'uk':
+        text = re.sub(r'(\d+)\s*%', lambda m: f"{num2words(int(m.group(1)), lang='uk')} {_uk_pct_word(int(m.group(1)))}", text)
+    else:
+        text = re.sub(r'(\d+)\s*%', lambda m: f"{num2words(int(m.group(1)), lang='ru')} {get_russian_plural(int(m.group(1)), ['процент', 'процента', 'процентов'])}", text)
+
+    # --- Ordinal case helpers (pymorphy3-powered) ---
+    morph = _get_morph(nw_lang)
+    _CASE_TAG = {'gen': 'gent', 'prep': 'loct', 'nom': 'nomn', 'dat': 'datv', 'acc': 'accs'}
+
+    def _inflect_last(phrase: str, tags: set) -> str:
+        """Inflect the last word of a phrase to given morphological tags."""
+        if morph is None: return phrase
+        words = phrase.strip().split()
+        if not words: return phrase
+        last = words[-1]
+        parses = morph.parse(last)
+        # Build fallback tag sets: try most-specific first, then relax constraints
+        tag_variants = []
+        for drop in (set(), {'sing'}, {'masc','femn','neut'}, {'masc','femn','neut','sing'}):
+            t = tags - drop
+            if t and t not in tag_variants:
+                tag_variants.append(t)
+        for strict in (True, False):
+            for p in parses:
+                ts = str(p.tag)
+                if strict and 'Anum' not in ts and 'ADJF' not in ts:
+                    continue
+                for tv in tag_variants:
+                    infl = p.inflect(tv)
+                    if infl:
+                        return (' '.join(words[:-1]) + ' ' + infl.word).strip()
+        return phrase
+
+    def _ordinal_case(phrase: str, case: str, gender: str = 'masc') -> str:
+        """Inflect ordinal phrase to requested case and gender."""
+        if case == 'nom': return phrase
+        ct = _CASE_TAG.get(case, 'gent')
+        # Ukrainian loct: prefer dative form — same meaning, more common than archaic '-ім'
+        if nw_lang == 'uk' and ct == 'loct':
+            r = _inflect_last(phrase, {'datv', gender, 'sing'})
+            if r != phrase: return r
+        return _inflect_last(phrase, {ct, gender, 'sing'})
+
+    # --- Year patterns ---
+    _YEAR_PAT = r'\b(?P<y1>19\d{2}|20\d{2})'
+    if lang == 'uk':
+        # Ukrainian: рік (nom), року (gen/date), році (prep), -го, -му, -й
+        def _year_uk(m: re.Match) -> str:
+            try:
+                y = int(m.group('year'))
+                suf = (m.group('suf') or '').strip().rstrip('.').lower()
+                ordy = num2words(y, lang='uk', to='ordinal')
+                if suf in ('року', 'р'):    return _ordinal_case(ordy, 'gen') + ' року'
+                if suf == 'році':           return _ordinal_case(ordy, 'prep') + ' році'
+                if suf in ('рік', 'р.'):    return ordy + ' рік'
+                if suf == '-го':            return _ordinal_case(ordy, 'gen')
+                if suf in ('-му', '-м'):    return _ordinal_case(ordy, 'prep')
+                return num2words(y, lang='uk')
+            except Exception: return m.group(0)
+        text = re.sub(
+            r'\b(?P<year>19\d{2}|20\d{2})\s*(?P<suf>року|році|рік|р\.|р\b|-го|-му|-м\b)',
+            _year_uk, text, flags=re.IGNORECASE)
+        # Standalone years in Ukrainian year range "2020-2023" → cardinal both
+        text = re.sub(
+            r'\b(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})\b',
+            lambda m: f"{num2words(int(m.group(1)), lang='uk')} — {num2words(int(m.group(2)), lang='uk')}",
+            text)
+    else:
+        # Russian: год (nom), года (gen), году (prep), -го, -м, -й
+        def _year_ru(m: re.Match) -> str:
+            try:
+                y = int(m.group('year'))
+                suf = (m.group('suf') or '').strip().rstrip('.').lower()
+                ordy = num2words(y, lang='ru', to='ordinal')
+                if suf == 'года':           return _ordinal_case(ordy, 'gen') + ' года'
+                if suf == 'году':           return _ordinal_case(ordy, 'prep') + ' году'
+                if suf in ('год', 'г'):     return ordy + ' год'
+                if suf in ('-го', 'го'):    return _ordinal_case(ordy, 'gen')
+                if suf in ('-м', 'м', '-й'): return _ordinal_case(ordy, 'prep')
+                return num2words(y, lang='ru')
+            except Exception: return m.group(0)
+        text = re.sub(
+            r'\b(?P<year>19\d{2}|20\d{2})\s*(?P<suf>года\b|году\b|год\b|г\.|г\b|-го\b|(?<!\w)го\b|-м\b|-й\b)',
+            _year_ru, text, flags=re.IGNORECASE)
+        # Year range "2020-2023"
+        text = re.sub(
+            r'\b(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})\b',
+            lambda m: f"{num2words(int(m.group(1)), lang='ru')} — {num2words(int(m.group(2)), lang='ru')}",
+            text)
+
+    # --- Dates (day + month) ---
+    if lang == 'uk':
+        text = re.sub(
+            r'\b(\d{1,2})\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня)\b',
+            lambda m: _ordinal_case(num2words(int(m.group(1)), lang='uk', to='ordinal'), 'gen') + ' ' + m.group(2),
+            text, flags=re.IGNORECASE)
+    else:
+        text = re.sub(
+            r'\b(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b',
+            lambda m: _ordinal_case(num2words(int(m.group(1)), lang='ru', to='ordinal'), 'gen') + ' ' + m.group(2),
+            text, flags=re.IGNORECASE)
+
+    # --- Ordinal shorthand: 1-й, 2-й, 3-го, 2-му etc. ---
+    # Optional capture of following Cyrillic word for gender/case agreement
+    def _ordinal_short(m: re.Match) -> str:
         try:
-            y = int(m.group(1))
-            ordy = num2words(y, lang='ru', to='ordinal')
-            return _ru_genitive_ordinal(ordy) + ' года'
+            n = int(m.group(1))
+            suf = m.group(2).lower().lstrip('-')
+            following_ws = m.group(3) or ''
+            following = following_ws.strip()
+            ordy = num2words(n, lang=nw_lang, to='ordinal')
+            if suf in ('го', 'ого', 'його', 'его'):
+                return _ordinal_case(ordy, 'gen') + following_ws
+            if suf in ('м', 'ом', 'ем', 'му', 'ому'):
+                return _ordinal_case(ordy, 'prep') + following_ws
+            # Ambiguous suffix (-й/-ій/-я/-е/-є): agree with following noun
+            if following and morph is not None:
+                parses = morph.parse(following.lower())
+                if parses:
+                    cmap = {'nomn': 'nom', 'gent': 'gen', 'datv': 'dat',
+                            'accs': 'acc', 'ablt': 'prep', 'loct': 'prep'}
+                    # Prefer loct > datv > gent > ablt over nomn/accs (ordinals
+                    # before nouns are usually in oblique context, not nom-plural)
+                    _OBLIQUE_PREF = ('loct', 'datv', 'gent', 'ablt')
+                    best = next(
+                        (p for pref in _OBLIQUE_PREF
+                         for p in parses if str(p.tag.case) == pref),
+                        parses[0]
+                    )
+                    gender = str(best.tag.gender) if best.tag.gender else 'masc'
+                    case = cmap.get(str(best.tag.case) if best.tag.case else 'nomn', 'nom')
+                    return _ordinal_case(ordy, case, gender) + following_ws
+            return ordy + following_ws
         except Exception:
             return m.group(0)
-    text = re.sub(r'\b(19\d{2}|20\d{2})\s*(?:года|год)\b', _year_repl, text, flags=re.IGNORECASE)
-    # Handle dates like '1 сентября' -> 'первого сентября'
-    def _date_repl(m):
+    text = re.sub(
+        r'\b(\d+)(-?(?:й|ій|я|є|е|го|ого|його|его|му|ому|м|ом|ем))(\s+[А-Яа-яЁёІіЇїЄє]+)?',
+        _ordinal_short, text, flags=re.IGNORECASE)
+
+    # --- Year ranges without suffix: "с 1939 по 1945" / "від 1939 до 1945" ---
+    _prep_start = r'(?:с|от|із|з|від|за)\s+'
+    _prep_end   = r'\s+(?:по|до|—|-)\s+'
+    def _year_range_repl(m: re.Match) -> str:
         try:
-            day = int(m.group(1))
-            month = m.group(2)
-            ord_day = num2words(day, lang='ru', to='ordinal')
-            # For dates in text, 'первого', 'второго' (genitive) is usually better than 'первый'
-            return _ru_genitive_ordinal(ord_day) + ' ' + month
+            y = int(m.group('ry'))
+            return m.group('pre') + _ordinal_case(num2words(y, lang=nw_lang, to='ordinal'), 'gen') + m.group('sep')
         except Exception: return m.group(0)
-    text = re.sub(r'\b(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b', _date_repl, text, flags=re.IGNORECASE)
+    text = re.sub(
+        r'(?P<pre>' + _prep_start + r')(?P<ry>19\d{2}|20\d{2})(?P<sep>' + _prep_end + r')',
+        _year_range_repl, text, flags=re.IGNORECASE)
+
+    # --- Number-noun agreement: fix "5 метр" → "5 метров" etc. using pymorphy3 ---
+    if morph is not None:
+        def _fix_noun(m: re.Match) -> str:
+            try:
+                n = int(m.group(1))
+                noun = m.group(2)
+                parses = morph.parse(noun.lower())
+                noun_p = next((p for p in parses if 'NOUN' in str(p.tag)), None)
+                if noun_p is None: return m.group(0)
+                abs_n = abs(n)
+                last2, last1 = abs_n % 100, abs_n % 10
+                if 11 <= last2 <= 19:   req = ('gent', 'plur')
+                elif last1 == 1:         req = ('nomn', 'sing')
+                elif 2 <= last1 <= 4:   req = ('gent', 'sing')
+                else:                    req = ('gent', 'plur')
+                cur_case = str(noun_p.tag.case) if noun_p.tag.case else ''
+                cur_num  = str(noun_p.tag.number) if noun_p.tag.number else ''
+                if cur_case == req[0] and cur_num == req[1]:
+                    return m.group(0)  # already correct
+                infl = noun_p.inflect({req[0], req[1]})
+                if infl:
+                    return m.group(1) + ' ' + infl.word
+            except Exception:
+                pass
+            return m.group(0)
+        text = re.sub(r'\b(\d+)\s+([А-Яа-яЁёІіЇїЄє]{3,})\b', _fix_noun, text)
+
+    # --- Abbreviations and transliteration ---
     text = re.sub(r'(?<![А-ЯЁа-яёa-zA-Z])[А-ЯЁ]{2,6}(?![А-ЯЁа-яёa-zA-Z])', lambda m: _CYR_ABBREV.get(m.group(0), ' '.join((_CYR_LETTERS.get(c, c) for c in m.group(0)))), text)
     text = re.sub(r"[a-zA-Z]+(?:['-][a-zA-Z]+)*", _transliterate_word, text)
-    text = re.sub(r'(?<!\w)(\d+)(?!\w)', lambda m: num2words(int(m.group(1)), lang='ru'), text)
-    text = re.sub(r'^(Сэр|Джарвис)\s+([а-яёА-ЯЁ])', r'\1, \2', text, flags=re.IGNORECASE)
-    text = re.sub(r'([.!?])\s+(Сэр|Джарвис)\s+([а-яёА-ЯЁ])', r'\1 \2, \3', text, flags=re.IGNORECASE)
-    return text.strip()
+
+    # --- Remaining standalone numbers ---
+    text = re.sub(r'(?<!\w)(\d+)(?!\w)', lambda m: num2words(int(m.group(1)), lang=nw_lang), text)
+
+    # --- Replace hardcoded "сэр"/"сер" with the user-configured address form ---
+    try:
+        from core.address import get_address as _ga
+        _addr_value = _ga()
+        if _addr_value.lower() not in ('сэр', 'сер'):
+            text = re.sub(r'\bсэр\b', _addr_value, text, flags=re.IGNORECASE)
+            text = re.sub(r'\bсер\b', _addr_value, text, flags=re.IGNORECASE)
+    except Exception:
+        pass
+
+    # --- Comma after address form (Сэр/Джарвис/Леди/custom) for TTS prosody ---
+    try:
+        from core.address import get_address as _ga
+        _addr_esc = re.escape(_ga())
+        _cyr = r'[а-яёА-ЯЁіїєІЇЄ]'
+        text = re.sub(rf'^({_addr_esc})\s+({_cyr})', r'\1, \2', text, flags=re.IGNORECASE)
+        text = re.sub(rf'([.!?])\s+({_addr_esc})\s+({_cyr})', r'\1 \2, \3', text, flags=re.IGNORECASE)
+    except Exception:
+        pass
+
+    result = text.strip()
+    with _normalize_cache_lock:
+        _normalize_cache[key] = result
+        _normalize_cache.move_to_end(key)
+        while len(_normalize_cache) > _NORMALIZE_CACHE_MAX:
+            _normalize_cache.popitem(last=False)  # evict oldest, not everything
+    return result
 def _transliterate_word(m: re.Match) -> str:
     word = m.group(0); lower = word.lower()
     if lower in _EXCEPTIONS:
@@ -692,11 +1453,69 @@ def _g2p_word(word: str) -> str:
     except Exception: return word
 def speak(text: str, priority: int = 10, wait: bool = False) -> None:
     TTSManager().speak(text, priority, wait)
+
 def speak_async(text: str) -> threading.Thread:
-    speak(text)
-    return threading.Thread(target=lambda: None)
+    """Enqueue text for TTS and return a daemon Thread that exits when playback finishes.
+
+    Callers that don't need to synchronise can ignore the return value — the
+    text will play regardless.  Callers that need to wait can call .join()
+    (with an optional timeout) on the returned thread.
+
+    Example::
+        t = speak_async("Готово.")
+        do_other_work()
+        t.join(timeout=10)   # wait up to 10 s for TTS to finish
+    """
+    t = threading.Thread(
+        target=lambda: speak(text, wait=True),
+        daemon=True,
+        name='TTS-async',
+    )
+    t.start()
+    return t
+
 def stop_speaking() -> None:
     TTSManager().stop()
+
+def invalidate_tts_caches() -> None:
+    """Call after changing language, address name, or TTS speed in settings."""
+    invalidate_tts_speed_cache()
+    _invalidate_night_vol_cache()
+    with _normalize_cache_lock:
+        _normalize_cache.clear()
+def warmup_text_models() -> None:
+    """Pre-load pymorphy3/g2p_en dictionaries. Pure-Python, no GPU/audio
+    contact, so unlike warmup_tts() this is safe to call immediately at
+    process start instead of waiting for the audio engine to be ready."""
+    global _text_warmup_started
+    with _text_warmup_lock:
+        if _text_warmup_started:
+            return
+        _text_warmup_started = True
+
+    def _warm_morph():
+        # pymorphy3's MorphAnalyzer takes 1-3s to load its dictionaries on first
+        # use. Previously this only happened as a side effect of normalize_for_tts()
+        # inside _warm() above, queued AFTER Silero model loading — if the user
+        # spoke before that point was reached, the cold load blocked their first
+        # real request instead. Load it in parallel, right away, on its own thread.
+        try:
+            _get_morph(_get_lang())
+        except Exception as e:
+            print(f"TTS-WARMUP: Morph preload failed: {e}")
+
+    def _warm_g2p():
+        # g2p_en.G2p() (used to transliterate Latin words like "Tesla"/"SpaceX"
+        # into Cyrillic phonetics) loads NLTK data on first use — another cold
+        # start that otherwise hits whichever response first mentions a Latin
+        # proper noun, regardless of how many sessions-old the model warmup is.
+        try:
+            _g2p_word('test')
+        except Exception as e:
+            print(f"TTS-WARMUP: G2p preload failed: {e}")
+
+    threading.Thread(target=_warm_morph, daemon=True, name='TTS-WarmupMorph').start()
+    threading.Thread(target=_warm_g2p, daemon=True, name='TTS-WarmupG2p').start()
 def warmup_tts() -> None:
     global _warmup_started
     with _warmup_lock:
@@ -709,21 +1528,24 @@ def warmup_tts() -> None:
                 ensure_mixer_init()
             except Exception:
                 pass
-            _ensure_model()
-            _generate_cached("Прогрев системы.")
-            phrases = [
-                'Слушаю.',
-                'Принято.',
-                'Дайте нормальный запрос.',
-                'Начнём заново?',
-                'Я всё помню.',
-                'По делу?',
-            ]
-            for p in phrases:
+            lang = _get_lang()
+            _ensure_model(lang)
+            _generate_cached('Прогрев системы.' if lang == 'ru' else 'Прогрів системи.')
+            phrases = {
+                'ru': ['Слушаю.', 'Принято.', 'Дайте нормальный запрос.', 'Начнём заново?', 'Я всё помню.', 'По делу?'],
+                'uk': ["Слухаю.", "Прийнято.", "Дайте нормальний запит.", "Почнемо спочатку?", "Я все пам'ятаю.", "По справі?"],
+            }
+            for p in phrases.get(lang, phrases['ru']):
                 _generate_cached(normalize_for_tts(p))
         except Exception as e:
             print(f"TTS-WARMUP: Failed: {e}")
-    threading.Thread(target=_warm, daemon=True).start()
+
+    # _warm runs real Silero inference (model load + save_wav) — needs the big
+    # stack. Text-model warmup (pymorphy3/g2p_en) is pure-Python, no deep
+    # PyTorch recursion — started separately via warmup_text_models() so it
+    # doesn't have to wait for the audio engine to be ready.
+    _spawn_with_big_stack(_warm, name='TTS-WarmupModel')
+    warmup_text_models()
 def is_speaking() -> bool:
     mgr = TTSManager()
     busy = False

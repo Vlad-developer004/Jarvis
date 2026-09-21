@@ -151,7 +151,7 @@ def update_sys_widgets(hud) -> None:
             hud._top_pct = max(0.0, min(1.0, pct))
             hud._top_pct_str = f"{int(hud._top_pct * 100)}%"
             
-            hud._top_wday_str = _RU_DAYS.get(now.weekday(), '').upper()
+            hud._top_wday_str = i18n.tr(f'day.{now.weekday()}').upper()
             hud._top_yday_str = i18n.tr('hud.day_format').format(now.timetuple().tm_yday)
             hud._top_week_str = i18n.tr('hud.week_format').format(now.isocalendar()[1])
             
@@ -228,7 +228,7 @@ def start_perf_collector(hud) -> None:
         try: pythoncom.CoInitialize()
         except: pass
         _wc = {}
-        
+
         def _ps_query_local(query, ns='root/cimv2'):
             for tool in ['Get-CimInstance', 'Get-WmiObject']:
                 try:
@@ -346,85 +346,103 @@ def start_perf_collector(hud) -> None:
                 dt = time.time() - _t_prev
                 if dt <= 0: dt = 0.1
 
-                # --- 1. RAM ---
+                # Heavy per-field detail below only feeds the optional Perf Monitor
+                # dialog (charts/tables) - skip computing it while that window is closed.
+                # hw_temps.cpu / net.ssid / net.link_speed are the only fields the
+                # always-visible HUD widgets read, those stay computed unconditionally below.
+                _dlg = getattr(hud, '_perf_dialog_open', False)
                 vm = psutil.virtual_memory()
-                adv_mem = _read_adv_memory_info()
-                h_res = max(0, _ram_static['installed_mb'] - adv_mem['physical_total_mb'])
-                _pm['ram'].update({'total': f"{vm.total/(1024**3):.1f} ГБ", 'avail': f"{vm.available/(1024**3):.1f} ГБ", 'cached': f"{adv_mem['cached_mb']/1024:.1f} ГБ", 'used': f"{vm.used/(1024**3):.1f} ГБ", 'paged': f"{adv_mem['paged_mb']:.0f} МБ", 'nonpaged': f"{adv_mem['nonpaged_mb']:.0f} МБ", 'speed': f"{_ram_static['speed']} МГц" if _ram_static['speed'] else "—", 'slots': f"{_ram_static['slots_used']} из {_ram_static['slots_total']}" if _ram_static['slots_total'] else "Впаяна", 'form': _ram_static['form'], 'hardware_reserved': f"{h_res} МБ", 'committed': f"{adv_mem['committed_mb']/1024:.1f} ГБ"})
 
-                # --- 2. DISK IO (СКОРОСТЬ И АКТИВНОСТЬ) ---
-                d_io = psutil.disk_io_counters() or DummyIO()
-                d_r_sec = (d_io.read_bytes - getattr(_worker, '_last_d_r', 0)) / dt if hasattr(_worker, '_last_d_r') else 0
-                d_w_sec = (d_io.write_bytes - getattr(_worker, '_last_d_w', 0)) / dt if hasattr(_worker, '_last_d_w') else 0
-                _worker._last_d_r, _worker._last_d_w = d_io.read_bytes, d_io.write_bytes
-                
-                _disk_active = getattr(_worker, '_disk_active_cached', 0)
-                _disk_latency = getattr(_worker, '_disk_latency_cached', 0.0)
-                if time.time() - getattr(_worker, '_disk_ps_t', 0) > 12.0:
-                    try:
-                        dp = _ps_query_local("Win32_PerfFormattedData_PerfDisk_PhysicalDisk")
-                        if dp:
-                            d_list = dp if isinstance(dp, list) else [dp]
-                            d_item = next((x for x in d_list if x.get('Name') == '_Total'), d_list[0])
-                            _disk_active = int(d_item.get('PercentDiskTime', 0))
-                            _disk_latency = float(d_item.get('AvgDisksecPerTransfer', 0)) * 1000
-                            _worker._disk_active_cached = _disk_active
-                            _worker._disk_latency_cached = _disk_latency
-                    except: pass
-                    _worker._disk_ps_t = time.time()
-                
-                _pm['disk'].update({'active_time': f"{_disk_active}%", 'latency': f"{_disk_latency:.1f} мс", 'read_speed': _fmt_speed(d_r_sec), 'write_speed': _fmt_speed(d_w_sec)})
+                if _dlg:
+                    # --- 1. RAM ---
+                    adv_mem = _read_adv_memory_info()
+                    h_res = max(0, _ram_static['installed_mb'] - adv_mem['physical_total_mb'])
+                    _pm['ram'].update({'total': f"{vm.total/(1024**3):.1f} ГБ", 'avail': f"{vm.available/(1024**3):.1f} ГБ", 'cached': f"{adv_mem['cached_mb']/1024:.1f} ГБ", 'used': f"{vm.used/(1024**3):.1f} ГБ", 'paged': f"{adv_mem['paged_mb']:.0f} МБ", 'nonpaged': f"{adv_mem['nonpaged_mb']:.0f} МБ", 'speed': f"{_ram_static['speed']} МГц" if _ram_static['speed'] else "—", 'slots': f"{_ram_static['slots_used']} из {_ram_static['slots_total']}" if _ram_static['slots_total'] else "Впаяна", 'form': _ram_static['form'], 'hardware_reserved': f"{h_res} МБ", 'committed': f"{adv_mem['committed_mb']/1024:.1f} ГБ"})
 
-                # --- 3. NETWORK IO (ЗАГРУЗКА И ОТДАЧА) ---
-                n_io = psutil.net_io_counters() or DummyIO()
-                n_r_sec = (n_io.bytes_recv - getattr(_worker, '_last_n_r', 0)) / dt if hasattr(_worker, '_last_n_r') else 0
-                n_s_sec = (n_io.bytes_sent - getattr(_worker, '_last_n_s', 0)) / dt if hasattr(_worker, '_last_n_s') else 0
-                _worker._last_n_r, _worker._last_n_s = n_io.bytes_recv, n_io.bytes_sent
-                
-                _pm['net']['dn_speed'] = _fmt_speed(n_r_sec)
-                _pm['net']['up_speed'] = _fmt_speed(n_s_sec)
+                    # --- 2. DISK IO (СКОРОСТЬ И АКТИВНОСТЬ) ---
+                    d_io = psutil.disk_io_counters() or DummyIO()
+                    d_r_sec = (d_io.read_bytes - getattr(_worker, '_last_d_r', 0)) / dt if hasattr(_worker, '_last_d_r') else 0
+                    d_w_sec = (d_io.write_bytes - getattr(_worker, '_last_d_w', 0)) / dt if hasattr(_worker, '_last_d_w') else 0
+                    _worker._last_d_r, _worker._last_d_w = d_io.read_bytes, d_io.write_bytes
+
+                    _disk_active = getattr(_worker, '_disk_active_cached', 0)
+                    _disk_latency = getattr(_worker, '_disk_latency_cached', 0.0)
+                    if time.time() - getattr(_worker, '_disk_ps_t', 0) > 12.0:
+                        try:
+                            dp = _ps_query_local("Win32_PerfFormattedData_PerfDisk_PhysicalDisk")
+                            if dp:
+                                d_list = dp if isinstance(dp, list) else [dp]
+                                d_item = next((x for x in d_list if x.get('Name') == '_Total'), d_list[0])
+                                _disk_active = int(d_item.get('PercentDiskTime', 0))
+                                _disk_latency = float(d_item.get('AvgDisksecPerTransfer', 0)) * 1000
+                                _worker._disk_active_cached = _disk_active
+                                _worker._disk_latency_cached = _disk_latency
+                        except: pass
+                        _worker._disk_ps_t = time.time()
+
+                    _pm['disk'].update({'active_time': f"{_disk_active}%", 'latency': f"{_disk_latency:.1f} мс", 'read_speed': _fmt_speed(d_r_sec), 'write_speed': _fmt_speed(d_w_sec)})
+
+                    # --- 3. NETWORK IO (ЗАГРУЗКА И ОТДАЧА) ---
+                    n_io = psutil.net_io_counters() or DummyIO()
+                    n_r_sec = (n_io.bytes_recv - getattr(_worker, '_last_n_r', 0)) / dt if hasattr(_worker, '_last_n_r') else 0
+                    n_s_sec = (n_io.bytes_sent - getattr(_worker, '_last_n_s', 0)) / dt if hasattr(_worker, '_last_n_s') else 0
+                    _worker._last_n_r, _worker._last_n_s = n_io.bytes_recv, n_io.bytes_sent
+
+                    _pm['net']['dn_speed'] = _fmt_speed(n_r_sec)
+                    _pm['net']['up_speed'] = _fmt_speed(n_s_sec)
+                else:
+                    n_r_sec = 0
 
                 # --- 4. CPU + Temp ---
                 try:
+                    # net_addrs_cached feeds the always-visible SSID/link-speed widgets below,
+                    # so it's refreshed regardless of the dialog; procs/cpu_freq are dialog-only.
                     if time.time() - getattr(_worker, '_slow_t', 0) > 10.0:
                         _worker._slow_t = time.time()
-                        _worker._procs_cached = len(psutil.pids())
                         _worker._net_addrs_cached = psutil.net_if_addrs()
-                        _worker._cpu_freq_cached = psutil.cpu_freq()
-                    
-                    _cpu_freq = getattr(_worker, '_cpu_freq_cached', None)
-                    _pm['cpu'].update({'current_freq': f"{_cpu_freq.current/1000:.2f} ГГц" if _cpu_freq else "—", 'procs': getattr(_worker, '_procs_cached', 0), 'l1': f"{_cpu_static['l1']} КБ", 'l2': f"{_cpu_static['l2']} КБ", 'l3': f"{_cpu_static['l3']} КБ", 'virt': "ВКЛ" if _cpu_static['virt'] else "ВЫКЛ", 'sockets': str(_cpu_static['sockets'])})
-                    
+                        if _dlg:
+                            _worker._procs_cached = len(psutil.pids())
+                            _worker._cpu_freq_cached = psutil.cpu_freq()
+
+                    if _dlg:
+                        _cpu_freq = getattr(_worker, '_cpu_freq_cached', None)
+                        _pm['cpu'].update({'current_freq': f"{_cpu_freq.current/1000:.2f} ГГц" if _cpu_freq else "—", 'procs': getattr(_worker, '_procs_cached', 0), 'l1': f"{_cpu_static['l1']} КБ", 'l2': f"{_cpu_static['l2']} КБ", 'l3': f"{_cpu_static['l3']} КБ", 'virt': "ВКЛ" if _cpu_static['virt'] else "ВЫКЛ", 'sockets': str(_cpu_static['sockets'])})
+
                     try:
                         if 'ohm' in _wc:
                             for s in _wc['ohm'].Sensor():
                                 if s.SensorType == 'Temperature' and 'CPU' in s.Name: ct = float(s.Value); break
-                        if ct is None:
+                        elif time.time() - getattr(_worker, '_ct_t', 0) > 10.0:
+                            _worker._ct_t = time.time()
                             try:
                                 cmd_t = ['powershell', '-NoProfile', '-Command', "Get-CimInstance MSAcpi_ThermalZoneTemperature -Namespace 'root/wmi' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CurrentTemperature"]
                                 raw_t = subprocess.check_output(cmd_t, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
                                 if raw_t: ct = (float(raw_t) - 2732) / 10.0
                             except: pass
-                        if ct is None:
-                            try:
-                                cmd_t2 = ['powershell', '-NoProfile', '-Command', "Get-WmiObject -Query 'SELECT Temperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Temperature"]
-                                raw_t2 = subprocess.check_output(cmd_t2, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
-                                if raw_t2: 
-                                    val = float(raw_t2)
-                                    ct = val if val < 150 else (val - 273.15)
-                            except: pass
+                            if ct is None:
+                                try:
+                                    cmd_t2 = ['powershell', '-NoProfile', '-Command', "Get-WmiObject -Query 'SELECT Temperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Temperature"]
+                                    raw_t2 = subprocess.check_output(cmd_t2, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
+                                    if raw_t2:
+                                        val = float(raw_t2)
+                                        ct = val if val < 150 else (val - 273.15)
+                                except: pass
+                            _worker._ct_cached = ct
+                        else:
+                            ct = getattr(_worker, '_ct_cached', None)
                     except: pass
                     if ct is not None:
                         _pm['cpu']['temp'] = f"{ct:.0f}°C"
                         _pm['hw_temps']['cpu'] = f"{ct:.0f}°C"
                 except: pass
 
-                # --- 5. GPU ---
+                # --- 5. GPU (dialog-only: HUD widgets never show GPU util/mem/power/clock) ---
                 try:
+                  if _dlg:
                     v_tot = max(_gpu_meta.get('vram_total', 1.0), 0.1)
                     vram_used_gb, gu = 0.0, 0.0
                     pwr = "—"
-                    
+
                     if _gpu_meta.get('type') == 'dGPU' and _nvml_handle:
                         try:
                             _nvml_mem = _pynvml.nvmlDeviceGetMemoryInfo(_nvml_handle)
@@ -433,41 +451,48 @@ def start_perf_collector(hud) -> None:
                             pwr = f"{_pynvml.nvmlDeviceGetPowerUsage(_nvml_handle) / 1000.0:.0f} Вт"
                         except: pass
                     else:
-                        try:
-                            cmd_util = ['powershell', '-NoProfile', '-Command', "Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine | Where-Object { $_.Name -like '*3D*' } | ConvertTo-Json"]
-                            raw_util = subprocess.check_output(cmd_util, creationflags=0x08000000).decode('utf-8', errors='ignore')
-                            if raw_util:
-                                data_u = json.loads(raw_util)
-                                items_u = data_u if isinstance(data_u, list) else [data_u]
-                                if items_u: gu = max((float(x.get('UtilizationPercentage', 0)) for x in items_u), default=0.0)
-                            
-                            cmd_mem = ['powershell', '-NoProfile', '-Command', "Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory | ConvertTo-Json"]
-                            raw_mem = subprocess.check_output(cmd_mem, creationflags=0x08000000).decode('utf-8')
-                            if raw_mem:
-                                data_m = json.loads(raw_mem)
-                                items_m = data_m if isinstance(data_m, list) else [data_m]
-                                vram_used_gb = sum(int(x.get('DedicatedUsage', 0)) + int(x.get('SharedUsage', 0)) for x in items_m) / (1024**3)
-                            
-                            if _gpu_meta.get('type') == 'iGPU' and 'vm' in locals():
-                                v_tot = vm.total / (1024**3) * 0.5
-                                _gpu_meta['vram_total'] = v_tot
-                                pwr = "Shared"
-                        except: pass
+                        if time.time() - getattr(_worker, '_igpu_t', 0) > 8.0:
+                            _worker._igpu_t = time.time()
+                            try:
+                                cmd_util = ['powershell', '-NoProfile', '-Command', "Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine | Where-Object { $_.Name -like '*3D*' } | ConvertTo-Json"]
+                                raw_util = subprocess.check_output(cmd_util, creationflags=0x08000000).decode('utf-8', errors='ignore')
+                                if raw_util:
+                                    data_u = json.loads(raw_util)
+                                    items_u = data_u if isinstance(data_u, list) else [data_u]
+                                    if items_u: gu = max((float(x.get('UtilizationPercentage', 0)) for x in items_u), default=0.0)
+
+                                cmd_mem = ['powershell', '-NoProfile', '-Command', "Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory | ConvertTo-Json"]
+                                raw_mem = subprocess.check_output(cmd_mem, creationflags=0x08000000).decode('utf-8')
+                                if raw_mem:
+                                    data_m = json.loads(raw_mem)
+                                    items_m = data_m if isinstance(data_m, list) else [data_m]
+                                    vram_used_gb = sum(int(x.get('DedicatedUsage', 0)) + int(x.get('SharedUsage', 0)) for x in items_m) / (1024**3)
+
+                                if _gpu_meta.get('type') == 'iGPU' and 'vm' in locals():
+                                    v_tot = vm.total / (1024**3) * 0.5
+                                    _gpu_meta['vram_total'] = v_tot
+                                    pwr = "Shared"
+                            except: pass
+                            _worker._igpu_cached = (gu, vram_used_gb, v_tot, pwr)
+                        else:
+                            gu, vram_used_gb, v_tot, pwr = getattr(_worker, '_igpu_cached', (gu, vram_used_gb, v_tot, pwr))
                     
                     _gpu_ema = 0.4 * gu + 0.6 * _gpu_ema
                     gt = getattr(_worker, '_gt_cached', None)
                     if gt is None and _gpu_meta.get('type') == 'iGPU': gt = ct
                     
-                    gc = "—"
-                    try:
-                        if _gpu_meta.get('type') == 'iGPU':
+                    gc = getattr(_worker, '_gc_cached', "—")
+                    if _gpu_meta.get('type') == 'iGPU' and time.time() - getattr(_worker, '_gc_t', 0) > 10.0:
+                        _worker._gc_t = time.time()
+                        try:
                             cmd_gc = ['powershell', '-NoProfile', '-Command', "Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CurrentClockSpeed"]
                             raw_gc = subprocess.check_output(cmd_gc, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
                             if not raw_gc:
                                 cmd_gc = ['powershell', '-NoProfile', '-Command', "Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Select-Object -ExpandProperty MaxClockSpeed"]
                                 raw_gc = subprocess.check_output(cmd_gc, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
                             if raw_gc: gc = f"{raw_gc} МГц"
-                    except: pass
+                        except: pass
+                        _worker._gc_cached = gc
 
                     _pm['gpu'].update({'mem_used': f"{max(vram_used_gb, 0.01):.1f} / {v_tot:.1f} ГБ", 'mem_load': f"{(vram_used_gb / v_tot * 100):.1f}%", 'temp': f"{gt:.0f}°C" if gt is not None else "—", 'clock': gc, 'pwr': pwr, 'shared_mem': f"{(vm.used*0.15)/(1024**3):.1f} / {(vm.total*0.5)/(1024**3):.1f} ГБ"})
                 except: pass
@@ -488,41 +513,48 @@ def start_perf_collector(hud) -> None:
                                     _pm['net']['adapter'] = iface
                                     
                                     if not found_ip:
-                                        try:
-                                            # Используем PowerShell (т.к. netsh на системе пользователя не работает)
-                                            cmd_ssid = ['powershell', '-NoProfile', '-Command', "Get-NetConnectionProfile -InterfaceAlias 'WLAN' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name"]
-                                            raw_ssid = subprocess.check_output(cmd_ssid, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
-                                            if raw_ssid: _pm['net']['ssid'] = raw_ssid.splitlines()[0]
-                                            
-                                            cmd_ls = ['powershell', '-NoProfile', '-Command', "Get-NetAdapter -InterfaceAlias 'WLAN' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LinkSpeed"]
-                                            raw_ls = subprocess.check_output(cmd_ls, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
-                                            if raw_ls: _pm['net']['link_speed'] = raw_ls.splitlines()[0]
-                                            
-                                            if _pm['net']['ssid'] == '—':
-                                                cmd_ps = ['powershell', '-NoProfile', '-Command', "Get-NetConnectionProfile -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name"]
-                                                raw_ps = subprocess.check_output(cmd_ps, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
-                                                if raw_ps: _pm['net']['ssid'] = raw_ps.splitlines()[0]
-                                        except: pass
+                                        if time.time() - getattr(_worker, '_wifi_t', 0) > 20.0:
+                                            _worker._wifi_t = time.time()
+                                            try:
+                                                # Используем PowerShell (т.к. netsh на системе пользователя не работает)
+                                                cmd_ssid = ['powershell', '-NoProfile', '-Command', "Get-NetConnectionProfile -InterfaceAlias 'WLAN' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name"]
+                                                raw_ssid = subprocess.check_output(cmd_ssid, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
+                                                if raw_ssid: _pm['net']['ssid'] = raw_ssid.splitlines()[0]
+
+                                                cmd_ls = ['powershell', '-NoProfile', '-Command', "Get-NetAdapter -InterfaceAlias 'WLAN' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LinkSpeed"]
+                                                raw_ls = subprocess.check_output(cmd_ls, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
+                                                if raw_ls: _pm['net']['link_speed'] = raw_ls.splitlines()[0]
+
+                                                if _pm['net']['ssid'] == '—':
+                                                    cmd_ps = ['powershell', '-NoProfile', '-Command', "Get-NetConnectionProfile -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name"]
+                                                    raw_ps = subprocess.check_output(cmd_ps, creationflags=0x08000000, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore').strip()
+                                                    if raw_ps: _pm['net']['ssid'] = raw_ps.splitlines()[0]
+                                            except: pass
+                                            _worker._wifi_cached = (_pm['net']['ssid'], _pm['net']['link_speed'])
+                                        else:
+                                            _wc_ssid, _wc_ls = getattr(_worker, '_wifi_cached', (_pm['net']['ssid'], _pm['net']['link_speed']))
+                                            _pm['net']['ssid'], _pm['net']['link_speed'] = _wc_ssid, _wc_ls
                                     found_ip = True
                                     break
                         if found_ip: break
                 except: pass
 
-                # --- 7. HISTORY ARRAYS ---
-                h = hud._perf_history
-                h.setdefault('cpu', []).append(psutil.cpu_percent())
-                h.setdefault('ram', []).append(vm.percent)
-                h.setdefault('gpu_util', []).append(_gpu_ema)
-                h.setdefault('latency', []).append(hud._sys_data.get('latency', 0))
-                h.setdefault('net_dn', []).append(n_r_sec / 1024)
-                
-                dsk_arr = h.setdefault('dsk_util', [])
-                if len(dsk_arr) == 0 or time.time() - getattr(_worker, '_dsk_util_h', 0) > 3.0:
-                    try: dsk_arr.append(psutil.disk_usage('C:\\').percent)
-                    except: dsk_arr.append(0.0)
-                    _worker._dsk_util_h = time.time()
-                else:
-                    dsk_arr.append(dsk_arr[-1])
+                # --- 7. HISTORY ARRAYS (dialog-only: charts in Perf Monitor) ---
+                if _dlg:
+                    h = hud._perf_history
+                    h.setdefault('cpu', []).append(psutil.cpu_percent())
+                    h.setdefault('ram', []).append(vm.percent)
+                    h.setdefault('gpu_util', []).append(_gpu_ema)
+                    h.setdefault('latency', []).append(hud._sys_data.get('latency', 0))
+                    h.setdefault('net_dn', []).append(n_r_sec / 1024)
+
+                    dsk_arr = h.setdefault('dsk_util', [])
+                    if len(dsk_arr) == 0 or time.time() - getattr(_worker, '_dsk_util_h', 0) > 3.0:
+                        try: dsk_arr.append(psutil.disk_usage('C:\\').percent)
+                        except: dsk_arr.append(0.0)
+                        _worker._dsk_util_h = time.time()
+                    else:
+                        dsk_arr.append(dsk_arr[-1])
 
                 hud._perf_meta = _pm
                 _t_prev = time.time()
@@ -534,7 +566,7 @@ def start_perf_collector(hud) -> None:
 
 def clock_tick(hud) -> None:
     n = datetime.now()
-    t_str = n.strftime('%H:%M:%S'); d_str = n.strftime('%d ') + _RU_MON[n.month] + n.strftime(' %Y')
+    t_str = n.strftime('%H:%M:%S'); d_str = n.strftime('%d ') + i18n.tr(f'mon.{n.month}').upper() + n.strftime(' %Y')
     try: hud._clock_lbl.configure(text=t_str); hud._date_lbl.configure(text=d_str)
     except: pass
     try:

@@ -7,17 +7,16 @@ from .base import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, 
 from .constants import _AI_CONFIG
 
 def _build_prov_meta():
-    _icons = {'Groq': '⚡', 'OpenAI': '◆', 'Google': '♊', 'DeepSeek': '◎', 'Anthropic': '✦', 'OpenRouter': '⬡'}
-    _id_map = {'Groq': 'groq', 'OpenAI': 'openai', 'Google': 'gemini', 'DeepSeek': 'deepseek', 'Anthropic': 'anthropic', 'OpenRouter': 'openrouter'}
+    from features.qa import model_fetcher
     out = {}
     for pname, pdata in _AI_CONFIG.items():
-        pid = _id_map.get(pname, pname.lower())
+        pid = pdata['id']
         out[pid] = {
-            'name': pname,
-            'icon': _icons.get(pname, '◉'),
-            'url': pdata['site'],
-            'key': pdata['env'],
-            'models': {m: {'ctx': v['ctx'], 'rpm': v['rpm'], 'rpd': v['rpd'], 'alias': v['desc']} for m, v in pdata['models'].items()}
+            'name':   pname,
+            'icon':   pdata['icon'],
+            'url':    pdata['site'],
+            'key':    pdata['env'],
+            'models': model_fetcher.get_models_for_ui(pid),
         }
     return out
 
@@ -123,6 +122,12 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             _on_dep_change(); _schedule_auto_dep_sync('module-toggle')
             try: from core.system import refresh_module_flags; refresh_module_flags()
             except: pass
+            try:
+                from core.nlp.semantic import _INTENT_MODULE_MAP, rebuild_cache
+                if k in _INTENT_MODULE_MAP.values():
+                    import threading
+                    threading.Thread(target=rebuild_cache, daemon=True).start()
+            except: pass
 
         for module_key in _module_order:
             row = tk.Frame(c_modules, bg=_PANEL, highlightbackground=_blend(_GREEN, 0.15), highlightthickness=1)
@@ -213,18 +218,97 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         c_ai = _card(inner, '◉', i18n.tr('premium.ai_title'), _CYAN, hud)
         ai_container = tk.Frame(c_ai, bg=_PANEL); ai_container.pack(fill='x', padx=12, pady=(4, 8))
         _prov_meta = _build_prov_meta()
-        _ai_prov_var = tk.StringVar(value=_settings.get('ai_provider', 'groq')); _ai_model_var = tk.StringVar(value=_settings.get('ai_model', 'llama-3.3-70b-versatile'))
-        _stat_ctx = tk.StringVar(value='-'); _stat_rpm = tk.StringVar(value='-'); _stat_rpd = tk.StringVar(value='-'); _stat_alias = tk.StringVar(value='-')
+        _saved_prov = _settings.get('ai_provider', 'groq')
+        if _saved_prov not in _prov_meta:
+            _saved_prov = list(_prov_meta.keys())[0] if _prov_meta else 'groq'
+        _ai_prov_var = tk.StringVar(value=_saved_prov)
+
+        _saved_model = _settings.get('ai_model', '')
+        _m_list_init = list(_prov_meta[_saved_prov]['models'].keys()) if _saved_prov in _prov_meta else []
+        if not _saved_model or _saved_model not in _m_list_init:
+            _saved_model = _m_list_init[0] if _m_list_init else ''
+        _ai_model_var = tk.StringVar(value=_saved_model)
+
+        _stat_ctx = tk.StringVar(value='-'); _stat_rpm = tk.StringVar(value='-')
+        _stat_rpd = tk.StringVar(value='-'); _stat_alias = tk.StringVar(value='-')
+        _refresh_status_var = tk.StringVar(value='')
 
         tk.Label(ai_container, text=i18n.tr('premium.ai_platform_label'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), anchor='center').pack(fill='x')
         _prov_list_outer = tk.Frame(ai_container, bg=_PANEL); _prov_list_outer.pack(fill='x', pady=(4, 8)); _btn_refs = {}
-        _model_menu_ref = [None]  # контейнер для обхода ограничения closure
+        _model_menu_ref = [None]
+
+        def _update_stats(p, m):
+            stats = _prov_meta[p]['models'].get(m, {})
+            _stat_ctx.set(stats.get('ctx', '?'))
+            _stat_rpm.set(f"{stats.get('rpm', '?')}/m")
+            _stat_rpd.set(f"{stats.get('rpd', '?')} req/d")
+            _stat_alias.set(f"➜ {stats.get('alias', '')}" if stats.get('alias') else '—')
+
         def _on_ai_upd(*_):
-            p = _ai_prov_var.get(); _settings['ai_provider'] = p; m_list = list(_prov_meta[p]['models'].keys()); m = _ai_model_var.get() if _ai_model_var.get() in m_list else m_list[0]
+            p = _ai_prov_var.get()
+            if p not in _prov_meta:
+                p = list(_prov_meta.keys())[0] if _prov_meta else 'groq'
+                _ai_prov_var.set(p)
+            _settings['ai_provider'] = p
+            m_list = list(_prov_meta[p]['models'].keys())
+            if not m_list:
+                _ai_model_var.set('')
+                _settings['ai_model'] = ''
+                if _model_menu_ref[0]: _model_menu_ref[0].configure(values=[i18n.tr('premium.ai_no_models')])
+                _stat_ctx.set('?'); _stat_rpm.set('?'); _stat_rpd.set('?')
+                _stat_alias.set(i18n.tr('premium.ai_no_models'))
+                _save_hud_settings(_settings)
+                for k, b in _btn_refs.items(): b.configure(border_width=2 if k==p else 1, border_color=_CYAN if k==p else _blend(_CYAN, 0.12))
+                _fill_key_entry(p); return
+            m = _ai_model_var.get() if _ai_model_var.get() in m_list else m_list[0]
             _ai_model_var.set(m)
+            _settings['ai_model'] = m
             if _model_menu_ref[0]: _model_menu_ref[0].configure(values=m_list)
-            stats = _prov_meta[p]['models'][m]; _stat_ctx.set(stats['ctx']); _stat_rpm.set(f"{stats['rpm']}/m"); _stat_rpd.set(f"{stats['rpd']} req/d"); _stat_alias.set(f"➜ {stats['alias']}"); _save_hud_settings(_settings)
+            _update_stats(p, m)
+            _save_hud_settings(_settings)
             for k, b in _btn_refs.items(): b.configure(border_width=2 if k==p else 1, border_color=_CYAN if k==p else _blend(_CYAN, 0.12))
+            _fill_key_entry(p)
+
+        def _on_model_upd(*_):
+            p = _ai_prov_var.get(); m = _ai_model_var.get()
+            _settings['ai_model'] = m
+            _update_stats(p, m)
+            _save_hud_settings(_settings)
+
+        def _load_current_api_key(provider: str) -> str:
+            try:
+                from features.qa.llm_processor import _load_api_key
+                return _load_api_key(provider)
+            except Exception:
+                return ''
+
+        _refreshing: set = set()
+
+        def _auto_refresh(provider: str):
+            if provider in _refreshing:
+                return
+            from features.qa import model_fetcher
+            api_key = _load_current_api_key(provider)
+            if not api_key and provider != 'openrouter':
+                _refresh_status_var.set(i18n.tr('premium.ai_no_key'))
+                return
+            _refreshing.add(provider)
+            _refresh_status_var.set(i18n.tr('premium.ai_refreshing'))
+            def _on_done(prov, models):
+                _refreshing.discard(prov)
+                if models:
+                    _prov_meta[prov]['models'] = models
+                def _ui():
+                    if models:
+                        n = len(_prov_meta[prov]['models'])
+                        _refresh_status_var.set(f'{n} {i18n.tr("premium.ai_models_count")}')
+                        if _ai_prov_var.get() == prov:
+                            _on_ai_upd()
+                    else:
+                        _refresh_status_var.set(i18n.tr('premium.ai_no_key'))
+                win.after(0, _ui)
+            model_fetcher.refresh_async(provider, api_key, _on_done)
+
         _p_ids = list(_prov_meta.keys())
         def _rebuild_prov_grid(e=None):
             [w.destroy() for w in _prov_list_outer.winfo_children()]; _btn_refs.clear()
@@ -232,7 +316,7 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             for i, p_id in enumerate(_p_ids):
                 row_i, col_i = divmod(i, _cols); info = _prov_meta[p_id]; is_p = (p_id == _ai_prov_var.get())
                 b = ctk.CTkButton(_prov_list_outer, text=f"{info['icon']}  {info['name']}", command=lambda pid=p_id: (_ai_prov_var.set(pid), _on_ai_upd()), font=(hud._F, _sf(8), 'bold'), height=30, corner_radius=6, border_width=2 if is_p else 1, fg_color=_blend(_CYAN, 0.22 if is_p else 0.05), border_color=_CYAN if is_p else _blend(_CYAN, 0.12)); b.grid(row=row_i, column=col_i, sticky='ew', padx=3, pady=2); _prov_list_outer.columnconfigure(col_i, weight=1); _btn_refs[p_id] = b
-        tk.Label(ai_container, text=i18n.tr('premium.ai_model_specs_label'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), anchor='center').pack(fill='x', pady=(4,0))
+        tk.Label(ai_container, text=i18n.tr('premium.ai_model_specs_label'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), anchor='center').pack(fill='x', pady=(4, 0))
         tk.Label(ai_container, textvariable=_stat_alias, bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='center').pack(fill='x', pady=(2, 6))
         stats_f = tk.Frame(ai_container, bg=_PANEL); stats_f.pack(fill='x', pady=(0, 8)); _stat_cells_frame = tk.Frame(stats_f, bg=_PANEL); _stat_cells_frame.pack(fill='x')
         def _rebuild_stats_grid(e=None):
@@ -245,15 +329,89 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
                 row_i, col_i = divmod(i, 3); cell = ctk.CTkFrame(_stat_cells_frame, fg_color=_blend(_CYAN, 0.04), border_color=_blend(_CYAN, 0.1), border_width=1, corner_radius=6); cell.grid(row=row_i, column=col_i, sticky='nsew', padx=2, pady=1); _stat_cells_frame.columnconfigure(col_i, weight=1); _stat_cells_frame.rowconfigure(row_i, uniform='stat_row')
                 ctk.CTkLabel(cell, text=lbl_t, text_color=_CYAN, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(pady=(4, 0)); ctk.CTkLabel(cell, textvariable=var, text_color=_WHITE, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(pady=(0, 4))
         ai_container.bind('<Configure>', lambda e: (_rebuild_prov_grid(e), _rebuild_stats_grid(e)), add='+')
-        tk.Label(ai_container, text=i18n.tr('premium.ai_models_label'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), anchor='center').pack(fill='x', pady=(4, 0))
-        _ai_model_menu = _HUDDropdown(hud, ai_container, list(_prov_meta[_ai_prov_var.get()]['models'].keys()), _ai_model_var, command=_on_ai_upd, accent=_CYAN); _model_menu_ref[0] = _ai_model_menu; _ai_model_menu.frame.pack(fill='x', pady=(4, 8), padx=2)
+
+        _models_hdr = tk.Frame(ai_container, bg=_PANEL); _models_hdr.pack(fill='x', pady=(4, 0))
+        tk.Label(_models_hdr, text=i18n.tr('premium.ai_models_label'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), anchor='w').pack(side='left')
+        ctk.CTkButton(_models_hdr, text='⟳', command=lambda: _auto_refresh(_ai_prov_var.get()), width=26, height=20, font=(hud._F, _sf(9), 'bold'), fg_color=_blend(_CYAN, 0.08), hover_color=_blend(_CYAN, 0.2), text_color=_CYAN, corner_radius=4).pack(side='right')
+
+        _init_models = list(_prov_meta[_ai_prov_var.get()]['models'].keys()) or [i18n.tr('premium.ai_no_models')]
+        _ai_model_menu = _HUDDropdown(hud, ai_container, _init_models, _ai_model_var, command=_on_model_upd, accent=_CYAN); _model_menu_ref[0] = _ai_model_menu; _ai_model_menu.frame.pack(fill='x', pady=(4, 2), padx=2)
+        tk.Label(ai_container, textvariable=_refresh_status_var, bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8)), anchor='center').pack(fill='x', pady=(0, 6))
+
         _ai_ent = ctk.CTkEntry(ai_container, placeholder_text=i18n.tr('premium.ai_api_key_placeholder'), font=(hud._F, 11), show='•', height=40, fg_color=_BG, border_color=_blend(_CYAN, 0.3), corner_radius=10); _ai_ent.pack(fill='x', pady=(0, 8), padx=2)
+
+        def _fill_key_entry(provider):
+            try:
+                k = _load_current_api_key(provider)
+                _ai_ent.delete(0, 'end')
+                if k:
+                    _ai_ent.insert(0, k)
+            except Exception:
+                pass
+
         btn_g = tk.Frame(ai_container, bg=_PANEL); btn_g.pack(fill='x')
         def _mini_btn(parent, text, col, cmd, c): ctk.CTkButton(parent, text=text, command=cmd, height=32, font=(hud._F, 11, 'bold'), fg_color=_blend(col, 0.08), hover_color=_blend(col, 0.18), text_color=col, border_color=_blend(col, 0.3), border_width=1, corner_radius=6).grid(row=0, column=c, sticky='ew', padx=3); parent.columnconfigure(c, weight=1)
-        _mini_btn(btn_g, f'🌐 {i18n.tr("premium.ai_btn_website")}', _CYAN, lambda: None, 0)
-        _mini_btn(btn_g, f'📋 {i18n.tr("premium.ai_btn_paste")}', _CYAN, lambda: None, 1)
-        _mini_btn(btn_g, f'💾 {i18n.tr("premium.ai_btn_save")}', _GREEN, lambda: None, 2)
+        def _do_paste():
+            try:
+                text = win.clipboard_get().strip()
+                _ai_ent.delete(0, 'end')
+                _ai_ent.insert(0, text)
+            except Exception:
+                pass
+
+        def _do_save():
+            key = _ai_ent.get().strip()
+            p = _ai_prov_var.get()
+            env_name = _prov_meta.get(p, {}).get('key', '')
+            if not key or not env_name:
+                return
+            # Single source of truth — same path the startup loader and
+            # llm_processor._load_api_key() read from. See config_pack.config.get_secrets_path().
+            from config_pack.config import get_secrets_path
+            env_path = get_secrets_path()
+            try:
+                lines = []
+                if os.path.exists(env_path):
+                    with open(env_path, encoding='utf-8-sig') as f:
+                        lines = f.readlines()
+                new_lines, found = [], False
+                for line in lines:
+                    if line.strip().startswith(f'{env_name}='):
+                        new_lines.append(f'{env_name}={key}\n'); found = True
+                    else:
+                        new_lines.append(line)
+                if not found:
+                    new_lines.append(f'{env_name}={key}\n')
+                parent_dir = os.path.dirname(env_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
+                with open(env_path, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
+                os.environ[env_name] = key
+                try:
+                    from features.qa.llm_processor import invalidate_clients
+                    invalidate_clients(p)
+                except Exception:
+                    pass
+                _refresh_status_var.set(i18n.tr('premium.ai_key_saved'))
+                _auto_refresh(p)
+            except Exception as e:
+                _refresh_status_var.set(f'✗ {e}')
+
+        import webbrowser
+        _mini_btn(btn_g, f'🌐 {i18n.tr("premium.ai_btn_website")}', _CYAN, lambda: webbrowser.open(_prov_meta[_ai_prov_var.get()]['url']), 0)
+        _mini_btn(btn_g, f'📋 {i18n.tr("premium.ai_btn_paste")}', _CYAN, _do_paste, 1)
+        _mini_btn(btn_g, f'💾 {i18n.tr("premium.ai_btn_save")}', _GREEN, _do_save, 2)
         _on_ai_upd(); _refresh_load_summary()
+
+        row_mini = tk.Frame(c_ai, bg=_PANEL)
+        row_mini.pack(fill='x', pady=(6, 8), padx=12)
+        _ai_mini_window_var = tk.BooleanVar(value=bool(_settings.get('ai_mini_window', True)))
+        def _save_ai_mini_window():
+            _settings['ai_mini_window'] = bool(_ai_mini_window_var.get())
+            _save_hud_settings(_settings)
+        ctk.CTkSwitch(row_mini, text='', variable=_ai_mini_window_var, fg_color=_BRD_I, progress_color=_CYAN, button_color=_WHITE, command=_save_ai_mini_window, switch_width=40, switch_height=18, width=0).pack(side='left', padx=(0, 10))
+        tk.Label(row_mini, text=i18n.tr('premium.ai_mini_window'), bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10)), anchor='w').pack(side='left')
 
     except Exception as e:
         import traceback; traceback.print_exc(); tk.Label(inner, text=f"ERROR: {e}", bg=_BG, fg=_RED).pack()

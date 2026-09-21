@@ -8,6 +8,8 @@ import smtplib
 import ssl
 from email.header import decode_header
 from email.message import EmailMessage
+from core.logging_setup import get_logger as _get_logger
+_log = _get_logger('mail')
 from email.parser import BytesParser
 from email.policy import default as email_policy
 from pathlib import Path
@@ -45,8 +47,7 @@ def _update_env_var(key: str, value: str):
         # Also update os.environ for the current session
         os.environ[key] = value
     except Exception as e:
-        with open('logs/debug_init.log', 'a', encoding='utf-8') as f:
-            f.write(f"MAIL_CLIENT: Error updating .env: {e}\n")
+        _log.error('Error updating .env: %s', e, exc_info=True)
 def _load_settings() -> dict:
     try:
         if _SETTINGS_PATH.exists():

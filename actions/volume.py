@@ -1,11 +1,8 @@
 import time
-import ctypes
-import win32con
+import threading
+from actions import keysend
 def send_hardware_key(vk_code):
-    user32 = ctypes.windll.user32
-    user32.keybd_event(vk_code, 0, 0, 0)
-    time.sleep(0.02)
-    user32.keybd_event(vk_code, 0, win32con.KEYEVENTF_KEYUP, 0)
+    keysend.press(vk_code)
 def _get_volume_interface():
     import pythoncom
     pythoncom.CoInitialize()
@@ -55,9 +52,16 @@ def set_volume_level(level: float) -> tuple[bool, str]:
         return (False, str(e))
 _saved_sessions = {}
 _duck_count = 0
-_duck_lock = __import__('threading').Lock()
+_duck_lock = threading.Lock()
 def force_unduck():
     global _saved_sessions, _duck_count
+    # Hold _duck_lock for the *entire* COM interaction, not just the bookkeeping.
+    # force_unduck() is also scheduled via threading.Timer (a separate OS thread,
+    # 2s after the worker thread's own idle cleanup) — without the lock spanning
+    # the actual pycaw/COM calls, that delayed call could run concurrently with
+    # duck_volume() from the TTS worker thread, both touching the same Windows
+    # Core Audio COM objects from different apartments at once. That race crashed
+    # combase.dll under rapid-fire AI-streaming TTS (many chunks in quick succession).
     with _duck_lock:
         if not _saved_sessions:
             _duck_count = 0
@@ -65,31 +69,30 @@ def force_unduck():
         snap = dict(_saved_sessions)
         _saved_sessions.clear()
         _duck_count = 0
-    try:
-        import pythoncom
-        pythoncom.CoInitialize()
-        from pycaw.pycaw import AudioUtilities
-        sessions = AudioUtilities.GetAllSessions()
-        for session in sessions:
-            try:
-                s_key = session.ProcessId
-                if s_key in snap:
-                    vol = session.SimpleAudioVolume
-                    if vol is not None:
-                        vol.SetMasterVolume(snap[s_key], None)
-            except Exception:
-                continue
-    except Exception:
-        pass
-    finally:
         try:
-            import pythoncom as _pc
-            _pc.CoUninitialize()
+            # CoInitialize is idempotent on an already-initialized thread (returns
+            # S_FALSE). Deliberately NOT calling CoUninitialize: see duck_volume().
+            import pythoncom
+            pythoncom.CoInitialize()
+            from pycaw.pycaw import AudioUtilities
+            sessions = AudioUtilities.GetAllSessions()
+            for session in sessions:
+                try:
+                    s_key = session.ProcessId
+                    if s_key in snap:
+                        vol = session.SimpleAudioVolume
+                        if vol is not None:
+                            vol.SetMasterVolume(snap[s_key], None)
+                except Exception:
+                    continue
         except Exception:
             pass
 def duck_volume(enable: bool):
     global _saved_sessions, _duck_count
     try:
+        # See force_unduck() above: CoInitialize is idempotent, deliberately not
+        # paired with CoUninitialize here — this runs once per spoken chunk on the
+        # long-lived TTS worker thread, which owns COM init for its whole lifetime.
         import os
         import pythoncom
         from pycaw.pycaw import AudioUtilities
@@ -142,11 +145,6 @@ def duck_volume(enable: bool):
                             continue
     except Exception:
         pass
-    finally:
-        try:
-            pythoncom.CoUninitialize()
-        except:
-            pass
 def _fuzzy_find_session(sessions, query: str):
     from features.gaming import transliterate_cyrillic_to_latin
     try:

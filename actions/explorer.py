@@ -1,5 +1,4 @@
 import os
-import urllib.parse
 import win32com.client
 import win32gui
 import subprocess
@@ -51,6 +50,35 @@ def navigate_to_system_folder(folder_name: str) -> tuple[bool, str]:
                 best_key = key
         if best_key:
             target = SYSTEM_FOLDERS[best_key]
+    if not target:
+        # Search for the folder: active Explorer window first, then standard user dirs
+        try:
+            from core.system.windows import get_known_folder_path
+            from actions.filesystem import _find_folder_anywhere, _get_search_depth
+            depth = _get_search_depth()
+            search_roots = []
+            # Priority 1: currently open Explorer window (context-aware search)
+            active = get_active_explorer_path()
+            if active and os.path.isdir(active):
+                search_roots.append(active)
+            # Priority 2: standard user folders as fallback
+            for k in ('desktop', 'documents', 'downloads', 'onedrive'):
+                p = get_known_folder_path(k)
+                if p and p not in search_roots:
+                    search_roots.append(p)
+            for candidate in (
+                os.path.join(USER_HOME, 'OneDrive'),
+                os.path.join(USER_HOME, 'Desktop'),
+                os.path.join(USER_HOME, 'Documents'),
+                os.path.join(USER_HOME, 'Downloads'),
+            ):
+                if os.path.isdir(candidate) and candidate not in search_roots:
+                    search_roots.append(candidate)
+            found = _find_folder_anywhere(search_roots, folder_name, max_depth=depth)
+            if found and found.is_dir():
+                target = str(found)
+        except Exception:
+            pass
     if not target:
         return (False, 'Папка не найдена')
     if target == '..':

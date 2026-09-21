@@ -1,6 +1,8 @@
 import threading
 import time
 from typing import Optional
+from core.logging_setup import get_logger as _get_logger
+_log = _get_logger('gaming')
 _GAME_EXE_MAP: dict[str, tuple[str, str, str]] = {
     'eurotrucks2.exe': ('euro_truck_simulator_2', 'Евро Трак Симулятор два', 'евро трак'),
     'euro_truck_simulator_2.exe': ('euro_truck_simulator_2', 'Евро Трак Симулятор два', 'евро трак'),
@@ -9,7 +11,8 @@ _GAME_EXE_MAP: dict[str, tuple[str, str, str]] = {
     'fs22.exe': ('farming_simulator_22', 'Фарминг Симулятор двадцать два', 'фарминг'),
     'fs25.exe': ('farming_simulator_22', 'Фарминг Симулятор двадцать пять', 'фарминг'),
     'hogwartslegacy.exe': ('hogwarts_legacy', 'Хогвартс Легаси', 'хогвартс'),
-    'hogwarts.exe': ('hogwarts_legacy', 'Хогвартс Легаси', 'хогвартс')
+    'hogwarts.exe': ('hogwarts_legacy', 'Хогвартс Легаси', 'хогвартс'),
+    'planetbase.exe': ('planetbase', 'Планетбейз', 'планетбейз'),
 }
 _QUICK_ALIAS_MAP: dict[str, str] = {
     'евро трак симулятор':  'euro_truck_simulator_2',
@@ -43,6 +46,10 @@ _QUICK_ALIAS_MAP: dict[str, str] = {
     'хогвартс':             'hogwarts_legacy',
     'hogwarts':             'hogwarts_legacy',
     'хог':                  'hogwarts_legacy',
+    'планетбейз':           'planetbase',
+    'planetbase':           'planetbase',
+    'планета':              'planetbase',
+    'база на планете':      'planetbase',
 }
 _suggested_profiles: set[str] = set()
 _suggestion_lock = threading.Lock()
@@ -101,13 +108,15 @@ def start_game_watcher(handler=None):
                         else:
                             from core.speech import speak
                             speak(f'Обнаружена {display_name}. Желаете включить голосовое управление?')
-                    except Exception: pass
-                    
+                    except Exception as _e:
+                        _log.warning('Game detection notify failed: %s', _e)
+
                     if profile_stem == 'euro_truck_simulator_2':
                         try:
                             from actions.ets2_telemetry import start_background_poll
                             start_background_poll()
-                        except Exception: pass
+                        except Exception as _e:
+                            _log.warning('ETS2 telemetry poll start failed: %s', _e)
             
             if _watcher_stop.wait(timeout=3): break
     threading.Thread(target=_watch, daemon=True, name="Game-Watcher").start()

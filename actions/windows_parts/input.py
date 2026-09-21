@@ -1,20 +1,9 @@
 import time
+from actions import keysend
 def send_hardware_key(vk_code: int):
-    import ctypes
-    user32 = ctypes.windll.user32
-    user32.keybd_event(vk_code, 0, 0, 0)
-    time.sleep(0.05)
-    user32.keybd_event(vk_code, 0, 2, 0)
+    keysend.press(vk_code)
 def send_hotkey_hardware(modifier_vk: int, key_vk: int):
-    import ctypes
-    user32 = ctypes.windll.user32
-    user32.keybd_event(modifier_vk, 0, 0, 0)
-    time.sleep(0.01)
-    user32.keybd_event(key_vk, 0, 0, 0)
-    time.sleep(0.05)
-    user32.keybd_event(key_vk, 0, 2, 0)
-    time.sleep(0.01)
-    user32.keybd_event(modifier_vk, 0, 2, 0)
+    keysend.hotkey(modifier_vk, key_vk)
 def _ensure_en_layout() -> int:
     import ctypes
     user32 = ctypes.windll.user32

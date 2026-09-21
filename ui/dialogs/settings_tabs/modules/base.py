@@ -94,10 +94,43 @@ def _label_row(parent, label: str, accent: str, hud):
     return val_lbl
 
 def _slider(parent, from_, to, steps, accent, init_val, callback, hud):
-    s = ctk.CTkSlider(parent, from_=from_, to=to, number_of_steps=steps, progress_color=accent, button_color=accent, button_hover_color=_blend(accent, 0.7), fg_color=_BRD_I, height=16)
+    container = tk.Frame(parent, bg=_PANEL)
+    container.pack(fill='x', pady=(10, 4))
+
+    scale_canvas = tk.Canvas(container, height=10, bg=_PANEL, highlightthickness=0)
+    scale_canvas.pack(side='bottom', fill='x', pady=(2, 0))
+
+    def _draw_ticks(current_val=None):
+        scale_canvas.delete('all')
+        w = scale_canvas.winfo_width()
+        if w <= 1:
+            return
+        num_ticks = steps if steps and steps < 30 else 20
+        progress = (current_val - from_) / (to - from_) if current_val is not None else (init_val - from_) / (to - from_)
+        for i in range(num_ticks + 1):
+            f = i / num_ticks
+            x = f * (w - 20) + 10
+            is_milestone = i in (0, num_ticks // 2, num_ticks)
+            h = 6 if is_milestone else 3
+            is_active = f <= (progress + 0.01)
+            color = accent if is_active else _blend(accent, 0.25)
+            width = 2 if is_milestone and is_active else 1
+            scale_canvas.create_line(x, 0, x, h, fill=color, width=width)
+
+    def _on_change(v):
+        _draw_ticks(float(v))
+        callback(v)
+
+    s = ctk.CTkSlider(
+        container, from_=from_, to=to, number_of_steps=steps,
+        progress_color=accent, button_color=_WHITE, button_hover_color=accent,
+        fg_color=_blend(accent, 0.1), height=12,
+        border_width=2, border_color=_blend(accent, 0.2),
+        command=_on_change,
+    )
     s.set(init_val)
-    s.pack(fill='x', pady=(10, 4))
-    s.configure(command=callback)
+    s.pack(side='top', fill='x')
+    scale_canvas.bind('<Configure>', lambda e: _draw_ticks(s.get()))
     return s
 
 def _std_action_btn(parent, text: str, command, accent: str, hud, **grid_kw):
@@ -123,10 +156,10 @@ def _pick_app_dialog(win, hud, on_selected):
     from core.system.windows import get_installed_apps
     _sf = lambda n: hud._fs(n + 6)   # только для tk виджетов
     apps = get_installed_apps()
-    pick_win = ctk.CTkToplevel(win); pick_win.title(i18n.tr('app_picker.title')); pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
+    pick_win = ctk.CTkToplevel(win); pick_win.title(i18n.tr('app_picker.title'))
     from ui.hud_utils import _center_window
     _center_window(pick_win, 820, 740, hud.zoom_factor)
-    pick_win.configure(bg=_BG); _set_dark_title_bar(pick_win); pick_win.attributes("-topmost", True)
+    pick_win.configure(fg_color=_BG); _set_dark_title_bar(pick_win); pick_win.attributes("-topmost", True)  # type: ignore[call-arg]
     _apply_window_icon(pick_win, hud)
     pick_win.lift()
     top_bar = tk.Frame(pick_win, bg=_BG); top_bar.pack(fill='x', padx=20, pady=(20, 10))

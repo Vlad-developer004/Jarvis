@@ -3,6 +3,7 @@ from core import i18n
 from ui.hud_style import JStyle
 import os
 import threading
+import webbrowser
 import tkinter as tk
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _CYAN, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM
@@ -13,7 +14,7 @@ def _base_win(hud, title: str, w: int = 980, h: int = 780) -> tk.Toplevel:
     _set_dark_title_bar(win)
     win.after(150, lambda: _set_dark_title_bar(win))
     win.title(title)
-    win.configure(bg=_BG)
+    win.configure(bg=_BG)  # type: ignore[call-arg]
     _apply_window_icon(win, hud)
     
     # Set initial geometry immediately to prevent shrinking
@@ -51,10 +52,10 @@ def _add_context_menu(win, entry, _hud, accent):
     def _select_all():
         entry.select_range(0, 'end')
         entry.icursor('end')
-    menu.add_command(label='Вставить (Ctrl+V)', command=_paste)
-    menu.add_command(label='Копировать (Ctrl+C)', command=_copy)
+    menu.add_command(label=i18n.tr('manage.menu.paste'), command=_paste)
+    menu.add_command(label=i18n.tr('manage.menu.copy'), command=_copy)
     menu.add_separator()
-    menu.add_command(label='Выделить всё (Ctrl+A)', command=_select_all)
+    menu.add_command(label=i18n.tr('manage.menu.select_all'), command=_select_all)
     entry.bind('<Button-3>', lambda e: menu.tk_popup(e.x_root, e.y_root))
     entry.bind('<Control-v>', lambda e: (_paste(), 'break'))
     entry.bind('<Control-V>', lambda e: (_paste(), 'break'))
@@ -73,8 +74,13 @@ def _scrollable(win, _hud, accent):
     win.bind('<MouseWheel>', lambda e: canvas.yview_scroll(-1*(e.delta//120), 'units'))
     return inner
 def _fmt_date(ts: str) -> str:
-    _MON = {1:'янв',2:'фев',3:'мар',4:'апр',5:'май',6:'июн',
-            7:'июл',8:'авг',9:'сен',10:'окт',11:'ноя',12:'дек'}
+    is_uk = (i18n.get_language() == 'uk')
+    if is_uk:
+        _MON = {1:'січ',2:'лют',3:'бер',4:'кві',5:'тра',6:'чер',
+                7:'лип',8:'сер',9:'вер',10:'жов',11:'лис',12:'гру'}
+    else:
+        _MON = {1:'янв',2:'фев',3:'мар',4:'апр',5:'май',6:'июн',
+                7:'июл',8:'авг',9:'сен',10:'окт',11:'ноя',12:'дек'}
     try:
         from datetime import datetime
         dt = datetime.strptime(ts.strip(), '%Y-%m-%d %H:%M:%S')
@@ -92,7 +98,7 @@ def _meeting_icon(url: str) -> str:
     if 'moodle' in u:            return '📚'
     return '🔗'
 def open_meetings_manager(hud) -> None:
-    win = _base_win(hud, 'БЫСТРЫЕ ССЫЛКИ — управление', w=820, h=640)
+    win = _base_win(hud, i18n.tr('manage.meetings.win_title'), w=820, h=640)
     inner = _scrollable(win, hud, _GREEN)
     _sf = lambda n: hud._fs(n + 6)
     from actions.meetings import get_meetings, save_meetings
@@ -100,7 +106,7 @@ def open_meetings_manager(hud) -> None:
     _editing: list[int | None] = [None]
     hdr = tk.Frame(inner, bg=_BG)
     hdr.pack(fill='x', padx=20, pady=(16, 4))
-    tk.Label(hdr, text='🔗  БЫСТРЫЕ ССЫЛКИ', bg=_BG, fg=_GREEN,
+    tk.Label(hdr, text=i18n.tr('manage.quick_links'), bg=_BG, fg=_GREEN,
              font=(hud._F, _sf(13), 'bold')).pack(side='left')
     count_lbl = tk.Label(hdr, text='', bg=_BG, fg=_DIM, font=(hud._F, _sf(9)))
     count_lbl.pack(side='right')
@@ -111,9 +117,9 @@ def open_meetings_manager(hud) -> None:
     def _rebuild():
         for w in cards_frame.winfo_children():
             w.destroy()
-        count_lbl.configure(text=f'{len(meetings)} записей')
+        count_lbl.configure(text=f'{len(meetings)} {i18n.tr("manage.meetings.records")}')
         if not meetings:
-            tk.Label(cards_frame, text='Нет сохранённых ссылок', bg=_BG, fg=_DIM,
+            tk.Label(cards_frame, text=i18n.tr('manage.no_links'), bg=_BG, fg=_DIM,
                      font=(hud._F, _sf(10))).pack(pady=20)
             return
         for i, m in enumerate(meetings):
@@ -131,16 +137,16 @@ def open_meetings_manager(hud) -> None:
                             corner_radius=JStyle.RAD_BTN, height=JStyle.H_NORM,
                             placeholder_text_color=_blend(_WHITE, 0.3))
                 _lkw = dict(bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8)), anchor='w')
-                tk.Label(body, text='Голосовая фраза', **_lkw).pack(fill='x')
-                e_phrase = ctk.CTkEntry(body, placeholder_text='например: заходим на пару', **_ekw)
+                tk.Label(body, text=i18n.tr('manage.voice_phrase'), **_lkw).pack(fill='x')
+                e_phrase = ctk.CTkEntry(body, placeholder_text=i18n.tr('manage.pair_example'), **_ekw)
                 e_phrase.insert(0, m.get('phrase', ''))
                 e_phrase.pack(fill='x', pady=(2, 8))
-                tk.Label(body, text='Ссылка', **_lkw).pack(fill='x')
-                e_url = ctk.CTkEntry(body, placeholder_text='https://...', **_ekw)
+                tk.Label(body, text=i18n.tr('manage.link'), **_lkw).pack(fill='x')
+                e_url = ctk.CTkEntry(body, placeholder_text=i18n.tr('dialog.url_placeholder'), **_ekw)
                 e_url.insert(0, m.get('url', ''))
                 e_url.pack(fill='x', pady=(2, 8))
-                tk.Label(body, text='Название (необязательно)', **_lkw).pack(fill='x')
-                e_name = ctk.CTkEntry(body, placeholder_text='например: Высшая математика', **_ekw)
+                tk.Label(body, text=i18n.tr('manage.name_optional'), **_lkw).pack(fill='x')
+                e_name = ctk.CTkEntry(body, placeholder_text=i18n.tr('manage.math_example'), **_ekw)
                 e_name.insert(0, m.get('name', ''))
                 e_name.pack(fill='x', pady=(2, 0))
                 _add_context_menu(win, e_phrase, hud, _GREEN)
@@ -153,12 +159,12 @@ def open_meetings_manager(hud) -> None:
                     url = eu.get().strip()
                     name = en.get().strip() or phrase
                     if not phrase or not url:
-                        status_lbl.configure(text='Фраза и ссылка обязательны.', fg=_AMBER)
+                        status_lbl.configure(text=i18n.tr('manage.phrase_link_required'), fg=_AMBER)
                         return
                     meetings[idx] = {'name': name, 'phrase': phrase, 'url': url}
                     save_meetings(meetings)
                     _editing[0] = None
-                    status_lbl.configure(text='Сохранено  ✓', fg=_GREEN)
+                    status_lbl.configure(text=i18n.tr('manage.saved'), fg=_GREEN)
                     _rebuild()
                 def _cancel():
                     _editing[0] = None
@@ -175,9 +181,9 @@ def open_meetings_manager(hud) -> None:
                     meetings.pop(idx)
                     save_meetings(meetings)
                     _editing[0] = None
-                    status_lbl.configure(text='Удалено.', fg=_AMBER)
+                    status_lbl.configure(text=i18n.tr('manage.deleted'), fg=_AMBER)
                     _rebuild()
-                make_dlg_btn(hud, btn_col, 'ИЗМЕНИТЬ', '◈', _CYAN, _edit, height=JStyle.H_LARGE, width=136).pack(fill='x', pady=(0, 6))
+                make_dlg_btn(hud, btn_col, i18n.tr('manage.meetings.change'), '◈', _CYAN, _edit, height=JStyle.H_LARGE, width=136).pack(fill='x', pady=(0, 6))
                 make_dlg_btn(hud, btn_col, i18n.tr('buttons.delete'), '✕', _RED, _delete, height=JStyle.H_LARGE, width=136).pack(fill='x')
                 body = tk.Frame(card, bg=_PANEL)
                 body.pack(side='left', fill='both', expand=True, padx=14, pady=14)
@@ -196,7 +202,7 @@ def open_meetings_manager(hud) -> None:
                                    font=(hud._F, _sf(7)), anchor='w',
                                    justify='left', cursor='hand2')
                 url_lbl.pack(fill='x', pady=(2, 0))
-                url_lbl.bind('<Button-1>', lambda e, u=raw_url: __import__('webbrowser').open(u))
+                url_lbl.bind('<Button-1>', lambda e, u=raw_url: webbrowser.open(u))
                 def _upd_url_wrap(e, l=url_lbl):
                     l.configure(wraplength=max(hud._px(200), e.width - 4))
                 body.bind('<Configure>', _upd_url_wrap, add='+')
@@ -280,7 +286,7 @@ def _load_thumb(url: str, w: int, h: int):
     except Exception:
         return None
 def open_videos_manager(hud) -> None:
-    win = _base_win(hud, 'СОХРАНЁННЫЕ ВИДЕО — управление', w=1100, h=820)
+    win = _base_win(hud, i18n.tr('manage.videos.win_title'), w=1100, h=820)
     inner = _scrollable(win, hud, _CYAN)
     _sf = lambda n: hud._fs(n + 6)
     videos: list[dict] = list(reversed(_parse_saved_videos()))
@@ -300,7 +306,7 @@ def open_videos_manager(hud) -> None:
     
     search_pill = ctk.CTkEntry(
         search_wrap,
-        placeholder_text='ПОИСК ПО НАЗВАНИЮ ИЛИ АВТОРУ...', 
+        placeholder_text=i18n.tr('manage.videos.search'), 
         placeholder_text_color=_blend(_CYAN, 0.7),
         fg_color=_PANEL,
         text_color=_CYAN,
@@ -341,9 +347,9 @@ def open_videos_manager(hud) -> None:
                     continue
             filtered.append(v)
 
-        count_lbl.configure(text=f'{len(filtered)} video')
+        count_lbl.configure(text=f'{len(filtered)} {i18n.tr("manage.videos.record")}')
         if not filtered:
-            msg = 'Ничего не найдено' if q else 'Нет сохранённых видео'
+            msg = i18n.tr('manage.videos.nothing_found') if q else i18n.tr('manage.videos.no_videos')
             tk.Label(cards_frame, text=msg, bg=_BG, fg=_DIM,
                      font=(hud._F, _sf(10))).pack(pady=20)
             return
@@ -368,7 +374,7 @@ def open_videos_manager(hud) -> None:
             def _del(idx=i):
                 videos.pop(idx)
                 _save_videos(list(reversed(videos)))
-                status_lbl.configure(text='Удалено.', fg=_AMBER)
+                status_lbl.configure(text=i18n.tr('manage.deleted'), fg=_AMBER)
                 _rebuild()
             make_dlg_btn(hud, btn_col, i18n.tr('buttons.open'), '▶', _CYAN, _open, height=JStyle.H_LARGE, width=128).pack(fill='x', pady=(0, 6))
             make_dlg_btn(hud, btn_col, i18n.tr('buttons.delete'), '🗑', _RED, _del, height=JStyle.H_LARGE, width=128).pack(fill='x')

@@ -1,6 +1,7 @@
 import json
 import re
 import time
+from actions import keysend
 from core.nlp.commands import normalize_numbers as _nn
 from pathlib import Path
 try:
@@ -11,10 +12,13 @@ except ImportError:
 from config_pack.config import get_data_dir
 PROFILES_DIR = Path(get_data_dir('game_profiles'))
 _profile_name: str = ''
+_loaded_stem: str = ''
 _entries: list[dict] = []
 _flat: list[tuple[str, dict, str, int]] = []
 _bindings: dict = {}
 _last_cast: dict[str, float] = {}
+def get_loaded_profile_stem() -> str:
+    return _loaded_stem
 def press_robust(key: str, duration: float = 0.15):
     """
     Iron-clad key press for DirectX games.
@@ -24,14 +28,12 @@ def press_robust(key: str, duration: float = 0.15):
         return
     try:
         print(f"[INPUT] Pressing key: {key!r} (duration={duration}s)", flush=True)
-        _input.keyDown(key)
-        time.sleep(duration)
-        _input.keyUp(key)
+        keysend.hold(key, duration)
     except Exception as e:
         print(f"[INPUT] Error pressing {key!r}: {e}", flush=True)
-        # Fallback to simple press if keyDown/Up fails or not supported
+        # Fallback to simple press if hold fails or the key name is unrecognized
         try:
-            _input.press(key)
+            keysend.press(key)
         except Exception:
             pass
 def get_binding(name: str, default: str = '') -> str:
@@ -89,7 +91,7 @@ def _strip_json_comments(text: str) -> str:
         return ""
     return re.sub(pattern, _replacer, text, flags=re.DOTALL)
 def load_profile(profile_name: str) -> tuple[bool, str]:
-    global _profile_name, _entries, _flat, _bindings
+    global _profile_name, _loaded_stem, _entries, _flat, _bindings
     if profile_name not in _installed_profile_stems():
         return (False, f"Расширение для профиля '{profile_name}' не установлено. Откройте Менеджер расширений в HUD и установите нужный профиль.")
     path = PROFILES_DIR / f'{profile_name}.json'
@@ -146,12 +148,14 @@ def load_profile(profile_name: str) -> tuple[bool, str]:
         
         _flat.sort(key=lambda x: len(x[0]), reverse=True)
         _profile_name = data.get('game', profile_name)
+        _loaded_stem = profile_name
         return (True, _profile_name)
     except Exception as e:
         return (False, f'Ошибка загрузки профиля: {e}')
 def unload_profile():
-    global _profile_name
+    global _profile_name, _loaded_stem
     _profile_name = ''
+    _loaded_stem = ''
     _entries.clear()
     _flat.clear()
     _bindings.clear()

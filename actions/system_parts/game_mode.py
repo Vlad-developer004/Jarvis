@@ -142,6 +142,11 @@ def deactivate_game_mode() -> tuple[bool, str]:
         except Exception:
             pass
         try:
+            from features.planetbase import monitor as pb_monitor
+            pb_monitor.stop()
+        except Exception:
+            pass
+        try:
             from core.system import set_process_priority
             set_process_priority('normal')
         except Exception:

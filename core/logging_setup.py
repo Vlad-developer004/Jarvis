@@ -1,9 +1,7 @@
 """Centralized logging system for JARVIS."""
 import logging
 import logging.handlers
-import os
 from pathlib import Path
-from datetime import datetime
 
 _LOGS_DIR = Path(__file__).parent.parent / 'logs'
 _LOGS_DIR.mkdir(exist_ok=True)
@@ -82,29 +80,6 @@ def setup_logger(name: str, log_file: str = None, level: str = 'INFO') -> loggin
     logger.addHandler(console_handler)
 
     return logger
-
-# Global logger instance for general use
-general_logger = setup_logger('jarvis', 'jarvis.log', 'INFO')
-
-def log_debug(msg: str, *args, **kwargs):
-    """Log a debug message."""
-    general_logger.debug(msg, *args, **kwargs)
-
-def log_info(msg: str, *args, **kwargs):
-    """Log an info message."""
-    general_logger.info(msg, *args, **kwargs)
-
-def log_warning(msg: str, *args, **kwargs):
-    """Log a warning message."""
-    general_logger.warning(msg, *args, **kwargs)
-
-def log_error(msg: str, *args, **kwargs):
-    """Log an error message."""
-    general_logger.error(msg, *args, **kwargs)
-
-def log_critical(msg: str, *args, **kwargs):
-    """Log a critical message."""
-    general_logger.critical(msg, *args, **kwargs)
 
 def get_logger(name: str) -> logging.Logger:
     """Get or create a logger for a specific module."""

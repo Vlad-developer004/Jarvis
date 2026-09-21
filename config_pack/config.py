@@ -53,13 +53,20 @@ def get_data_dir(dirname: str) -> str:
 def get_settings_path() -> str:
     return get_data_path('jarvis_settings.json')
 
-def _secrets_env_path() -> str:
+def get_secrets_path() -> str:
+    """Single source of truth for where API keys / tokens live: always
+    %APPDATA%\\Jarvis\\secrets.env (or LOCALAPPDATA, or <project>/data as a last
+    resort) — same path whether running from source or a packaged .exe.
+    Used by the startup loader below, llm_processor._load_api_key(), and the
+    Settings UI save handler, so all three agree on one file."""
     import os
     return os.path.join(get_app_data_root(), 'secrets.env')
 
+_secrets_env_path = get_secrets_path  # back-compat alias for any external callers
+
 def _load_secrets() -> None:
     import os
-    paths = [_secrets_env_path(), os.path.join(get_project_root(), '.env')]
+    paths = [get_secrets_path(), os.path.join(get_project_root(), '.env')]
     for p in paths:
         try:
             if os.path.exists(p):
@@ -67,13 +74,19 @@ def _load_secrets() -> None:
         except Exception:
             pass
 _load_secrets()
-MODEL_PATH = 'models/sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16'
-SILERO_VAD_PATH = 'models/silero_vad'
+_ROOT = get_project_root()
+MODEL_PATH = os.path.join(_ROOT, 'models', 'sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16')
+SILERO_VAD_PATH = os.path.join(_ROOT, 'models', 'silero_vad')
 RATE = 16000
 CHUNK_MS = 32
-SILENCE_MS = 250
-VAD_SILENCE_MS = 250
-GAME_SILENCE_MS = 250
+SILENCE_MS = 160
+VAD_SILENCE_MS = 160  # 160//CHUNK_MS=5 frames (~160ms), aligned with asr.py's
+# normal-mode _vad_min_silence=0.16. Lower than this risks cutting off AI
+# queries/dictation, where users pause mid-thought more than for short commands.
+GAME_SILENCE_MS = 130  # Lower than normal mode: most players use headphones, so the
+# mic doesn't pick up game audio, allowing faster end-of-command detection.
+# 130//CHUNK_MS=4 frames (~128ms) — close to the practical floor for this energy/VAD
+# scheme; going much lower risks cutting off trailing word sounds.
 VAD_CONFIDENCE_THRESHOLD = 0.25
 MIN_SPEECH_MS = 80
 CALIBRATION_SEC = 0.8
@@ -82,7 +95,7 @@ MIN_THRESH = 50
 MIC_GAIN = 2.5
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
-TTS_ENGINE = 'piper'
+TTS_ENGINE = 'silero'
 def _read_stt_engine() -> str:
     p_str = get_settings_path()
     try:
@@ -149,3 +162,19 @@ def _read_wake_word_mode() -> str:
         pass
     return 'continuous'
 WAKE_WORD_MODE = _read_wake_word_mode()
+
+def _read_wake_active_timeout() -> float:
+    """How many seconds Jarvis keeps listening without the wake word after
+    the last command, in 'continuous' wake mode — i.e. when it goes back to
+    sleep. User-adjustable via Settings -> Voice; see
+    ui/dialogs/settings_tabs/voice.py's wake-mode card."""
+    try:
+        p_str = get_settings_path()
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return float(data.get('wake_active_timeout_sec', 30.0))
+    except Exception:
+        pass
+    return 30.0
+WAKE_ACTIVE_TIMEOUT_SEC = _read_wake_active_timeout()

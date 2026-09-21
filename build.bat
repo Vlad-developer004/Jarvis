@@ -65,7 +65,17 @@ if not exist dist\Jarvis\data mkdir dist\Jarvis\data
 if exist data\game_profiles (
     robocopy data\game_profiles dist\Jarvis\data\game_profiles /E /NFL /NDL /NJH /NJS
 )
+:: Quantised intent-classifier model + its centroid cache (core/nlp/semantic.py
+:: resolves these via a plain CWD-relative "data/..." path, same as the
+:: config_pack.config-based files below — not bundled by jarvis.spec).
+:: Missing these doesn't crash the app, but silently drops semantic NLU down
+:: to keyword/fuzzy-only matching.
+if exist data\intent_model_onnx_quant (
+    robocopy data\intent_model_onnx_quant dist\Jarvis\data\intent_model_onnx_quant /E /NFL /NDL /NJH /NJS
+)
+if exist data\semantic_cache.npz copy /Y data\semantic_cache.npz dist\Jarvis\data\ >nul
 if exist data\extensions_catalog.json copy /Y data\extensions_catalog.json dist\Jarvis\data\ >nul
+if exist data\extensions_catalog_uk.json copy /Y data\extensions_catalog_uk.json dist\Jarvis\data\ >nul
 if exist data\jarvis_settings.example.json copy /Y data\jarvis_settings.example.json dist\Jarvis\data\ >nul
 
 :: --- Final Cleanup (Ensure dist is clean of personal data) ---
@@ -73,7 +83,10 @@ echo Finalizing clean state...
 del /F /Q "dist\Jarvis\data\*.json" 2>nul
 :: Restore ONLY the safe files we just copied
 if exist data\extensions_catalog.json copy /Y data\extensions_catalog.json dist\Jarvis\data\ >nul
+if exist data\extensions_catalog_uk.json copy /Y data\extensions_catalog_uk.json dist\Jarvis\data\ >nul
 if exist data\jarvis_settings.example.json copy /Y data\jarvis_settings.example.json dist\Jarvis\data\ >nul
+if exist data\model_cache.json copy /Y data\model_cache.json dist\Jarvis\data\ >nul
+if exist data\model_limits.json copy /Y data\model_limits.json dist\Jarvis\data\ >nul
 
 del /F /S /Q "dist\Jarvis\*.log" 2>nul
 del /F /Q "dist\Jarvis\.env" 2>nul

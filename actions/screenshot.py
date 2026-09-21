@@ -13,6 +13,8 @@ import win32gui
 import win32con
 import win32clipboard
 from PIL import Image
+from core.logging_setup import get_logger as _get_logger
+_log = _get_logger('screenshot')
 def _get_screenshots_dir() -> Path:
     import winreg
     try:
@@ -96,6 +98,7 @@ def screenshot_screen() -> tuple[bool, str]:
         img = pyautogui.screenshot()
         return _save_and_open_screenshot(img, 'screenshot')
     except Exception as e:
+        _log.exception('screenshot_screen failed')
         return (False, str(e))
 def screenshot_terminal() -> tuple[bool, str]:
     try:
@@ -142,6 +145,7 @@ def screenshot_terminal() -> tuple[bool, str]:
             return _save_and_open_screenshot(img, 'terminal')
         return (False, 'Terminal not found')
     except Exception as e:
+        _log.exception('screenshot_terminal failed')
         return (False, str(e))
 def screenshot_full_page() -> tuple[bool, str]:
     try:
@@ -171,6 +175,16 @@ def screenshot_full_page() -> tuple[bool, str]:
         pyautogui.press('enter')
         _restore_layout(hkl)
         def _finish_screenshot():
+            try:
+                _finish_screenshot_inner()
+            except Exception:
+                _log.exception('screenshot_full_page background finisher failed')
+            finally:
+                try:
+                    pyperclip.copy(old_clip)
+                except Exception:
+                    pass
+        def _finish_screenshot_inner():
             downloads_dir = Path.home() / 'Downloads'
             screenshots_dir = _get_screenshots_dir()
             dest_path = screenshots_dir / f'fullpage_{int(time.time())}.png'
@@ -206,13 +220,10 @@ def screenshot_full_page() -> tuple[bool, str]:
             send_hardware_key(123)
             if saved_file:
                 _open_in_editor(str(saved_file))
-            try:
-                pyperclip.copy(old_clip)
-            except:
-                pass
         threading.Thread(target=_finish_screenshot, daemon=True).start()
         return (True, 'Screenshooting page...')
     except Exception as e:
+        _log.exception('screenshot_full_page failed')
         return (False, str(e))
 def start_video_recording(with_mic: bool=False, monitor_index: int=0) -> tuple[bool, str]:
     try:

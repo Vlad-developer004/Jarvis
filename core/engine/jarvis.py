@@ -8,11 +8,15 @@ import ctypes
 import pyaudio
 from core.audio_utils import open_input_stream, rms_int16
 from core.system import app_state
-from core.voice_debug_log import voice_event, voice_heartbeat, voice_session_banner
+from core.voice_debug_log import voice_event
+from core.logging_setup import get_logger as _get_logger
 from .recognition import handle_recognized_text, flush_final
+
+_log = _get_logger('engine')
 from config_pack.config import (
     RATE, CHUNK_MS, MIN_THRESH,
-    VAD_CONFIDENCE_THRESHOLD, VAD_SILENCE_MS, GAME_SILENCE_MS
+    VAD_CONFIDENCE_THRESHOLD, VAD_SILENCE_MS, GAME_SILENCE_MS,
+    WAKE_WORD_MODE, WAKE_ACTIVE_TIMEOUT_SEC,
 )
 _engine_singleton = None
 def get_engine():
@@ -35,13 +39,16 @@ class JarvisEngine:
         self.energy_thresh = MIN_THRESH
         self.voice_on = self.energy_thresh
         self.voice_off = int(self.energy_thresh * 0.7)
-        self.active_timeout_sec = 30
+        # How long Jarvis keeps listening without repeating the wake word
+        # after a command, before going back to sleep. Previously hardcoded
+        # to 30 regardless of the persisted 'single-response' setting, so a
+        # user's choice in Settings silently reverted on every restart.
+        self.active_timeout_sec = 0 if WAKE_WORD_MODE == 'single' else WAKE_ACTIVE_TIMEOUT_SEC
         self._calibrating = False
         prebuf_frames = max(1, 350 // CHUNK_MS)
         self.pre_buf = _collections.deque(maxlen=prebuf_frames)
         self.last_game_audio = b''
         self.console_hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-        self._last_fg_poll = 0.0
         self._NOISE_ALPHA = 0.015
         self._ADAPT_MULT = 2.2
         self._ADAPT_MULT_OFF = 1.3
@@ -56,16 +63,22 @@ class JarvisEngine:
         try:
             from core.speech import tts
             tts._MASTER_VOLUME = new_vol
-        except Exception: pass
+        except Exception as _e:
+            _log.warning('Failed to set TTS volume: %s', _e)
+
     def _reopen_stream(self):
         for attempt in range(5):
             try:
-                try: self.stream.close()
-                except Exception: pass
+                try:
+                    self.stream.close()
+                except Exception:
+                    pass
                 time.sleep(1.0 + attempt * 0.5)
                 self.stream = open_input_stream(self.pa, RATE, self.chunk)
                 return True
-            except Exception: pass
+            except Exception as _e:
+                _log.warning('Stream reopen attempt %d failed: %s', attempt + 1, _e)
+        _log.error('All stream reopen attempts failed — stopping engine')
         return False
     def _transcription_worker(self):
         while True:
@@ -78,6 +91,15 @@ class JarvisEngine:
             except Exception as _e:
                 voice_event(f'STT error {type(_e).__name__}: {_e!r}')
             finally: self.transcribe_queue.task_done()
+    def _fg_poll_worker(self):
+        while True:
+            try:
+                fg = win32gui.GetForegroundWindow()
+                if fg and fg != self.console_hwnd:
+                    self.handler.last_user_hwnd = fg
+            except Exception:
+                pass
+            time.sleep(0.2)
     def drain_transcribe_queue(self, keep: int = 2) -> int:
         q = self.transcribe_queue
         dropped = 0
@@ -103,15 +125,11 @@ class JarvisEngine:
         _engine_singleton = self
         threading.Thread(target=self._transcription_worker, daemon=True, name='ASR-Worker').start()
         threading.Thread(target=self.asr.warmup_stt, daemon=True).start()
-        from config_pack.config import MIC_GAIN, STT_ENGINE
+        threading.Thread(target=self._fg_poll_worker, daemon=True, name='FG-Poll').start()
+        from config_pack.config import MIC_GAIN
         try:
             while True:
                 now_ts = time.time()
-                if now_ts - self._last_fg_poll >= 0.2:
-                    self._last_fg_poll = now_ts
-                    fg = win32gui.GetForegroundWindow()
-                    if fg and fg != self.console_hwnd:
-                        self.handler.last_user_hwnd = fg
                 if self._calibrating:
                     time.sleep(0.01); continue
                 try:
@@ -213,6 +231,9 @@ class JarvisEngine:
                                 _abuf = bytes(self.asr._audio_buffer)
                                 flush_final(self.asr, self.handler, self.transcribe_queue)
                                 self.speaking, self.had_voice, self.silence_cnt, self.voiced_frames = (False, False, 0, 0)
-                            except Exception: pass
-        except KeyboardInterrupt: pass
-        finally: self.stream.close()
+                            except Exception as _e:
+                                _log.error('flush_final error (command dropped): %s', _e, exc_info=True)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.stream.close()

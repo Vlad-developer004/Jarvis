@@ -4,6 +4,11 @@ import pyperclip
 from pathlib import Path
 from PIL import Image
 import io
+from core.logging_setup import get_logger as _get_logger
+_log = _get_logger('ocr')
+def _locale_lang() -> str:
+    from core.i18n import get_language
+    return 'uk' if get_language() == 'uk' else 'ru'
 async def _ocr_from_image(img: Image.Image, lang: str='ru') -> str:
     from winsdk.windows.media.ocr import OcrEngine
     from winsdk.windows.globalization import Language
@@ -38,7 +43,7 @@ def ocr_from_screenshot() -> tuple[bool, str]:
     try:
         import pyautogui
         img = pyautogui.screenshot()
-        text = asyncio.run(_ocr_from_image(img, 'ru'))
+        text = asyncio.run(_ocr_from_image(img, _locale_lang()))
         if not text or not text.strip():
             text_en = asyncio.run(_ocr_from_image(img, 'en'))
             if text_en and text_en.strip():
@@ -50,6 +55,7 @@ def ocr_from_screenshot() -> tuple[bool, str]:
         else:
             return (False, 'Текст не найден')
     except Exception as e:
+        _log.exception('ocr_from_screenshot failed')
         return (False, str(e))
 def ocr_from_last_screenshot() -> tuple[bool, str]:
     try:
@@ -68,7 +74,7 @@ def ocr_from_last_screenshot() -> tuple[bool, str]:
         if not files:
             return (False, 'Нет скриншотов')
         img = Image.open(files[0])
-        text = asyncio.run(_ocr_from_image(img, 'ru'))
+        text = asyncio.run(_ocr_from_image(img, _locale_lang()))
         if not text or not text.strip():
             text_en = asyncio.run(_ocr_from_image(img, 'en'))
             if text_en and text_en.strip():
@@ -80,4 +86,5 @@ def ocr_from_last_screenshot() -> tuple[bool, str]:
         else:
             return (False, 'Текст не найден на скриншоте')
     except Exception as e:
+        _log.exception('ocr_from_last_screenshot failed')
         return (False, str(e))

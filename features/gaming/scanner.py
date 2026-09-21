@@ -80,8 +80,16 @@ def get_epic_games() -> List[GameInfo]:
 def get_xbox_games() -> List[GameInfo]:
     games = []
     try:
-        cmd = 'powershell -Command "Get-AppxPackage | Where-Object {$_.Name -like \"*Game*\" -or $_.PublisherId -eq \"8wekyb3d8bbwe\"} | Select-Object Name, PackageFamilyName, InstallLocation"'
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        ps_script = (
+            'Get-AppxPackage | Where-Object {$_.Name -like "*Game*" -or '
+            '$_.PublisherId -eq "8wekyb3d8bbwe"} | '
+            'Select-Object Name, PackageFamilyName, InstallLocation'
+        )
+        result = subprocess.run(
+            ['powershell', '-NoProfile', '-Command', ps_script],
+            capture_output=True, text=True, shell=False,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+        )
         if result.returncode == 0:
             lines = result.stdout.strip().split('\n')
             if len(lines) > 2:

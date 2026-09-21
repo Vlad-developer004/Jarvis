@@ -1,7 +1,5 @@
 import threading
-import random
 import time
-import os
 from collections import OrderedDict
 from core.system import app_state
 from core.speech import (
@@ -11,16 +9,30 @@ from core.speech import (
 from core.responder import Responder
 _RESPONDER_MAX = 12
 RESPONSES = {
-    'wake': ['audio/Да сэр.wav', 'audio/Всегда к вашим услугам сэр.wav'],
-    'confirm': ['audio/Есть.wav', 'audio/Запрос выполнен сэр.wav', 'audio/Как пожелаете .wav'],
-    'loading': ['audio/Загружаю сэр.wav'],
-    'created': ['audio/Вы создали новый элемент.wav'],
-    'shutdown': ['audio/Отключаю питание.wav'],
-    'game': ['audio/Как пожелаете .wav', 'audio/Есть.wav'],
-    'praise': ['audio/Всегда к вашим услугам сэр.wav'],
-    'work_prompt': ['audio/Мы работаем над проектом сэр 2.wav'],
-    'work_cancel': ['audio/О чем я думал, обычно у нас все веселенькое.wav'],
-    'startup': ['audio/Джарвис - приветствие.wav']
+    'wake': ['Д+а, {addr}.', 'Всегд+а к в+ашим усл+угам, {addr}.', 'Сл+ушаю, {addr}.'],
+    'confirm': ['Есть.', 'Запр+ос в+ыполнен, {addr}.', 'Как пожелаете.', 'Хорошо.', 'Сделано.'],
+    'loading': ['Загруж+аю, {addr}.', 'Минуту.', 'Выполняю.'],
+    'created': ['Вы создали новый элемент.', 'Элемент создан.'],
+    'shutdown': ['Отключаю питание.', 'Завершаю работу.'],
+    'game': ['Как пожелаете.', 'Есть.', 'Конечно.'],
+    'praise': ['Всегд+а к в+ашим усл+угам, {addr}.', 'Р+ад стар+аться, {addr}.'],
+    'work_prompt': ['Мы раб+отаем над про+ектом, {addr}.', 'В процессе работы.'],
+    'work_cancel': ['Ладно, возвращаемся к обычному режиму.', 'Хорошо, отменяю.'],
+    'startup': ['Дж+арвис зап+ущен и гот+ов к раб+оте.', 'Прив+етствую, {addr}. Сист+ема гот+ова.'],
+    'not_understood': ['Не рассл+ышал, повтор+ите.', 'Не разобр+ал ком+анду.', 'Прост+ите, не п+онял.', 'Уточн+ите, пожалуйста.'],
+}
+RESPONSES_UK = {
+    'wake':    ['Слухаю, {addr}.', 'До ваших послуг, {addr}.', 'Так?'],
+    'confirm': ['Є.', 'Зроблено.', 'Як бажаєте.', 'Запит виконано, {addr}.', 'Добре.'],
+    'loading': ['Завантажую, {addr}.', 'Хвилинку.'],
+    'created': ['Створено.'],
+    'shutdown': ['Вимикаю живлення.'],
+    'game':    ['Є.', 'Як бажаєте.'],
+    'praise':  ['До ваших послуг, {addr}.'],
+    'work_prompt': ['Ми працюємо над проектом, {addr}.'],
+    'work_cancel': ['Гаразд, повертаємось до звичного.'],
+    'startup': ['Дж+арвіс до в+ашої уваги, {addr}.'],
+    'not_understood': ['Не розчув, повторіть.', 'Не розібрав команду.', 'Перепрошую, не зрозумів.', 'Уточніть, будь ласка.'],
 }
 class BaseHandler:
     def __init__(self, pa, rate, chunk, asr):
@@ -36,6 +48,7 @@ class BaseHandler:
         self._interactive_timer = None
         self.last_user_hwnd = None
         self.mic_gain = 1.0
+        self._last_not_understood_ts = 0.0
     @property
     def is_speaking(self) -> bool:
         return _is_speaking_check()
@@ -74,9 +87,16 @@ class BaseHandler:
     def play_response(self, category: str = 'confirm', override_silent: bool = False):
         if self.silent_mode and not override_silent: return
         stop_speaking()
-        wav = random.choice(RESPONSES.get(category, RESPONSES['confirm']))
-        from core.speech.tts import TTSManager
-        TTSManager().put_item(5, time.time(), wav)
+        from core.i18n import get_speech_language
+        from core.address import get_address
+        lang = get_speech_language()
+        from core.responses import pick_response
+        if lang == 'uk':
+            phrase = pick_response(f'base.{category}.uk', RESPONSES_UK.get(category, RESPONSES_UK['confirm']))
+        else:
+            phrase = pick_response(f'base.{category}', RESPONSES.get(category, RESPONSES['confirm']))
+        phrase = phrase.format(addr=get_address(lang))
+        speak(phrase)
         try:
             from core.speech import warmup_tts
             warmup_tts()

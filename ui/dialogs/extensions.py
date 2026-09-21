@@ -6,393 +6,12 @@ import tkinter as tk
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ..hud_state import HudState, STATE, set_mode
-from ..hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon, _center_window
+from ..hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon, _center_window, _place_dialog
 from ..hud_widgets import _HudScrollbar
 from core.extensions import ExtensionManager
+from .extensions_common import _load_settings, _save_settings, _save_env_key, _set_feature_module_flag, _load_game_commands
+from .extensions_setup import _ask_chat_id, _ask_calendar_setup, _ask_mail_setup, _open_commands_help, _ask_ets2_ai_setup
 
-_SETTINGS_PATH = os.path.join('data', 'jarvis_settings.json')
-
-def _load_settings():
-    try:
-        if os.path.exists(_SETTINGS_PATH):
-            with open(_SETTINGS_PATH, 'r', encoding='utf-8') as f:
-                return json.load(f)
-    except Exception: pass
-    return {}
-
-def _save_settings(s):
-    try:
-        os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
-        with open(_SETTINGS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(s, f, indent=2, ensure_ascii=False)
-    except Exception: pass
-
-def _secrets_env_path() -> str:
-    try:
-        import os as _os
-        appdata = _os.environ.get('APPDATA', '') or _os.environ.get('LOCALAPPDATA', '')
-        if appdata:
-            p = os.path.join(appdata, 'Jarvis', 'secrets.env')
-            try: os.makedirs(os.path.dirname(p), exist_ok=True)
-            except Exception: pass
-            return p
-    except Exception: pass
-    return os.path.abspath('.env')
-
-_ENV_PATH = _secrets_env_path()
-
-def _save_env_key(key: str, value: str) -> None:
-    lines = []
-    if os.path.exists(_ENV_PATH):
-        with open(_ENV_PATH, encoding='utf-8') as f: lines = f.readlines()
-    found = False
-    for i, line in enumerate(lines):
-        if line.startswith(key + '='):
-            lines[i] = f'{key}="{value}"\n'
-            found = True
-            break
-    if not found: lines.append(f'{key}="{value}"\n')
-    with open(_ENV_PATH, 'w', encoding='utf-8') as f: f.writelines(lines)
-
-def _set_feature_module_flag(module_key: str, enabled: bool) -> None:
-    s = _load_settings()
-    mods = s.get('feature_modules', {})
-    if not isinstance(mods, dict): mods = {}
-    mods[module_key] = bool(enabled)
-    s['feature_modules'] = mods
-    _save_settings(s)
-    try:
-        from core.system import refresh_module_flags
-        refresh_module_flags()
-    except Exception: pass
-
-GAME_CMD_L10N = {
-    "Engine": "Двигатель (Вкл/Выкл)", "StartEngine": "Запуск двигателя", "StopEngine": "Заглушить двигатель",
-    "Handbrake": "Ручной тормоз", "HandbrakeOn": "Затянуть ручник", "HandbrakeOff": "Снять с ручника",
-    "CruiseControl": "Круиз-контроль", "CruiseSet": "Установить лимит круиза", "CruiseAdjust": "Настройка скорости круиза",
-    "CruiseLimit": "Круиз по ограничению", "AutoCruiseOn": "Адаптивный круиз (Вкл)", "AutoCruiseOff": "Адаптивный круиз (Выкл)",
-    "Differential": "Блокировка дифференциала", "AxleLift": "Подъём/Опускание оси", "Trailer": "Сцепка / Отцепка прицепа",
-    "GearUp": "Повысить передачу", "GearDown": "Понизить передачу", "GearSet": "Поставить передачу (по номеру)",
-    "GearReverse": "Задний ход / Реверс", "GearNeutral": "Нейтраль", "LightsMainOn": "Ближний свет (Вкл)",
-    "LightsMainOff": "Ближний свет (Выкл)", "LightsHighOn": "Дальний свет (Вкл)", "LightsHighOff": "Дальний свет (Выкл)",
-    "StrobeLights": "Проблесковые маячки", "Beacon": "Маячок / Мигалка", "TurnLeft": "Левый поворотник",
-    "TurnRight": "Правый поворотник", "Hazard": "Аварийная сигнализация", "Horn": "Звуковой сигнал",
-    "AirHorn": "Пневматический сигнал", "WipersOn": "Стеклоочистители (Вкл)", "WipersOff": "Стеклоочистители (Выкл)",
-    "WipersMedium": "Стеклоочистители (Средне)", "WipersFast": "Стеклоочистители (Быстро)",
-    "InfoScreen": "Инфо-экран / Бортовой ПК", "Navigator": "Карта / Навигатор", "Action": "Действие / Взаимодействие",
-    "GoToSleep": "Лечь спать", "WakeUp": "Проснуться / Поехали", "CloseGame": "Выход из игры",
-    "PrepareForTrip": "Подготовка к рейсу", "Shutdown": "Конец рейса / Глушим всё", "BreakTime": "Остановка на отдых",
-    "ResumeFromBreak": "Продолжить после отдыха", "BadWeather": "Режим плохой погоды", "ClearWeather": "Режим ясной погоды",
-    "EmergencyStop": "Экстренная остановка", "NightDriveMode": "Ночной режим освещения", "MorningMode": "Утренний режим (Свет выкл)",
-    "CityDriveMode": "Городской режим", "HighwayMode": "Трассовый режим", "LoadingDock": "Режим погрузки/разгрузки",
-    "FogMode": "Режим тумана", "Overtake": "Манёвр обгона", "ThankYou": "Благодарность (Аварийка)",
-}
-
-def _load_game_commands(filename: str) -> list[dict]:
-    # Try to load Ukrainian version if language is set to Ukrainian
-    lang = i18n.get_language()
-    if lang == 'uk':
-        uk_filename = filename.replace('.json', '_uk.json')
-        uk_path = os.path.join("data", "game_profiles", uk_filename)
-        if os.path.exists(uk_path):
-            path = uk_path
-        else:
-            path = os.path.join("data", "game_profiles", filename)
-    else:
-        path = os.path.join("data", "game_profiles", filename)
-
-    if not os.path.exists(path): return []
-    try:
-        with open(path, "r", encoding="utf-8") as f: data = json.load(f)
-        spells = data.get("spells", [])
-        cmds = []
-        for s in spells:
-            name, variants = s.get("name", ""), s.get("variants", [])
-            if not variants: continue
-            main_desc = GAME_CMD_L10N.get(name, name)
-            cmds.append({"say": variants[0], "do": main_desc, "search": " ".join(variants).lower() + " " + main_desc.lower()})
-        return cmds
-    except Exception: return []
-
-def _ask_chat_id(parent, hud, on_confirm):
-    dlg = tk.Toplevel(parent); dlg.title(i18n.tr('camera.title')); dlg.configure(bg=_BG)  # type: ignore[call-arg]
-    _set_dark_title_bar(dlg)
-    dlg.after(100, lambda: _set_dark_title_bar(dlg))
-    _apply_window_icon(dlg, hud)
-    W, H = 500, 380
-    dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+150+110'); dlg.grab_set(); dlg.resizable(False, False)
-    tk.Frame(dlg, bg=_CYAN, height=2).pack(fill='x')
-    tk.Label(dlg, text=i18n.tr('camera.title'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(pady=(16, 4))
-    tk.Frame(dlg, bg=_SEP, height=1).pack(fill='x', padx=20, pady=(0, 10))
-    lines = [
-        i18n.tr('camera.telegram_note'),
-        '',
-        i18n.tr('camera.how_to'),
-        i18n.tr('camera.step1'),
-        i18n.tr('camera.step2')
-    ]
-    for line in lines:
-        col = _CYAN if ':' in line else _TEXT if line else _BG
-        tk.Label(dlg, text=line, bg=_BG, fg=col, font=(hud._F, JStyle.TEXT_SMALL, 'bold' if ':' in line else '')).pack(anchor='w', padx=28)
-    tk.Frame(dlg, bg=_SEP, height=1).pack(fill='x', padx=20, pady=(12, 10))
-    entry_var = tk.StringVar(); entry = ctk.CTkEntry(dlg, textvariable=entry_var, placeholder_text='Chat ID', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
-    entry.pack(fill='x', padx=28, pady=(0, 15)); _bind_ctk_entry_clipboard(dlg, entry, hud); entry.focus_set()
-    def _confirm():
-        cid = entry_var.get().strip()
-        if not cid.lstrip('-').isdigit(): entry.configure(border_color=_RED); return
-        on_confirm(cid); dlg.destroy()
-    ctk.CTkButton(dlg, text=i18n.tr('buttons.save'), font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=28, pady=(0, 6))
-    ctk.CTkButton(dlg, text=i18n.tr('buttons.cancel'), font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=28)
-    dlg.bind('<Return>', lambda _: _confirm())
-
-def _ask_calendar_setup(parent, hud, on_done=None):
-    dlg = tk.Toplevel(parent); dlg.title(i18n.tr('calendar.setup')); dlg.configure(bg=_BG)  # type: ignore[call-arg]
-    _set_dark_title_bar(dlg)
-    dlg.after(100, lambda: _set_dark_title_bar(dlg))
-    _apply_window_icon(dlg, hud)
-    W, H = 560, 520
-    dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+150+90'); dlg.grab_set(); dlg.minsize(int(440*hud.zoom_factor), int(400*hud.zoom_factor)); dlg.resizable(True, True)
-    # Use scrollable container
-    canvas_f = tk.Frame(dlg, bg=_BG); canvas_f.pack(fill='both', expand=True)
-    canvas = tk.Canvas(canvas_f, bg=_BG, highlightthickness=0)
-    sb = _HudScrollbar(canvas_f, canvas, color=_CYAN)
-    canvas.configure(yscrollcommand=sb.set); canvas.pack(side='left', fill='both', expand=True)
-    inner = tk.Frame(canvas, bg=_BG)
-    _cwin = canvas.create_window((0, 0), window=inner, anchor='nw', width=int(W*hud.zoom_factor))
-    def _upd_scroll(): 
-        if canvas.winfo_exists():
-            h = inner.winfo_reqheight()
-            ch = canvas.winfo_height()
-            canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), max(h, ch)))
-    inner.bind('<Configure>', lambda e: _upd_scroll())
-    def _on_wheel(e): canvas.yview_scroll(-1*(e.delta//120), 'units')
-    dlg.bind('<MouseWheel>', _on_wheel)
-
-    tk.Frame(inner, bg=_CYAN, height=2).pack(fill='x')
-    tk.Label(inner, text=i18n.tr('calendar.setup'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(pady=(14, 4))
-    tk.Label(inner, text=i18n.tr('calendar.add_files'), bg=_BG, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 12))
-    s0 = _load_settings(); sources_var = list(s0.get('calendar_sources', []) if isinstance(s0.get('calendar_sources'), list) else [])
-    list_frame = tk.Frame(inner, bg=_PANEL, highlightthickness=1, highlightbackground=_blend(_CYAN, 0.3)); list_frame.pack(fill='both', expand=True, padx=24, pady=(0, 10))
-    list_inner = tk.Frame(list_frame, bg=_PANEL); list_inner.pack(fill='both', expand=True, padx=8, pady=8)
-    def _refresh_list():
-        for w in list_inner.winfo_children(): w.destroy()
-        for i, src in enumerate(sources_var):
-            ref = src.get('url') or src.get('path') or i18n.tr('calendar.empty')
-            row = tk.Frame(list_inner, bg=_PANEL); row.pack(fill='x', pady=2)
-            tk.Label(row, text=ref, bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), anchor='w').pack(side='left', fill='x', expand=True, padx=(6, 6))
-            ctk.CTkButton(row, text='✕', width=28, height=24, font=(hud._F, JStyle.TEXT_SMALL), fg_color=_blend(_RED, 0.12), hover_color=_blend(_RED, 0.3), text_color=_RED, command=lambda idx=i: (sources_var.pop(idx), _refresh_list())).pack(side='right')
-    _refresh_list()
-    add_frame = tk.Frame(inner, bg=_BG); add_frame.pack(fill='x', padx=24, pady=(0, 8))
-    tk.Label(add_frame, text=i18n.tr('calendar.path_label'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_SMALL, 'bold')).pack(anchor='w', pady=(0, 4))
-    entry_row = tk.Frame(add_frame, bg=_BG); entry_row.pack(fill='x')
-    add_ent = ctk.CTkEntry(entry_row, height=34, font=(hud._F, JStyle.TEXT_BODY), fg_color=_blend(_CYAN, 0.08), border_color=_blend(_CYAN, 0.35), border_width=1, text_color=_WHITE, placeholder_text=i18n.tr('calendar.placeholder'))
-    add_ent.pack(side='left', fill='x', expand=True, padx=(0, 8)); _bind_ctk_entry_clipboard(dlg, add_ent, hud)
-    def _add_from_entry():
-        val = (add_ent.get() or '').strip()
-        if not val: return
-        if val.lower().startswith(('http://', 'https://', 'webcal://')): sources_var.append({'url': val})
-        else: sources_var.append({'path': val})
-        add_ent.delete(0, 'end'); _refresh_list()
-    ctk.CTkButton(entry_row, text=i18n.tr('calendar.add'), width=110, height=34, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.35), text_color=_CYAN, command=_add_from_entry).pack(side='left')
-    def _confirm():
-        s = _load_settings(); s['calendar_sources'] = sources_var; _save_settings(s)
-        if on_done: on_done()
-        dlg.destroy()
-    ctk.CTkButton(inner, text=i18n.tr('buttons.save'), font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(0, 6))
-    ctk.CTkButton(inner, text=i18n.tr('buttons.cancel'), font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
-
-def _ask_mail_setup(parent, hud, on_done):
-    dlg = tk.Toplevel(parent); dlg.title(i18n.tr('mail.title')); dlg.configure(bg=_BG)  # type: ignore[call-arg]
-    _set_dark_title_bar(dlg)
-    dlg.after(100, lambda: _set_dark_title_bar(dlg))
-    _apply_window_icon(dlg, hud)
-    W, H = 560, 640
-    dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+150+70'); dlg.grab_set(); dlg.minsize(int(480*hud.zoom_factor), int(520*hud.zoom_factor)); dlg.resizable(True, True)
-    # Use scrollable container
-    canvas_f = tk.Frame(dlg, bg=_BG); canvas_f.pack(fill='both', expand=True)
-    canvas = tk.Canvas(canvas_f, bg=_BG, highlightthickness=0)
-    sb = _HudScrollbar(canvas_f, canvas, color=_CYAN)
-    canvas.configure(yscrollcommand=sb.set); canvas.pack(side='left', fill='both', expand=True)
-    inner = tk.Frame(canvas, bg=_BG)
-    _cwin = canvas.create_window((0, 0), window=inner, anchor='nw', width=int(W*hud.zoom_factor))
-    def _upd_scroll(): 
-        if canvas.winfo_exists():
-            h = inner.winfo_reqheight()
-            ch = canvas.winfo_height()
-            canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), max(h, ch)))
-    inner.bind('<Configure>', lambda e: _upd_scroll())
-    def _on_wheel(e): canvas.yview_scroll(-1*(e.delta//120), 'units')
-    dlg.bind('<MouseWheel>', _on_wheel)
-
-    tk.Frame(inner, bg=_CYAN, height=2).pack(fill='x')
-    tk.Label(inner, text=i18n.tr('mail.header'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(pady=(14, 4))
-    tk.Label(inner, text=i18n.tr('mail.note'), bg=_BG, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 12))
-    s0 = _load_settings(); ma0 = s0.get('mail_account') if isinstance(s0.get('mail_account'), dict) else {}
-    email_var, pwd_var = tk.StringVar(value=str(ma0.get('email') or '')), tk.StringVar(value=str(ma0.get('password') or ''))
-    imap_var, smtp_var = tk.StringVar(value=str(ma0.get('imap_host') or '')), tk.StringVar(value=str(ma0.get('smtp_host') or ''))
-    tk.Label(inner, text=i18n.tr('mail.address'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
-    ent_email = ctk.CTkEntry(inner, textvariable=email_var, placeholder_text='name@gmail.com', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
-    ent_email.pack(fill='x', padx=24, pady=(5, 12)); _bind_ctk_entry_clipboard(dlg, ent_email, hud)
-    tk.Label(inner, text=i18n.tr('mail.pwd'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
-    ent_pwd = ctk.CTkEntry(inner, textvariable=pwd_var, placeholder_text=i18n.tr('mail.pwd'), show='*', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
-    ent_pwd.pack(fill='x', padx=24, pady=(5, 12)); _bind_ctk_entry_clipboard(dlg, ent_pwd, hud)
-    tk.Label(inner, text=i18n.tr('mail.servers'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
-    ent_imap = ctk.CTkEntry(inner, textvariable=imap_var, placeholder_text='IMAP (imap.yandex.ru)', font=(hud._F, JStyle.TEXT_SMALL), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=JStyle.H_TOOL)
-    ent_imap.pack(fill='x', padx=24, pady=(4, 6)); _bind_ctk_entry_clipboard(dlg, ent_imap, hud)
-    ent_smtp = ctk.CTkEntry(inner, textvariable=smtp_var, placeholder_text='SMTP (smtp.yandex.ru)', font=(hud._F, JStyle.TEXT_SMALL), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=JStyle.H_TOOL)
-    ent_smtp.pack(fill='x', padx=24, pady=(4, 8)); _bind_ctk_entry_clipboard(dlg, ent_smtp, hud)
-    def _confirm():
-        em, pw, ih, sh = email_var.get().strip(), pwd_var.get().strip(), imap_var.get().strip(), smtp_var.get().strip()
-        if not em or '@' not in em: return
-        if not pw: return
-        try:
-            from actions.mail_client import save_mail_account
-            save_mail_account(em, pw, ih, sh, 993, 587); on_done(); dlg.destroy()
-        except Exception: pass
-    ctk.CTkButton(inner, text=i18n.tr('buttons.save'), font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(10, 6))
-    ctk.CTkButton(inner, text=i18n.tr('buttons.cancel'), font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
-
-def _open_commands_help(parent, hud, meta: dict) -> None:
-    dlg = getattr(hud, '_ext_cmd_win', None)
-    if dlg and dlg.winfo_exists():
-        dlg.deiconify(); dlg.lift(); dlg.focus_force()
-        for w in dlg.winfo_children(): w.destroy()
-    else:
-        dlg = tk.Toplevel(parent); hud._ext_cmd_win = dlg
-        W, H = 720, 600
-        dlg.configure(bg=_BG)  # type: ignore[call-arg]
-        _set_dark_title_bar(dlg)
-        dlg.after(100, lambda: _set_dark_title_bar(dlg))
-        _apply_window_icon(dlg, hud)
-        dlg.title(f"{i18n.tr('extensions.commands_list')}: {meta.get('name', '').upper()}")
-        x = parent.winfo_rootx() + 50
-        y = parent.winfo_rooty() + 50
-        dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{x}+{y}')
-        dlg.resizable(True, True)
-
-    from ui.hud_themes import get_current_theme_name
-    _theme = get_current_theme_name()
-
-    tk.Frame(dlg, bg=_CYAN, height=2).pack(fill='x')
-
-    canvas_f = tk.Frame(dlg, bg=_BG); canvas_f.pack(fill='both', expand=True)
-    canvas2 = tk.Canvas(canvas_f, bg=_BG, highlightthickness=0); 
-    sb2 = _HudScrollbar(canvas_f, canvas2, color=_CYAN)
-    canvas2.configure(yscrollcommand=sb2.set); canvas2.pack(side='left', fill='both', expand=True)
-    
-    # Absolute fill: Window width is 720, so 720 it is.
-    inner2 = tk.Frame(canvas2, bg=_BG); _cwin2 = canvas2.create_window((0, 0), window=inner2, anchor='nw', width=int(720*hud.zoom_factor))
-    def _upd_scroll2(): 
-        if canvas2.winfo_exists():
-            h = inner2.winfo_reqheight()
-            ch = canvas2.winfo_height()
-            canvas2.configure(scrollregion=(0, 0, canvas2.winfo_width(), max(h, ch)))
-            
-    def _on_resize_cmd(e):
-        if not dlg.winfo_exists(): return
-        if e.widget != dlg: return
-        if canvas2.winfo_exists():
-            canvas2.itemconfig(_cwin2, width=e.width - 12)
-            _upd_scroll2()
-            
-    dlg.bind('<Configure>', _on_resize_cmd, add='+')
-    inner2.bind('<Configure>', lambda e: _upd_scroll2())
-    
-    def _on_wheel2(e):
-        if canvas2.winfo_exists(): canvas2.yview_scroll(-1 * (e.delta // 120), 'units')
-    def _bind_wheel2(w):
-        w.bind('<MouseWheel>', _on_wheel2)
-        for child in w.winfo_children(): _bind_wheel2(child)
-
-    for item in meta.get('commands', []):
-        row_outer = tk.Frame(inner2, bg=_BG)
-        row_outer.pack(fill='x', padx=(12, 12), pady=(0, 2))
-        
-        accent = tk.Frame(row_outer, bg=_CYAN, width=3)
-        accent.pack(side='left', fill='y')
-        
-        # Consistent row background
-        row_bg = _BG
-        hover_bg = _blend(_CYAN, 0.1) if _theme == 'light' else "#1a222d"
-        
-        row = tk.Frame(row_outer, bg=row_bg)
-        row.pack(side='left', fill='both', expand=True)
-        
-        def _on_ent_r(e, r=row, h=hover_bg):
-            r.configure(bg=h)  # type: ignore[call-arg]
-            for c in r.winfo_children(): c.configure(bg=h)  # type: ignore[call-arg]
-        def _on_lev_r(e, r=row, n=row_bg):
-            r.configure(bg=n)  # type: ignore[call-arg]
-            for c in r.winfo_children(): c.configure(bg=n)  # type: ignore[call-arg]
-        row.bind('<Enter>', _on_ent_r); row.bind('<Leave>', _on_lev_r)
-
-        tk.Label(row, text=f"«{item.get('say', '')}»", bg=row_bg, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(side='left', padx=18, pady=10)
-        tk.Label(row, text=item.get('do', ''), bg=row_bg, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL)).pack(side='right', padx=24, pady=10)
-
-    _bind_wheel2(dlg)
-    dlg.after(200, _upd_scroll2)
-
-ext_mgr = ExtensionManager()
-
-def _bind_ctk_entry_clipboard(parent, entry, hud):
-    def _inner(): return getattr(entry, '_entry', None)
-    def _clipboard_text() -> str:
-        try:
-            import pyperclip
-            t = pyperclip.paste()
-            if t: return str(t)
-        except Exception: pass
-        try: return str(parent.clipboard_get())
-        except Exception: return ''
-    def _first_line(s: str) -> str: return s.replace('\r\n', '\n').split('\n')[0].strip('\r\n')
-    def _paste(_e=None):
-        t = _first_line(_clipboard_text())
-        if not t: return 'break'
-        w = _inner()
-        if w is not None:
-            try:
-                if w.selection_present(): w.delete('sel.first', 'sel.last')
-                w.insert('insert', t)
-            except Exception: pass
-            return 'break'
-        try:
-            if hasattr(entry, 'selection_present') and entry.selection_present():
-                entry.delete('sel.first', 'sel.last')
-            entry.insert(tk.INSERT, t)
-        except Exception:
-            try:
-                cur = entry.get()
-                entry.delete(0, 'end'); entry.insert(0, cur + t)
-            except Exception: pass
-        return 'break'
-    def _copy(_e=None):
-        w = _inner()
-        try:
-            if w is not None and w.selection_present():
-                parent.clipboard_clear(); parent.clipboard_append(w.selection_get())
-            elif hasattr(entry, 'selection_present') and entry.selection_present():
-                parent.clipboard_clear(); parent.clipboard_append(entry.selection_get())
-        except Exception: pass
-        return 'break'
-    def _select_all(_e=None):
-        w = _inner()
-        if w is not None:
-            try:
-                w.select_range(0, 'end'); w.icursor('end')
-            except Exception: pass
-            return 'break'
-        try: entry.select_range(0, 'end')
-        except Exception: pass
-        return 'break'
-    menu = tk.Menu(parent, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, JStyle.TEXT_BODY))
-    menu.add_command(label=i18n.tr('context_menu.paste'), command=lambda: _paste())
-    menu.add_command(label=i18n.tr('context_menu.copy'), command=lambda: _copy())
-    menu.add_separator()
-    menu.add_command(label=i18n.tr('context_menu.select_all'), command=lambda: _select_all())
-    entry.bind('<Button-3>', lambda e: menu.tk_popup(e.x_root, e.y_root))
-    entry.bind('<Control-v>', _paste); entry.bind('<Control-V>', _paste); entry.bind('<Shift-Insert>', _paste)
-    entry.bind('<Control-c>', _copy); entry.bind('<Control-C>', _copy)
-    entry.bind('<Control-a>', _select_all); entry.bind('<Control-A>', _select_all)
 def open_extensions(hud, reopen: bool = False) -> None:
     if not reopen and hasattr(hud, '_ext_win') and hud._ext_win and hud._ext_win.winfo_exists():
         hud._ext_win.lift()
@@ -406,9 +25,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
     win.after(100, lambda: _set_dark_title_bar(win))
     hud._track_subwin('extensions', win, lambda: open_extensions(hud, reopen=True))
 
-
-
-
+    ext_mgr = ExtensionManager()
 
     ext_mgr.reload()
 
@@ -618,6 +235,43 @@ def open_extensions(hud, reopen: bool = False) -> None:
             elif eid == 'feature_mail_client':
                 def _reconfig_mail(): _ask_mail_setup(win, hud, _refresh_cards)
                 ctk.CTkButton(inner_row, text=i18n.tr('extensions.settings'), width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE, fg_color=_PANEL, hover_color=_blend(_CYAN, 0.15), text_color=_CYAN, border_color=_blend(_CYAN, 0.3), border_width=2, corner_radius=JStyle.RAD_PANEL, command=_reconfig_mail).pack(side="left", padx=8)
+            elif eid == 'game_planetbase':
+                try:
+                    from features.planetbase.installer import find_planetbase_path
+                    pb_path = find_planetbase_path()
+                    managed = pb_path / "Planetbase_Data" / "Managed" if pb_path else None
+                    mod_ok = managed is not None and (managed / "Assembly-CSharp.bak").exists() and (managed / "PlanetbaseTelemetry.dll").exists()
+                except Exception:
+                    mod_ok = False
+
+                is_uk = (i18n.get_language() == 'uk')
+                if mod_ok:
+                    m_text = "✓ МОД: АКТИВНИЙ" if is_uk else "✓ МОД: АКТИВЕН"
+                    m_col  = _CYAN
+                else:
+                    m_text = "⬇ МОД: ПОТРІБЕН" if is_uk else "⬇ МОД: ТРЕБУЕТСЯ"
+                    m_col  = _AMBER
+
+                def _do_pb_mod_install():
+                    import threading as _th
+                    def _run():
+                        try:
+                            from features.planetbase.installer import ensure_installed
+                            ensure_installed()
+                        except Exception:
+                            pass
+                        try: win.after(0, _refresh_cards)
+                        except Exception: pass
+                    _th.Thread(target=_run, daemon=True).start()
+
+                ctk.CTkButton(
+                    inner_row, text=m_text,
+                    width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE,
+                    fg_color=_PANEL, hover_color=_blend(m_col, 0.2), text_color=m_col,
+                    border_color=_blend(m_col, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL,
+                    command=_do_pb_mod_install
+                ).pack(side="left", padx=5)
+
             elif eid == 'game_ets2':
                 try:
                     from actions.ets2_telemetry_installer import is_telemetry_installed
@@ -639,21 +293,59 @@ def open_extensions(hud, reopen: bool = False) -> None:
                     except Exception: pass
 
                 ctk.CTkButton(
-                    inner_row, text=t_text, 
-                    width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE, 
+                    inner_row, text=t_text,
+                    width=160, font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE,
                     fg_color=_PANEL, hover_color=_blend(t_col, 0.2), text_color=t_col,
-                    border_color=_blend(t_col, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL, 
+                    border_color=_blend(t_col, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL,
                     command=_do_dll_install
                 ).pack(side="left", padx=5)
+
+                try:
+                    from features.ets2.llm import has_api_key as _ets2_has_key
+                    if _ets2_has_key():
+                        _s_ai = _load_settings()
+                        _ai_on = _s_ai.get('ets2_llm_enabled', True)
+                        _ai_text = ("◉ AI: УВМ" if _ai_on else "◎ AI: ВИМК") if is_uk else ("◉ AI: ВКЛ" if _ai_on else "◎ AI: ВЫКЛ")
+                        _ai_col = _CYAN if _ai_on else _DIM
+                        def _toggle_ets2_ai():
+                            _s = _load_settings()
+                            _s['ets2_llm_enabled'] = not _s.get('ets2_llm_enabled', True)
+                            _save_settings(_s)
+                            _refresh_cards()
+                        ctk.CTkButton(
+                            inner_row, text=_ai_text, width=130,
+                            font=("Consolas", 11, 'bold'), height=JStyle.H_LARGE,
+                            fg_color=_PANEL, hover_color=_blend(_ai_col, 0.2), text_color=_ai_col,
+                            border_color=_blend(_ai_col, 0.4), border_width=2, corner_radius=JStyle.RAD_PANEL,
+                            command=_toggle_ets2_ai,
+                        ).pack(side="left", padx=5)
+                except Exception:
+                    pass
         elif bundled:
             def _do_install(e=eid, m=meta):
                 if m.get('requires_chat_id'):
-                    _ask_chat_id(win, hud, lambda cid: (_save_env_key('TELEGRAM_CHAT_ID', cid), ext_mgr.install(e), _refresh_cards()))
+                    if os.environ.get('TELEGRAM_CHAT_ID'):
+                        ext_mgr.install(e); _refresh_cards()
+                    else:
+                        _ask_chat_id(win, hud, lambda cid: (_save_env_key('TELEGRAM_CHAT_ID', cid), ext_mgr.install(e), _refresh_cards()))
                 elif e == 'feature_mail_client':
                     s_m = _load_settings(); ma_m = s_m.get('mail_account')
                     if isinstance(ma_m, dict) and str(ma_m.get('email', '')).strip():
                         ext_mgr.install(e); _set_feature_module_flag('inbox_digest', True); _refresh_cards()
                     else: _ask_mail_setup(win, hud, lambda: (ext_mgr.install(e), _set_feature_module_flag('inbox_digest', True), _refresh_cards()))
+                elif e == 'game_planetbase':
+                    ext_mgr.install(e); _refresh_cards()
+                    def _run_pb_installer():
+                        import threading as _th
+                        def _t():
+                            try:
+                                from features.planetbase.installer import ensure_installed
+                                ensure_installed()
+                            except Exception: pass
+                            try: win.after(0, _refresh_cards)
+                            except Exception: pass
+                        _th.Thread(target=_t, daemon=True).start()
+                    win.after(300, _run_pb_installer)
                 elif e == 'game_ets2':
                     ext_mgr.install(e); _refresh_cards()
                     def _run_dll():
@@ -662,6 +354,7 @@ def open_extensions(hud, reopen: bool = False) -> None:
                             run_installer(tk_root=win)
                         except Exception: pass
                     win.after(200, _run_dll)
+                    win.after(1400, lambda: _ask_ets2_ai_setup(win, hud, on_done=_refresh_cards))
                 elif e == 'feature_calendar_ics':
                     ext_mgr.install(e); _set_feature_module_flag('calendar_ics', True)
                     if len(_load_settings().get('calendar_sources', [])) > 0: _refresh_cards()

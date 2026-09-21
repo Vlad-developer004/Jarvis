@@ -94,14 +94,6 @@ del _t  # Очистка временной переменной
 _DYN = 'dynamic'
 _STA = 'static'
 
-def get_month_name(month: int) -> str:
-    from core import i18n
-    return i18n.tr(f'mon.{month}')
-
-def get_day_name(day: int) -> str:
-    from core import i18n
-    return i18n.tr(f'day.{day}')
-
 _RU_MON  = {1: 'ЯНВ', 2: 'ФЕВ', 3: 'МАР', 4: 'АПР', 5: 'МАЙ', 6: 'ИЮН',
              7: 'ИЮЛ', 8: 'АВГ', 9: 'СЕН', 10: 'ОКТ', 11: 'НОЯ', 12: 'ДЕК'}
 

@@ -1,0 +1,70 @@
+{
+  "_comment": "Manually maintained free-tier limits per provider+model. rpm/rpd = '-' means paid only. Fetcher provides model IDs dynamically; this file is a lookup overlay.",
+  "groq": {
+    "llama-3.3-70b-versatile":               {"ctx": "128k", "rpm": "30",  "rpd": "1000",  "desc": "Proven versatile Llama 3.3"},
+    "llama-3.3-70b-specdec":                 {"ctx": "8k",   "rpm": "30",  "rpd": "1000",  "desc": "Llama 3.3 70B speculative"},
+    "llama-3.1-8b-instant":                  {"ctx": "128k", "rpm": "30",  "rpd": "14400", "desc": "Fast lightweight Llama 3.1"},
+    "llama-3.1-70b-versatile":               {"ctx": "128k", "rpm": "30",  "rpd": "1000",  "desc": "Llama 3.1 70B versatile"},
+    "llama-4-scout-17b-16e-instruct":        {"ctx": "131k", "rpm": "30",  "rpd": "1000",  "desc": "Llama 4 Scout 17B instruct"},
+    "llama-4-maverick-17b-128e-instruct":    {"ctx": "1M",   "rpm": "20",  "rpd": "500",   "desc": "Llama 4 Maverick 17B instruct"},
+    "mixtral-8x7b-32768":                    {"ctx": "32k",  "rpm": "30",  "rpd": "14400", "desc": "Classic MoE architecture"},
+    "gemma2-9b-it":                          {"ctx": "8k",   "rpm": "30",  "rpd": "14400", "desc": "Google Gemma 2 9B"},
+    "gemma-7b-it":                           {"ctx": "8k",   "rpm": "30",  "rpd": "14400", "desc": "Google Gemma 7B"},
+    "deepseek-r1-distill-llama-70b":         {"ctx": "128k", "rpm": "30",  "rpd": "1000",  "desc": "DeepSeek R1 distill Llama 70B"},
+    "deepseek-r1-distill-qwen-32b":          {"ctx": "128k", "rpm": "30",  "rpd": "1000",  "desc": "DeepSeek R1 distill Qwen 32B"},
+    "qwen-qwq-32b":                          {"ctx": "128k", "rpm": "30",  "rpd": "1000",  "desc": "Qwen QwQ 32B reasoning"},
+    "muse-spark-v1":                         {"ctx": "256k", "rpm": "30",  "rpd": "1440",  "desc": "Ultra-fast inference (Meta MSL)"},
+    "muse-spark-lite":                       {"ctx": "128k", "rpm": "60",  "rpd": "5000",  "desc": "Sub-second response (Meta MSL)"},
+    "whisper-large-v3":                      {"ctx": "-",    "rpm": "20",  "rpd": "2000",  "desc": "ASR — audio only"},
+    "whisper-large-v3-turbo":               {"ctx": "-",    "rpm": "20",  "rpd": "2000",  "desc": "ASR turbo — audio only"}
+  },
+  "openai": {
+    "gpt-4o":                {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "Omni flagship (paid)"},
+    "gpt-4o-mini":           {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "Fast efficient mini (paid)"},
+    "gpt-4-turbo":           {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "GPT-4 Turbo (paid)"},
+    "gpt-3.5-turbo":         {"ctx": "16k",  "rpm": "-", "rpd": "-", "desc": "Classic fast model (paid)"},
+    "o1":                    {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "Advanced reasoning (paid)"},
+    "o1-mini":               {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "Small reasoning (paid)"},
+    "o1-preview":            {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "Early reasoning model (paid)"},
+    "o3":                    {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "o3 flagship reasoning (paid)"},
+    "o3-mini":               {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "o3 mini reasoning (paid)"},
+    "o4-mini":               {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "o4 mini reasoning (paid)"},
+    "chatgpt-4o-latest":     {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "ChatGPT 4o latest (paid)"}
+  },
+  "google": {
+    "gemini-2.5-pro":                     {"ctx": "2M",  "rpm": "5",  "rpd": "25",   "desc": "Flagship 2.5 deep reasoning"},
+    "gemini-2.5-pro-preview-06-05":       {"ctx": "2M",  "rpm": "5",  "rpd": "25",   "desc": "Flagship 2.5 deep reasoning"},
+    "gemini-2.5-flash":                   {"ctx": "1M",  "rpm": "10", "rpd": "250",  "desc": "Fast 2.5 multimodal"},
+    "gemini-2.5-flash-preview-05-20":     {"ctx": "1M",  "rpm": "10", "rpd": "250",  "desc": "Fast 2.5 multimodal"},
+    "gemini-2.5-flash-lite-preview-06-17":{"ctx": "1M",  "rpm": "30", "rpd": "1000", "desc": "Lightweight 2.5 flash"},
+    "gemini-2.0-flash":                   {"ctx": "1M",  "rpm": "15", "rpd": "1500", "desc": "Flash 2.0 multimodal"},
+    "gemini-2.0-flash-lite":              {"ctx": "1M",  "rpm": "30", "rpd": "1500", "desc": "Ultra low latency"},
+    "gemini-2.0-flash-thinking-exp":      {"ctx": "1M",  "rpm": "10", "rpd": "1500", "desc": "Experimental thinking mode"},
+    "gemini-1.5-pro":                     {"ctx": "2M",  "rpm": "2",  "rpd": "50",   "desc": "Stable 1.5 pro"},
+    "gemini-1.5-pro-latest":              {"ctx": "2M",  "rpm": "2",  "rpd": "50",   "desc": "Stable 1.5 pro latest"},
+    "gemini-1.5-flash":                   {"ctx": "1M",  "rpm": "15", "rpd": "1500", "desc": "Proven speed flagship"},
+    "gemini-1.5-flash-latest":            {"ctx": "1M",  "rpm": "15", "rpd": "1500", "desc": "Proven speed flagship"},
+    "gemini-1.5-flash-8b":               {"ctx": "1M",  "rpm": "15", "rpd": "1500", "desc": "Lightweight 1.5 flash"}
+  },
+  "deepseek": {
+    "deepseek-chat":     {"ctx": "64k",  "rpm": "-", "rpd": "-", "desc": "Proven chat model (paid)"},
+    "deepseek-reasoner": {"ctx": "64k",  "rpm": "-", "rpd": "-", "desc": "Advanced R1 reasoning (paid)"},
+    "deepseek-v3":       {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "Current V3 flagship (paid)"},
+    "deepseek-v3-0324":  {"ctx": "128k", "rpm": "-", "rpd": "-", "desc": "V3 March 2024 snapshot (paid)"}
+  },
+  "anthropic": {
+    "claude-opus-4-5":              {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "Most capable Claude (paid)"},
+    "claude-sonnet-4-5":            {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "Balanced intelligence (paid)"},
+    "claude-haiku-4-5":             {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "Fast lightweight (paid)"},
+    "claude-opus-4-5-20251101":     {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "Most capable Claude (paid)"},
+    "claude-sonnet-4-5-20251022":   {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "Balanced intelligence (paid)"},
+    "claude-haiku-4-5-20251001":    {"ctx": "200k", "rpm": "-", "rpd": "-", "desc": "Fast lightweight (paid)"},
+    "claude-3-5-sonnet-latest":     {"ctx": "200k", "rpm": "5", "rpd": "50",  "desc": "Stable Claude 3.5 Sonnet"},
+    "claude-3-5-sonnet-20241022":   {"ctx": "200k", "rpm": "5", "rpd": "50",  "desc": "Stable Claude 3.5 Sonnet"},
+    "claude-3-5-haiku-latest":      {"ctx": "200k", "rpm": "5", "rpd": "50",  "desc": "Fast Claude 3.5 Haiku"},
+    "claude-3-5-haiku-20241022":    {"ctx": "200k", "rpm": "5", "rpd": "50",  "desc": "Fast Claude 3.5 Haiku"},
+    "claude-3-opus-latest":         {"ctx": "200k", "rpm": "5", "rpd": "20",  "desc": "Claude 3 Opus power"},
+    "claude-3-opus-20240229":       {"ctx": "200k", "rpm": "5", "rpd": "20",  "desc": "Claude 3 Opus power"}
+  },
+  "openrouter": {}
+}

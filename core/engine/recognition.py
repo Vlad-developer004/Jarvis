@@ -3,8 +3,64 @@ import re
 import queue as _queue_mod
 import threading as _threading_mod
 from core.system import app_state
-_REFUEL_STOP = _threading_mod.Event()
-_WAKE_RE = re.compile('\\b(джарвис|джарвиса|джарвису|джарвисе|жарвис|жарвиса|жарвису|шарвис|шарвиса|жорвис|джорвис|жарвист|жаркс|джаркс|жарост|жарност|жарс|жорс|джорс|жорпс|джорпс|джервис|джарвиз|джарвест|джаравис|джарверс|джаверс|бобик)\\b', re.IGNORECASE)
+from core.logging_setup import get_logger as _get_logger
+from core.speech import stop_speaking, is_speaking
+from core.nlp import _normalize_stt, extract_all_commands
+from core.nlp.commands import CANON_SIMPLE, normalize_numbers
+from core.nlp.semantic import classify_intent
+from ui.voice_prompt_bridge import try_consume_voice_prompt
+from core.engine.ets2_commands import _handle_telemetry_action
+
+_log = _get_logger('recognition')
+
+def _wait_until_not_speaking(timeout: float = 0.1, poll: float = 0.02) -> None:
+    """Poll is_speaking() instead of a blind sleep, so we proceed as soon as
+    in-flight TTS generation settles after stop_speaking() rather than always
+    waiting the full timeout."""
+    deadline = time.time() + timeout
+    while is_speaking() and time.time() < deadline:
+        time.sleep(poll)
+_WAKE_BASES_SEARCH = ('джарвис', 'джарвіс')
+_WAKE_BASES_SUB = ('джарвис', 'джарвіс')
+
+class WakeRegex:
+    def search(self, text: str):
+        words = re.findall(r'\b\w+\b', text)
+        for w in words:
+            wl = w.lower()
+            if wl in _WAKE_BASES_SEARCH:
+                return True
+        from rapidfuzz.distance import Levenshtein
+        for w in words:
+            wl = w.lower()
+            for base in _WAKE_BASES_SEARCH:
+                dist = Levenshtein.distance(wl, base)
+                limit = 1 if len(wl) <= 5 else 2
+                if dist <= limit:
+                    return True
+        return None
+
+    def sub(self, repl, text, count=1):
+        from rapidfuzz.distance import Levenshtein
+        replaced = 0
+        def replace_fn(match):
+            nonlocal replaced
+            if count is not None and replaced >= count:
+                return match.group(0)
+            wl = match.group(0).lower()
+            if wl in _WAKE_BASES_SUB:
+                replaced += 1
+                return repl
+            for base in _WAKE_BASES_SUB:
+                dist = Levenshtein.distance(wl, base)
+                limit = 1 if len(wl) <= 5 else 2
+                if dist <= limit:
+                    replaced += 1
+                    return repl
+            return match.group(0)
+        return re.sub(r'\b\w+\b', replace_fn, text, count=count)
+
+_WAKE_RE = WakeRegex()
 _GAME_ON_VERBS = ('включи', 'активируй', 'запусти', 'подготовь')
 _GAME_OFF_VERBS = ('выключи', 'отключи', 'отмени', 'деактивируй', 'выйди', 'закрой', 'завершить', 'закрыть', 'завершить')
 _GAME_OFF_EXACT = frozenset({
@@ -42,493 +98,158 @@ def _is_game_mode_on_phrase(text_norm: str) -> bool:
     has_prefix = any(p in padded for p in _GO_PREFIXES)
     has_game_frag = any(frag in padded for frag in _QUICK_GAME_FRAGS)
     return has_prefix and has_game_frag
-def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
-    def _speak(msg: str):
-        try:
-            from core.speech import speak_async
-            speak_async(msg)
-        except Exception: pass
+
+_PLAY_YT_RE = re.compile(
+    r'\b(включи|поставь|запусти|найди|увімкни|знайди)\s+'
+    r'(видео|ролик|клип|кліп|музыку|музику|пісню|песню)\b',
+    re.IGNORECASE
+)
+
+_TIMER_SET_RE = re.compile(
+    r'\b(поставь|засеки|запусти|установи)\b.{0,20}\bтаймер\b'
+    r'|\bтаймер\b.{0,20}\b(поставь|засеки|запусти|установи)\b'
+    r'|\bтаймер\s+на\s+\w',
+    re.IGNORECASE
+)
+_TIMER_ADD_RE = re.compile(r'\b(добавь|продли)\b.{0,25}\bтаймер\b', re.IGNORECASE)
+_TIMER_CANCEL_RE = re.compile(r'\b(отмени|сбрось|скасуй)\b.{0,10}\bтаймер\b', re.IGNORECASE)
+_TIMER_STATUS_RE = re.compile(r'\bсколько\b.{0,20}\b(осталось|залишилось)\b', re.IGNORECASE)
+# App volume: "громкость/звук <app> на <n>" — must bypass ML (misclassified as vol_zero/vol_set)
+# Requires a non-numeric app-name word between the volume keyword and "на <digits>"
+_APP_VOL_SET_RE = re.compile(
+    r'\b(громкость|гучність|звук)\s+([а-яёa-z]\w*)\s+на\s+(\d+)\b',
+    re.IGNORECASE
+)
+_APP_VOL_UP_RE = re.compile(
+    r'\b(громче|гучніше|прибавь|збільши)\b.{0,20}\b(\w+(?:\s+\w+)?)\s+(громкость|гучність|звук)\b'
+    r'|\b(громкость|гучність|звук)\s+([а-яёa-z]\w*)\s+(громче|гучніше|выше|вище)\b',
+    re.IGNORECASE
+)
+_APP_VOL_DOWN_RE = re.compile(
+    r'\b(тише|тихіше|убавь|зменши)\b.{0,20}\b(\w+(?:\s+\w+)?)\s+(громкость|гучність|звук)\b'
+    r'|\b(громкость|гучність|звук)\s+([а-яёa-z]\w*)\s+(тише|тихіше|ниже|нижче)\b',
+    re.IGNORECASE
+)
+# Tab commands — must bypass ML model (it confuses them with window/context actions)
+# Matches only when a number/ordinal is present → close_tab_n / browser_tab (goto)
+_TAB_NUM = (
+    r'(?:\d+|'
+    r'перв\w+|втор\w+|трет\w+|четвёрт\w+|четверт\w+|пят\w+|шест\w+|седьм\w+|'
+    r'восьм\w+|девят\w+|десят\w+|одиннадцат\w+|двенадцат\w+|тринадцат\w+|'
+    r'четырнадцат\w+|пятнадцат\w+|шестнадцат\w+|семнадцат\w+|восемнадцат\w+|'
+    r'девятнадцат\w+|двадцат\w+|'
+    r'перш\w+|друг\w+|трет\w+|четверт\w+)'
+)
+_TAB_OPEN_N_RE = re.compile(
+    r'\b(открой|перейди|переключись|відкрий)\b.{0,20}' + _TAB_NUM + r'.{0,10}\bвкладк'
+    r'|\b(открой|перейди|переключись|відкрий)\b.{0,5}\bвкладк.{0,10}' + _TAB_NUM,
+    re.IGNORECASE
+)
+_TAB_OPEN_NEW_RE = re.compile(
+    r'\b(создай|открой|відкрий|створи)\b.{0,10}\b(новую|нову|новая|нова)?\s*вкладк'
+    r'|\bновая вкладка\b|\bнова вкладка\b',
+    re.IGNORECASE
+)
+_TAB_CLOSE_N_RE = re.compile(
+    r'\b(закрой|закрий)\b.{0,20}' + _TAB_NUM + r'.{0,10}\bвкладк'
+    r'|\b(закрой|закрий)\b.{0,5}\bвкладк.{0,10}' + _TAB_NUM,
+    re.IGNORECASE
+)
+_TAB_CLOSE_CUR_RE = re.compile(
+    r'\b(закрой|закрий)\b.{0,15}\b(текущую|поточну|эту|цю)?\s*вкладк',
+    re.IGNORECASE
+)
+
+def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, str]]:
+    """Semantic replacement for extract_all_commands. Returns [(intent, text)] or [].
+
+    Pass is_waiting_answer=True when the system is waiting for a yes/no
+    confirmation — enables Layer 0 confirmation intercept in the classifier.
+    """
+    # CANON exact-match takes priority even over wake-word detection — phrases like
+    # "закрой джарвиса" contain the wake word but must resolve to jarvis_exit, not 'wake'.
     try:
-        from actions.ets2_telemetry import get as _tget
-        data = _tget()
-    except ImportError: return
-    
-    print(f"[RECOGNITION] Executing telemetry action: {action!r} (Source text: {text!r})", flush=True)
-    if action == 'telemetry_diag':
-        from actions.ets2_telemetry import is_available as _ia, _read_raw as _rr
-        if not _ia():
-            _speak('Модуль телеметрии не установлен. Запустите инсталлятор плагина.')
-            return
-        raw = _rr()
-        if raw is None:
-            _speak('Телеметрия недоступна. Убедитесь что ETS2 запущена и плагин активен. Подробности — в файле logs/telemetry_debug.log.')
-            return
-        spd = float(raw.get('speed', 0)) * 3.6
-        sdk = raw.get('sdkActive', '?')
-        _speak(f'Телеметрия работает. Скорость {int(spd)} км/ч. SDK активен: {sdk}.')
-    elif action == 'fuel_status':
-        if data:
-            f_range = int(round(float(data.get('fuelRange', 0))))
-            cap = float(data.get('fuelCapacity') or 1)
-            f_pct = int(round(float(data.get('fuel', 0)) / cap * 100))
-            _speak(f'Запас хода {f_range} километров, топлива в баке {f_pct} процентов.')
-        else: _speak('Телеметрия недоступна.')
-    elif action == 'truck_status':
-        if data:
-            f_range = int(round(float(data.get('fuelRange', 0))))
-            engine = 'двигатель работает' if data.get('engineEnabled') else 'двигатель заглушен'
-            brake = 'ручник поднят' if data.get('parkBrake') else 'ручник снят'
-            _speak(f'Статус тягача: {engine}, {brake}. Запас хода {f_range} километров.')
-        else: _speak('Телеметрия недоступна.')
-    elif action == 'route_status':
-        if data:
-            dist = float(data.get('routeDistance', 0))
-            dist_km = int(round(dist / 1000)) if dist > 1000 else int(round(dist))
-            unit = 'километров' if dist > 1000 else 'метров'
-            mins = int(round(float(data.get('routeTime', 0)) / 60))
-            from core.nlp import format_duration_russian
-            _speak(f'До пункта назначения {dist_km} {unit}. Расчётное время в пути — {format_duration_russian(mins)}.')
-        else: _speak('Телеметрия недоступна.')
-    elif action == 'rest_status':
-        if data:
-            rest = int(data.get('restStop', -1))
-            if rest <= 0: _speak('Данные об усталости недоступны.')
-            else:
-                from core.nlp import format_duration_russian
-                txt = format_duration_russian(rest)
-                h = rest // 60
-                if h >= 3: _speak(f'Водитель в норме. До обязательного отдыха {txt}.')
-                elif h >= 1: _speak(f'До обязательного отдыха {txt}. Рекомендую планировать остановку.')
-                else: _speak(f'Сэр, водитель очень устал. До обязательного отдыха {txt}.')
-    elif action == 'break_time':
-        _speak('Аварийка включена, ручник затянут, двигатель заглушен. Хорошего отдыха, сэр.')
-    elif action == 'night_mode':
-        try:
-            from actions.game_input import press_robust
-            if not data.get('lightsBeamLow'): press_robust('l'); time.sleep(0.15)
-            if not data.get('lightsBeamHigh'): press_robust('k')
-            _speak('Ночной режим. Ближний и дальний свет включены.')
-        except Exception: _speak('Не удалось переключить освещение.')
-    elif action == 'morning_mode':
-        try:
-            from actions.game_input import press_robust
-            if data.get('lightsBeamHigh'): press_robust('k'); time.sleep(0.15)
-            if data.get('lightsBeamLow'): press_robust('l')
-            _speak('Утренний режим. Освещение выключено.')
-        except Exception: _speak('Не удалось переключить освещение.')
-    elif action == 'diagnostic_report':
-        try:
-            from features.ets2 import get_wear_report
-            _speak(get_wear_report())
-        except Exception: _speak('Не удалось получить данные диагностики.')
-    elif action == 'cruise_off':
-        from actions.ets2_telemetry import get_cruise_active
-        if get_cruise_active() is True:
-            from actions.game_input import get_binding, press_robust
-            press_robust(get_binding('cruise', 'c'))
-    elif action == 'cruise_set':
-        import re as _re
-        from core.nlp.commands import normalize_numbers as _nn
-        nums = _re.findall(r'\d+', _nn(text.lower()))
-        if not nums:
-            _speak('Скажите целевую скорость, например: круиз контроль восемьдесят.')
-            return
-        target_kmh = max(30, min(160, int(nums[0])))
-        try:
-            from actions.ets2_telemetry import get_cruise_speed_kmh as _cruise_kmh, get_speed_kmh as _spd_kmh, get_cruise_active as _ca
-            active = _ca()
-            current_target = _cruise_kmh()
-            truck_spd = _spd_kmh()
-            
-            # Use current cruise target for comparison if active, otherwise use truck speed
-            base_for_compare = current_target if (active and current_target and current_target > 0) else truck_spd
-            if base_for_compare is None: base_for_compare = 30.0
-            
-            if target_kmh == int(round(base_for_compare / 5.0) * 5.0):
-                _speak(f'Круиз уже настроен на {target_kmh} км/ч.')
-                return
-            
-            current_kmh = base_for_compare
-        except Exception:
-            current_kmh = 30.0
-            
-        # Check and disable auto-cruise if active
-        try:
-            from features.ets2 import monitor as _mon
-            if getattr(_mon, '_auto_cruise', False):
-                _mon.set_auto_cruise(False)
-                _speak(f'Сэр, устанавливаю {target_kmh}. Авто-круиз отключён.')
-            else:
-                direction = 'Повышаю' if target_kmh > current_kmh else 'Снижаю'
-                _speak(f'{direction} круиз до {target_kmh} км/ч.')
-        except Exception:
-            pass
+        _t_pre = normalize_numbers(_normalize_stt(text).lower().strip())
+        _canon_hit_pre = CANON_SIMPLE.get(_t_pre) or CANON_SIMPLE.get(text.lower().strip())
+        if _canon_hit_pre:
+            return [(_canon_hit_pre, text)]
+    except Exception:
+        pass
+    # Wake words must never reach the semantic classifier — they get misclassified
+    if _WAKE_RE.search(text.lower()):
+        return [('wake', text)]
+    # "открой браузер и ютуб" → open both independently; YouTube as app, not tab
+    _tl = text.lower()
+    if re.search(r'\bбраузер\b', _tl) and re.search(r'\bютуб\b', _tl):
+        return [('open_browser', text), ('open_youtube', text)]
+    # Structural rule: "включи/поставь видео/ролик/клип/музыку [anything]" → play_yt
+    # Use the LAST match so "включи песню включи видео" → plays video, not song
+    _yt_matches = list(_PLAY_YT_RE.finditer(text))
+    if _yt_matches:
+        return [('play_yt', text[_yt_matches[-1].start():])]
+    # Timer rules — bypass semantic model until rebuild
+    if _TIMER_ADD_RE.search(text):
+        return [('timer_add', text)]
+    if _TIMER_CANCEL_RE.search(text):
+        return [('timer_cancel', text)]
+    if _TIMER_STATUS_RE.search(text):
+        return [('timer_status', text)]
+    if _TIMER_SET_RE.search(text):
+        return [('timer_set', text)]
+    # Tab commands — bypass ML model entirely (order: numbered first, then simple)
+    if _TAB_CLOSE_N_RE.search(text):
+        return [('close_tab_n', text)]
+    if _TAB_CLOSE_CUR_RE.search(text):
+        return [('close_tab', text)]
+    # App-specific volume — must come before CANON/ML to avoid vol_zero misclassification
+    # normalize_numbers converts "сто" → "100" so the digit-based regex works
+    try:
+        _text_norm_vol = normalize_numbers(text.lower())
+    except Exception:
+        _text_norm_vol = text
+    if _APP_VOL_SET_RE.search(_text_norm_vol):
+        return [('app_vol_set', text)]
+    if _APP_VOL_UP_RE.search(text):
+        return [('app_vol_up', text)]
+    if _APP_VOL_DOWN_RE.search(text):
+        return [('app_vol_down', text)]
+    if _TAB_OPEN_N_RE.search(text):
+        return [('browser_tab', text)]
+    if _TAB_OPEN_NEW_RE.search(text):
+        return [('browser_tab', text)]
+    # CANON exact-match takes priority over the ML model — avoids misclassification
+    # of well-known phrases like "открой корзину" → open_word
+    try:
+        _t = normalize_numbers(_normalize_stt(text).lower().strip())
+        _canon_hit = CANON_SIMPLE.get(_t) or CANON_SIMPLE.get(text.lower().strip())
+        if _canon_hit:
+            return [(_canon_hit, text)]
+    except Exception:
+        pass
+    # Guard: if any qa keyword appears in the first 4 words → qa_search regardless of classifier
+    _QA_WORDS = {'скажи', 'расскажи', 'поясни', 'объясни', 'розкажи', 'відповідай', 'ответь', 'відповіди'}
+    _tl_strip = text.lower().strip()
+    _first_words = set(_tl_strip.split()[:4])
+    if _first_words & _QA_WORDS:
+        return [('qa_search', text)]
+    try:
+        intent = classify_intent(text, is_waiting_answer=is_waiting_answer)
+        if intent:
+            if intent == 'reported_speech':
+                return []
+            return [(intent, text)]
+    except Exception:
+        pass
+    # Fallback to rule-based matcher when semantic returns None or fails
+    try:
+        cmds = extract_all_commands(text)
+        # Never surface reported_speech as an executable command
+        return [(c, s) for c, s in cmds if c != 'reported_speech']
+    except Exception:
+        return []
 
-        from actions.game_input import cruise_set_speed as _css
-        ok, actual = _css(target_kmh, current_kmh)
-        if not ok:
-            # Only speak error if it failed completely
-            pass
-    elif action == 'cruise_adjust':
-        import re as _re
-        from core.nlp.commands import normalize_numbers as _nn
-        nums = _re.findall(r'\d+', _nn(text.lower()))
-        delta_kmh = int(nums[0]) if nums else 5
-        delta_kmh = max(5, (round(delta_kmh / 5.0)) * 5)
-        _UP   = ('увеличь', 'прибавь', 'добавь', 'повысь', 'ускорь', 'подними', 'больше')
-        _DOWN = ('уменьши', 'убери',   'снизь',   'замедли', 'сбрось', 'опусти', 'меньше')
-        text_low = text.lower()
-        is_down = any(w in text_low for w in _DOWN)
-        if is_down:
-            delta_kmh = -delta_kmh
-        try:
-            from actions.ets2_telemetry import get_cruise_speed_kmh as _ckm, get_speed_kmh as _spd
-            base = _ckm()
-            if base is None or base < 5.0:
-                base = _spd() or 60.0
-        except Exception:
-            base = 60.0
-        base_snapped = round(base / 5.0) * 5.0
-        target = max(30, min(160, int(base_snapped + delta_kmh)))
-        
-        # Check and disable auto-cruise if active
-        try:
-            from features.ets2 import monitor as _mon
-            if getattr(_mon, '_auto_cruise', False):
-                _mon.set_auto_cruise(False)
-                _speak(f'Корректирую до {target}. Авто-круиз отключён.')
-            else:
-                direction_text = 'Увеличиваю' if delta_kmh > 0 else 'Снижаю'
-                _speak(f'{direction_text} круиз до {target} км/ч.')
-        except Exception:
-            pass
-            
-        from actions.game_input import cruise_set_speed as _css
-        ok, actual = _css(target, base_snapped)
-        if not ok:
-            pass
-    elif action == 'cruise_limit':
-        try:
-            from actions.ets2_telemetry import get_speed_limit_kmh as _lim, get_cruise_speed_kmh as _ckm, get_speed_kmh as _spd
-            limit = _lim()
-            if limit is None or limit < 10:
-                _speak('Данные об ограничении скорости недоступны.')
-                return
-            target_kmh = int(round(limit / 5.0) * 5.0)
-            current = _ckm()
-            if current is None:
-                current = _spd() or 30.0
-            from actions.game_input import cruise_set_speed as _css
-            ok, actual = _css(target_kmh, current)
-            if ok:
-                _speak(f'Круиз установлен по ограничению: {actual} км/ч.')
-            else:
-                _speak('Не удалось установить круиз по ограничению.')
-        except Exception as _e:
-            _speak(f'Ошибка: {_e}')
-    elif action == 'gear_set':
-        import re as _re
-        from core.nlp.commands import normalize_numbers as _nn
-        # The 'text' argument now contains the clean text_for_game
-        t = _nn(text.lower())
-        
-        want: int | None = None
-        
-        # Check for specific words first (more robust than numbers)
-        if any(w in t for w in ('нейтрал', 'neutral')):
-            want = 0
-        elif any(w in t for w in ('задн', 'реверс', 'reverse', 'назад', 'задка')):
-            want = -1
-        else:
-            nums = _re.findall(r'\d+', t)
-            if nums:
-                want = int(nums[0])
-        
-        if want is None:
-            _speak('Скажите номер передачи или режим (нейтраль, задний ход).')
-            return
-        try:
-            from actions.ets2_telemetry import get_gear as _get_gear
-            cur = _get_gear()
-        except Exception:
-            cur = None
-        if cur is None:
-            _speak('Не вижу текущую передачу по телеметрии. Включите телеметрию ETS2 и проверьте плагин.')
-            return
-        try:
-            from actions.game_input import set_gear as _set_gear
-            ok, actual = _set_gear(int(want), int(cur))
-            if ok:
-                if actual == -1:
-                    _speak('Задний ход.')
-                elif actual == 0:
-                    _speak('Нейтраль.')
-                else:
-                    _speak(f'Передача {actual}.')
-            else:
-                _speak('Не удалось переключить передачу. Проверьте биндинги и режим коробки.')
-        except Exception:
-            _speak('Не удалось переключить передачу.')
-    elif action == 'auto_cruise_on':
-        try:
-            from features.ets2 import monitor as _mon
-            _mon.set_auto_cruise(True)
-            _speak('Авто-круиз включён. Буду следить за ограничением скорости и корректировать круиз-контроль.')
-            # Engage cruise control immediately if possible
-            try:
-                from actions.ets2_telemetry import get_speed_kmh, get_speed_limit_kmh, get_cruise_active
-                if get_cruise_active() is False:
-                    speed = get_speed_kmh()
-                    limit = get_speed_limit_kmh()
-                    if speed and speed >= 30.0:
-                        target = limit if (limit and limit > 30) else speed
-                        from actions.game_input_parts.driving import cruise_set_speed
-                        cruise_set_speed(int(target), speed, auto_mode=False)
-            except Exception: pass
-        except Exception:
-            _speak('Не удалось включить авто-круиз.')
-    elif action == 'auto_cruise_off':
-        try:
-            from features.ets2 import monitor as _mon
-            _mon.set_auto_cruise(False)
-            _speak('Авто-круиз выключен. Управляйте круиз-контролем вручную.')
-        except Exception:
-            pass
-    elif action == 'go_to_sleep':
-        try:
-            from actions.ets2_telemetry import get as _tget
-            from actions.game_input import get_binding, cast_command
-            import pydirectinput as _pdi
-            _pdi.PAUSE = 0
-            data = _tget()
-            if data:
-                from actions.game_input import press_robust
-                if not data.get('parkBrake'):
-                    press_robust(get_binding('handbrake', 'space'))
-                    time.sleep(0.3)
-                if data.get('engineEnabled'):
-                    press_robust(get_binding('engine', 'e'))
-                    time.sleep(0.3)
-                cast_command('fake_text_for_lights', fuzzy_threshold=1.0)
-                from actions.ets2_telemetry import get_lights_parking, get_lights_low
-                if get_lights_low():
-                    press_robust(get_binding('lights_main', 'l'))
-                    time.sleep(0.1)
-                    press_robust(get_binding('lights_main', 'l'))
-                time.sleep(0.5)
-            from actions.game_input import press_robust
-            press_robust(get_binding('action', 'enter'))
-        except Exception:
-            try:
-                import pyautogui as _pag
-                _pag.press('enter')
-            except Exception: pass
-    elif action == 'wake_up':
-        try:
-            from actions.ets2_telemetry import get as _tget
-            from actions.game_input import get_binding, cast_command
-            import pydirectinput as _pdi
-            _pdi.PAUSE = 0
-            try:
-                from actions.game_input import press_robust
-                press_robust(get_binding('action', 'enter'))
-                time.sleep(0.25)
-            except Exception:
-                pass
-            data = _tget()
-            engine_key = get_binding('engine', 'e')
-            from actions.game_input import press_robust
-            # Start engine with a long hold for reliability
-            try:
-                import pydirectinput as _pdi
-                _pdi.keyDown(engine_key)
-                time.sleep(2.0)
-                _pdi.keyUp(engine_key)
-            except Exception:
-                press_robust(engine_key, duration=2.0)
-            time.sleep(0.5)
-            if data and data.get('parkBrake'):
-                from actions.game_input import press_robust
-                press_robust(get_binding('handbrake', 'space'))
-                time.sleep(0.3)
-            cast_command('подготовь тягач', fuzzy_threshold=0.9)
-        except Exception:
-            pass
-    elif action == 'close_game':
-        from core.system import app_state as _as
-        _as.game_mode = False
-        try:
-            from actions.game_input import unload_profile
-            unload_profile()
-        except Exception: pass
-        try:
-            import pyautogui as _pag
-            _pag.hotkey('alt', 'f4')
-        except Exception:
-            try:
-                import subprocess
-                subprocess.Popen(['taskkill', '/F', '/IM', 'eurotrucks2.exe'],
-                                 creationflags=0x08000000)
-            except Exception: pass
-    elif action == 'refuel_start':
-        import threading as _threading
-        import time as _time
-        _REFUEL_STOP.set()
-        _time.sleep(0.15)
-        _REFUEL_STOP.clear()
-        def _refuel_loop():
-            try:
-                import pydirectinput as _pdi
-                from actions.ets2_telemetry import get as _tget
-                from actions.game_input import get_binding, press_robust
-                
-                _pdi.PAUSE = 0
-                d = _tget()
-                if not d:
-                    _speak('Телеметрия недоступна — не могу контролировать заправку.')
-                    return
 
-                # 1. Prepare: Stop engine and set handbrake
-                if d.get('engineEnabled'):
-                    _speak('Глушу двигатель для заправки.')
-                    press_robust(get_binding('engine', 'e'))
-                    _time.sleep(1.2)
-                
-                if not d.get('parkBrake'):
-                    press_robust(get_binding('handbrake', 'space'))
-                    _time.sleep(0.3)
-
-                # 2. Refuel: Hold Action key (Enter)
-                key = get_binding('action', 'enter')
-                cap = float(d.get('fuelCapacity') or 0)
-                if cap <= 0:
-                    _speak('Нет данных о ёмкости бака. Заправляйте вручную.')
-                    return
-                
-                pct = float(d.get('fuel', 0)) / cap * 100
-                if pct >= 99.0:
-                    _speak('Бак уже полный.')
-                    return
-                
-                _speak(f'Начинаю заправку. Удерживаю клавишу.')
-                _pdi.keyDown(key)
-                max_sec = 360
-                poll_sec = 1.0
-                elapsed = 0.0
-                last_pct = pct
-                while elapsed < max_sec and not _REFUEL_STOP.is_set():
-                    _time.sleep(poll_sec)
-                    elapsed += poll_sec
-                    d = _tget()
-                    if not d: break
-                    pct = float(d.get('fuel', 0)) / cap * 100
-                    for milestone in (50, 75, 90, 95):
-                        if last_pct < milestone <= pct:
-                            _speak(f'Бак {milestone} процентов.')
-                            break
-                    last_pct = pct
-                    if pct >= 99.5:
-                        break
-                _pdi.keyUp(key)
-                if _REFUEL_STOP.is_set():
-                    _speak(f'Заправка остановлена. Бак {int(pct)} процентов.')
-                elif pct >= 99.0:
-                    _speak('Бак полный. Заправка завершена. Запускаю все системы.')
-                    _time.sleep(0.5)
-                    # Start engine and prepare truck
-                    from actions.game_input import cast_command as _cc
-                    _cc('подготовь тягач', fuzzy_threshold=0.9)
-                else:
-                    _speak(f'Заправка прервана. Бак {int(pct)} процентов.')
-            except Exception as _re:
-                try:
-                    import pydirectinput as _pdi
-                    from actions.game_input import get_binding
-                    _pdi.keyUp(get_binding('refuel', 'r'))
-                except Exception:
-                    pass
-                _speak(f'Ошибка заправки: {_re}')
-        _threading.Thread(target=_refuel_loop, daemon=True, name='ets2-refuel').start()
-    elif action == 'refuel_stop':
-        _REFUEL_STOP.set()
-    elif action == 'unload_cargo':
-        try:
-            from actions.ets2_telemetry import get as _tget
-            from actions.game_input import get_binding
-            import pydirectinput as _pdi
-            _pdi.PAUSE = 0
-            data = _tget() or {}
-            hb_key = get_binding('handbrake', 'space')
-            eng_key = get_binding('engine', 'e')
-            wip_key = get_binding('wipers', 'p')
-            lights_key = get_binding('lights_main', 'l')
-            high_key = get_binding('lights_high', 'k')
-            trailer_key = get_binding('trailer', 't')
-            action_key = get_binding('action', 'enter')
-            from actions.game_input import press_robust
-            try:
-                if not bool(data.get('parkBrake')):
-                    print(f"[INPUT] Pressing key: {hb_key!r} (duration=0.1s)", flush=True)
-                    try:
-                        _pdi.keyDown(hb_key)
-                        time.sleep(0.1)
-                        _pdi.keyUp(hb_key)
-                    except Exception as e:
-                        print(f"[INPUT] Error pressing {hb_key!r}: {e}", flush=True)
-                    time.sleep(0.25)
-            except Exception:
-                pass
-            try:
-                from actions.ets2_telemetry import get_wipers as _gw
-                for _ in range(3):
-                    if _gw() is not True:
-                        break
-                    press_robust(wip_key)
-                    time.sleep(0.15)
-            except Exception:
-                pass
-            try:
-                from actions.ets2_telemetry import get_lights_parking as _gp, get_lights_low as _gl, get_lights_high as _gh
-                if _gh() is True:
-                    press_robust(high_key)
-                    time.sleep(0.15)
-                if _gl() is True:
-                    press_robust(lights_key)
-                elif _gp() is True:
-                    press_robust(lights_key)
-                    time.sleep(0.10)
-                    press_robust(lights_key)
-            except Exception:
-                pass
-            try:
-                if bool(data.get('engineEnabled')):
-                    press_robust(eng_key)
-                    time.sleep(0.25)
-            except Exception:
-                pass
-            try:
-                press_robust(action_key)
-                time.sleep(0.25)
-                press_robust(action_key)
-            except Exception:
-                pass
-            try:
-                press_robust(trailer_key)
-            except Exception:
-                pass
-            _speak('Рейс завершён. Тягач заглушен, свет и дворники выключены. Груз передан.')
-        except Exception:
-            _speak('Не удалось выполнить сценарий завершения рейса.')
-    elif action == 'install_plugin':
-        try:
-            from actions.ets2_telemetry_installer import run_installer
-            from ui import hud
-            run_installer(tk_root=hud._hud.root if hud._hud else None)
-        except Exception: pass
 def handle_recognized_text(text: str, handler):
-    from core.speech import stop_speaking, is_speaking
-    from core.nlp import extract_all_commands, _normalize_stt
-    
     text_low = text.lower().strip()
     print(f"[RECOGNITION] Jarvis heard: {text!r}", flush=True)
     
@@ -539,11 +260,10 @@ def handle_recognized_text(text: str, handler):
     if is_speaking():
         if is_wake or (handler.interactive_state and len(text_low) > 3):
             stop_speaking()
-            time.sleep(0.1)
+            _wait_until_not_speaking()
     text = text.strip()
     if not text: return
     try:
-        from ui.voice_prompt_bridge import try_consume_voice_prompt
         if try_consume_voice_prompt(text):
             return
     except Exception:
@@ -551,7 +271,7 @@ def handle_recognized_text(text: str, handler):
     if app_state.game_mode:
         app_state.last_command_time = time.time()
     if handler.interactive_state:
-        if handler.is_speaking: stop_speaking(); time.sleep(0.1)
+        if handler.is_speaking: stop_speaking(); _wait_until_not_speaking()
         app_state.last_command_time = time.time()
         handler.handle_interactive(text); return
     # --- GAME MODE HANDLING ---
@@ -566,46 +286,87 @@ def handle_recognized_text(text: str, handler):
         
         print(f"[RECOGNITION] Game Mode Input: raw={text!r}, norm={text_norm!r}, clean={text_for_game!r}, is_wake={is_wake_present}", flush=True)
 
-        from actions.game_input import cast_command, match_command as _gi_match
+        from actions.game_input import cast_command
         _fuzzy = 0.75
-        ok, matched_name = cast_command(text_for_game, fuzzy_threshold=_fuzzy)
-        
+        ok, matched_name, _act = cast_command(text_for_game, fuzzy_threshold=_fuzzy)
+
         if ok:
             print(f"[RECOGNITION] Game Command Matched: {matched_name!r}", flush=True)
-            match = _gi_match(text_for_game, threshold=_fuzzy)
-            if match and match[0].get('telemetry_action'):
-                act = match[0]['telemetry_action']
-                print(f"[RECOGNITION] Dispatching Telemetry Action: {act!r}", flush=True)
+            # ETS2's telemetry_action handler lives here in recognition.py (fuel/cruise/etc).
+            # Other profiles (Planetbase, FS22, Hogwarts) already handle their own
+            # telemetry_action internally inside cast_command. cast_command now returns
+            # the matched telemetry_action directly, so no second fuzzy-match pass is needed.
+            if _act and 'euro truck' in (app_state.game_profile or '').lower():
+                print(f"[RECOGNITION] Dispatching Telemetry Action: {_act!r}", flush=True)
                 # Pass text_for_game to avoid wake-word interference in telemetry handlers
-                _handle_telemetry_action(act, handler, text=text_for_game)
+                _handle_telemetry_action(_act, handler, text=text_for_game)
             return
         else:
             print(f"[RECOGNITION] No Game Command Match for: {text_for_game!r}", flush=True)
         
         if _is_game_mode_on_phrase(text_norm):
             handler.handle('game_mode_on', text); return
-            
+
+        # GAME MODE PASSTHROUGH: allow a curated set of system commands even while in-game.
+        # Only commands that make sense mid-game: media, volume, AI queries, timers, screenshots.
+        _GAME_PASSTHROUGH = frozenset({
+            # Volume / audio
+            'vol_up', 'vol_down', 'vol_set', 'vol_mute', 'vol_unmute', 'vol_max', 'vol_zero',
+            'audio_switch',
+            # Brightness
+            'brightness_up', 'brightness_down', 'brightness_set',
+            # Media playback
+            'media_pause', 'media_play',
+            'media_pause_youtube', 'media_play_youtube',
+            'media_pause_browser', 'media_play_browser',
+            # YouTube / video
+            'play_yt', 'open_youtube', 'yt_fwd', 'yt_bwd', 'yt_next', 'yt_prev',
+            'yt_full', 'yt_last_watched', 'yt_channel', 'open_last_video',
+            'open_saved', 'download_video', 'save_video',
+            # Info / AI
+            'qa_search', 'google_search', 'time_now', 'weather',
+            'currency_rate', 'today_summary',
+            # Timers / reminders
+            'reminder', 'cancel_reminder', 'shutdown_timer', 'cancel_timer',
+            # Screenshot
+            'screenshot',
+            # Jarvis control
+            'game_mode_off', 'jarvis_exit', 'restart_jarvis', 'listen_off', 'listen_on',
+            # Timer
+            'timer_set', 'timer_status', 'timer_cancel', 'timer_add',
+            # Misc useful in-game
+            'how_are_you', 'praise',
+        })
+        sem_cmds = _sem_parse(text_for_game if text_for_game else text_norm)
+        passthrough = [(c, seg) for c, seg in sem_cmds if c in _GAME_PASSTHROUGH]
+        if passthrough:
+            print(f"[RECOGNITION] Game Passthrough: {[c for c,_ in passthrough]}", flush=True)
+            app_state.last_command_time = time.time()
+            for c, seg in passthrough:
+                handler.handle(c, seg)
+                time.sleep(0.05)
+            return
+
         # STRICT GAME MODE: If in game mode and no game command matched, do not process global commands.
         return
     else:
         # BACKGROUND MACRO SUPPORT
         # If not in game mode, but a game is detected in focus
         if app_state.detected_game:
-            from actions.game_input import cast_command, match_command as _gi_match, load_profile as _gi_load
+            from actions.game_input import cast_command, load_profile as _gi_load
             from actions.game_input_parts.profile import _profile_name as _gi_pname
-            
+
             # If the profile for the detected game is not yet loaded into the input engine, load it silently
             # But don't speak or anything.
             if not _gi_pname or _gi_pname.lower() != app_state.detected_game.replace('_', ' ').lower():
                  _gi_load(app_state.detected_game)
-            
+
             # Try to cast. If it's a very strong match, execute it.
             # We use a higher threshold for background macros to avoid false positives.
-            ok, _ = cast_command(text, fuzzy_threshold=0.85)
+            ok, _, _act = cast_command(text, fuzzy_threshold=0.85)
             if ok:
-                match = _gi_match(text, threshold=0.85)
-                if match and match[0].get('telemetry_action'):
-                    _handle_telemetry_action(match[0]['telemetry_action'], handler, text=text)
+                if _act and 'euro_truck' in app_state.detected_game.lower():
+                    _handle_telemetry_action(_act, handler, text=text)
                 return
 
     if app_state.dictation_mode:
@@ -618,10 +379,22 @@ def handle_recognized_text(text: str, handler):
     is_wake = bool(_WAKE_RE.search(text_lower))
     parsed_cmds = None
     if not is_wake:
-        parsed_cmds = extract_all_commands(text)
-        is_wake = any((c == 'wake' for c, _ in parsed_cmds))
+        parsed_cmds = _sem_parse(text)
+        is_wake = any(c == 'wake' for c, _ in parsed_cmds)
+    # Context filter: if no wake word detected and Jarvis is not active,
+    # check semantically whether this phrase is even addressed to Jarvis.
+    # Skip filter when in interactive state (e.g. qa_clarify follow-up) — those are always for Jarvis.
+    if not is_wake and not app_state.jarvis_active and not getattr(app_state, 'ignore_mode', False) and not handler.interactive_state:
+        if not parsed_cmds:
+            try:
+                from core.nlp.semantic import is_command as _sem_is_cmd
+                if not _sem_is_cmd(text_lower):
+                    print(f"[SEMANTIC] Context filter: ignoring '{text_lower[:60]}'", flush=True)
+                    return
+            except Exception:
+                pass
     if not app_state.jarvis_active:
-        cmds_early = parsed_cmds if parsed_cmds is not None else extract_all_commands(text)
+        cmds_early = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
         early_allowed = {'show_hud', 'show_help', 'mail_compose', 'qa_search'}
         early = [(c, s) for c, s in cmds_early if c in early_allowed]
         if early:
@@ -637,7 +410,7 @@ def handle_recognized_text(text: str, handler):
             handler.handle_interactive(text)
             return
         if getattr(app_state, 'ignore_mode', False):
-            cmds_ign = parsed_cmds if parsed_cmds is not None else extract_all_commands(text)
+            cmds_ign = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
             cmds_listen = [(c, s) for c, s in cmds_ign if c == 'listen_on']
             if cmds_listen:
                 app_state.jarvis_active = True
@@ -649,7 +422,7 @@ def handle_recognized_text(text: str, handler):
         elif is_wake:
             app_state.jarvis_active = True; app_state.last_command_time = time.time()
             rest = _WAKE_RE.sub('', text_lower, count=1).strip().strip(',').strip()
-            cmds = extract_all_commands(rest) if rest else []
+            cmds = _sem_parse(rest) if rest else []
             real = [m for m in cmds if m[0] != 'wake']
             if not real:
                 if getattr(app_state, 'ignore_mode', False):
@@ -668,6 +441,16 @@ def handle_recognized_text(text: str, handler):
                 if handler.silent_mode:
                     handler.silent_mode = False; handler.play_response('confirm', override_silent=True)
     else:
+        # While in AI conversation mode: if no recognizable command matched, route to qa_clarify
+        if handler.interactive_state == 'qa_clarify':
+            _qa_cmds = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
+            _real = [(c, s) for c, s in _qa_cmds if c not in ('wake', 'reported_speech')]
+            if not _real:
+                # No command matched — treat as follow-up AI question
+                app_state.last_command_time = time.time()
+                handler.handle_interactive(text)
+                return
+            # A real command was spoken — clear qa_clarify and execute normally
         try:
             from actions.meetings import match_meeting, open_meeting
             matched = match_meeting(text_lower)
@@ -678,7 +461,14 @@ def handle_recognized_text(text: str, handler):
                 return
         except Exception:
             pass
-        cmds = parsed_cmds if parsed_cmds is not None else extract_all_commands(text)
+        cmds = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
+        # If wake word ate the whole command, strip it and re-parse the remainder
+        if cmds and all(c == 'wake' for c, _ in cmds):
+            _rest = _WAKE_RE.sub('', text_lower, count=1).strip().strip(',').strip()
+            if _rest:
+                _rest_cmds = [m for m in _sem_parse(_rest) if m[0] != 'wake']
+                if _rest_cmds:
+                    cmds = _rest_cmds
         if getattr(app_state, 'ignore_mode', False) and cmds:
             cmds = [(c, s) for c, s in cmds if c == 'listen_on']
             if not cmds:
@@ -711,10 +501,18 @@ def handle_recognized_text(text: str, handler):
                 time.sleep(0.1)
             if handler.silent_mode:
                 handler.silent_mode = False; handler.play_response('confirm', override_silent=True)
-        else:
-            # ACTIVE FALLBACK: No command matched while already active.
-            # Automatic fallback to AI is disabled per user request.
-            pass
+        elif not getattr(app_state, 'ignore_mode', False):
+            # Jarvis is active (mid-conversation, within the wake-mode follow-up
+            # window) and heard something, but nothing matched at all — previously
+            # this fell through to complete silence, so the user had no way to
+            # tell "not understood" apart from "didn't hear you" apart from
+            # "ignored on purpose". A short cooldown keeps a run of fragmentary
+            # ASR misses from turning into a chatty loop of "not understood".
+            now_nu = time.time()
+            if now_nu - handler._last_not_understood_ts >= 4.0:
+                handler._last_not_understood_ts = now_nu
+                print(f"[RECOGNITION] Active but nothing matched for: {text_lower!r} — giving feedback.", flush=True)
+                handler.play_response('not_understood', override_silent=True)
 def flush_final(asr, handler, transcribe_queue: _queue_mod.Queue):
     from config_pack.config import RATE as _RATE
     audio = bytes(asr._audio_buffer)

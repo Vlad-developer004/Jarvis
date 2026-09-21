@@ -1,286 +1,21 @@
+"""Mail client (inbox viewer) dialog. Split out of the old mail_dlg.py
+purely for file size; no behavior change. See mail_compose_dlg.py for the
+compose window this opens when the user hits "new message".
+"""
 from __future__ import annotations
 from core import i18n
 from ui.hud_style import JStyle
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _BRD, _SEP, _CYAN, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM
-from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
-from .extensions import _bind_ctk_entry_clipboard
-def _show_confirm_hud(hud, parent, title, text, ok_cb, danger=True):
-    dlg = tk.Toplevel(parent)
-    dlg.title(title)
-    dlg.configure(bg=_BG)
-    dlg.transient(parent)
-    dlg.grab_set()
-    _set_dark_title_bar(dlg)
-    _apply_window_icon(dlg, hud)
-    sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
-    W, H = 540, 180
-    dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw - int(W*hud.zoom_factor)) // 2}+{(sh - int(H*hud.zoom_factor)) // 2}')
-    dlg.resizable(False, False)
-    tk.Frame(dlg, bg=_RED if danger else _CYAN, height=2).pack(fill='x', side='top')
-    body = tk.Frame(dlg, bg=_BG)
-    body.pack(fill='both', expand=True, padx=24, pady=20)
-    tk.Label(
-        body, text=text, bg=_BG, fg=_WHITE,
-        font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
-        wraplength=W - 50, justify='center'
-    ).pack(pady=(0, 16))
-    btn_row = tk.Frame(body, bg=_BG)
-    btn_row.pack(anchor='center')
-    def _ok():
-        dlg.destroy()
-        ok_cb()
-    ctk.CTkButton(
-        btn_row, text='ПОДТВЕРДИТЬ', width=160, height=JStyle.H_NORM,
-        font=(hud._F, _sf(10), 'bold'),
-        fg_color=_blend(_RED if danger else _CYAN, 0.25),
-        hover_color=_blend(_RED if danger else _CYAN, 0.45),
-        text_color=_RED if danger else _CYAN,
-        command=_ok
-    ).pack(side='left', padx=10)
-    ctk.CTkButton(
-        btn_row, text=i18n.tr('buttons.cancel'), width=120, height=JStyle.H_NORM,
-        font=(hud._F, _sf(10), 'bold'),
-        fg_color=_blend(_WHITE, 0.08),
-        command=dlg.destroy
-    ).pack(side='left', padx=10)
-def _sf(n, zoom=1.0):
-    # Cap the scaling curve for extremely high zoom levels to prevent layout explosion
-    effective_zoom = zoom if zoom <= 1.8 else 1.8 + (zoom - 1.8) * 0.4
-    return max(8, int((n + 6) * effective_zoom))
-def _bind_text_clipboard(win: tk.Toplevel, txt) -> None:
-    inner = getattr(txt, '_textbox', txt)
-    def _paste(_evt=None):
-        try:
-            t = win.clipboard_get()
-        except Exception:
-            return 'break'
-        try:
-            inner.insert('insert', t)
-        except Exception:
-            return 'break'
-        return 'break'
-    def _copy(_evt=None):
-        try:
-            sel = inner.get('sel.first', 'sel.last')
-        except Exception:
-            return 'break'
-        try:
-            win.clipboard_clear()
-            win.clipboard_append(sel)
-        except Exception:
-            pass
-        return 'break'
-    def _cut(_evt=None):
-        _copy()
-        try:
-            inner.delete('sel.first', 'sel.last')
-        except Exception:
-            pass
-        return 'break'
-    inner.bind('<Control-v>', _paste)
-    inner.bind('<Control-V>', _paste)
-    inner.bind('<Control-c>', _copy)
-    inner.bind('<Control-C>', _copy)
-    inner.bind('<Control-x>', _cut)
-    inner.bind('<Control-X>', _cut)
-def open_compose_dialog(hud, parent_win, set_status=None) -> None:
-    from actions.mail_client import get_resolved_mail_config, send_message
-    cfg = get_resolved_mail_config()
-    if not cfg:
-        if set_status:
-            set_status('Почта не настроена', _RED)
-        return
-    dlg = tk.Toplevel(parent_win)
-    dlg.title('JARVIS — Новое письмо')
-    _set_dark_title_bar(dlg)
-    dlg.after(100, lambda: _set_dark_title_bar(dlg))
-    dlg.configure(bg=_BG)
-    _apply_window_icon(dlg, hud)
-    sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
-    W = int(min(720, sw * 0.85 / hud.zoom_factor))
-    H = int(min(620, sh * 0.85 / hud.zoom_factor))
-    dlg.geometry(f'{int(W*hud.zoom_factor)}x{int(H*hud.zoom_factor)}+{(sw - int(W*hud.zoom_factor)) // 2}+{(sh - int(H*hud.zoom_factor)) // 2}')
-    dlg.minsize(520, 440)
-    _card_bg = _BG
-    _field_border = _blend(_CYAN, 0.35)
-    top = tk.Frame(dlg, bg=_BG)
-    top.pack(fill='x', padx=20, pady=(16, 12))
-    tk.Label(top, text='НОВОЕ ПИСЬМО', bg=_BG, fg=_CYAN, font=(hud._F, _sf(14, hud.zoom_factor), 'bold')).pack(side='left')
-    dlg_status = tk.Label(
-        top, text=f'От: {cfg["email"]}', bg=_BG, fg=_DIM,
-        font=(hud._F, _sf(9, hud.zoom_factor)), anchor='e',
-    )
-    dlg_status.pack(side='right')
-    def _set_dlg_status(t, color=_DIM):
-        dlg_status.config(text=t, fg=color)
-    fields_fr = tk.Frame(dlg, bg=_BG)
-    fields_fr.pack(fill='x', padx=14, pady=(4, 0))
-    def _make_field(parent, label_text, row):
-        tk.Label(
-            parent, text=label_text, bg=_BG, fg=_DIM,
-            font=(hud._F, _sf(10, hud.zoom_factor), 'bold'), width=10, anchor='e',
-        ).grid(row=row, column=0, sticky='e', padx=(0, 8), pady=4)
-        ent = ctk.CTkEntry(
-            parent,
-            height=JStyle.H_LARGE,
-            font=(hud._F, _sf(11), 'bold'),
-            fg_color=_blend(_CYAN, 0.08),
-            border_color=_field_border,
-            border_width=1,
-            text_color=_WHITE,
-        )
-        ent.grid(row=row, column=1, sticky='ew', pady=4)
-        _bind_ctk_entry_clipboard(dlg, ent, hud)
-        return ent
-    fields_fr.grid_columnconfigure(1, weight=1)
-    to_ent = _make_field(fields_fr, 'Кому:', 0)
-    cc_ent = _make_field(fields_fr, 'Копия:', 1)
-    subj_ent = _make_field(fields_fr, 'Тема:', 2)
-    body_fr = tk.Frame(dlg, bg=_BG)
-    body_fr.pack(fill='both', expand=True, padx=14, pady=(8, 4))
-    tk.Label(body_fr, text='Текст письма', bg=_BG, fg=_CYAN,
-             font=(hud._F, _sf(10, hud.zoom_factor), 'bold')).pack(anchor='w', pady=(0, 6))
-    compose_txt = ctk.CTkTextbox(
-        body_fr,
-        font=(hud._F, _sf(11)),
-        fg_color=_card_bg,
-        text_color=_TEXT,
-        border_color=_blend(_GREEN, 0.5),
-        border_width=1,
-        corner_radius=JStyle.RAD_BTN,
-        scrollbar_button_color=_blend(_CYAN, 0.25),
-        scrollbar_button_hover_color=_blend(_CYAN, 0.42),
-    )
-    compose_txt.pack(fill='both', expand=True)
-    try:
-        compose_txt._textbox.configure(
-            insertbackground=_CYAN,
-            selectbackground=_blend(_CYAN, 0.35),
-            selectforeground=_WHITE,
-        )
-    except Exception:
-        pass
-    _bind_text_clipboard(dlg, compose_txt)
-    comp_attach: list[Path] = []
-    attach_wrap = tk.Frame(dlg, bg=_card_bg, highlightbackground=_blend(_GREEN, 0.22), highlightthickness=1)
-    attach_wrap.pack(fill='x', padx=14, pady=(4, 0))
-    attach_inner = tk.Frame(attach_wrap, bg=_card_bg)
-    tk.Label(attach_wrap, text='Вложения', bg=_card_bg, fg=_DIM,
-             font=(hud._F, _sf(9, hud.zoom_factor), 'bold')).pack(anchor='w', padx=8, pady=(6, 2))
-    attach_inner.pack(fill='both', padx=8, pady=(0, 8))
-    def _refresh_comp_attach():
-        for w in attach_inner.winfo_children():
-            w.destroy()
-        if not comp_attach:
-            tk.Label(attach_inner, text='Нет вложений', bg=_card_bg, fg=_DIM,
-                     font=(hud._F, _sf(9, hud.zoom_factor))).pack(anchor='w')
-            return
-        for p in comp_attach:
-            row = tk.Frame(attach_inner, bg=_card_bg)
-            row.pack(fill='x', pady=2)
-            tk.Label(row, text=p.name, bg=_card_bg, fg=_TEXT,
-                     font=(hud._F, _sf(9, hud.zoom_factor)), anchor='w').pack(side='left', fill='x', expand=True)
-            ctk.CTkButton(
-                row, text='✕', width=36, height=JStyle.H_TOOL,
-                font=(hud._F, _sf(10), 'bold'),
-                fg_color=_blend(_RED, 0.12), hover_color=_blend(_RED, 0.3), text_color=_RED,
-                command=lambda path=p: _rm_comp_attach(path),
-            ).pack(side='right')
-    def _rm_comp_attach(p):
-        try:
-            comp_attach.remove(p)
-        except ValueError:
-            pass
-        _refresh_comp_attach()
-    def _add_comp_paths(paths):
-        for s in paths:
-            if not s:
-                continue
-            p = Path(s)
-            if p.is_file() and p not in comp_attach:
-                comp_attach.append(p)
-        _refresh_comp_attach()
-    def _comp_pick_files():
-        paths = filedialog.askopenfilenames(parent=dlg, title='Файлы для вложения',
-                                            filetypes=[('Все файлы', '*.*')])
-        _add_comp_paths(paths)
-    def _comp_pick_images():
-        paths = filedialog.askopenfilenames(parent=dlg, title='Фото',
-                                            filetypes=[('Изображения', '*.png *.jpg *.jpeg *.gif *.webp *.bmp'),
-                                                       ('Все файлы', '*.*')])
-        _add_comp_paths(paths)
-    def _comp_pick_videos():
-        paths = filedialog.askopenfilenames(parent=dlg, title='Видео',
-                                            filetypes=[('Видео', '*.mp4 *.mov *.avi *.mkv *.webm *.m4v'),
-                                                       ('Все файлы', '*.*')])
-        _add_comp_paths(paths)
-    _refresh_comp_attach()
-    tool = tk.Frame(dlg, bg=_BG)
-    tool.pack(fill='x', padx=14, pady=(8, 4))
-    bt_kw = {
-        'font': (hud._F, _sf(10), 'bold'),
-        'height': 44,
-        'fg_color': _blend(_CYAN, 0.12),
-        'hover_color': _blend(_CYAN, 0.24),
-    }
-    ctk.CTkButton(tool, text='Файл…', width=88, command=_comp_pick_files, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Фото…', width=88, command=_comp_pick_images, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Видео…', width=88, command=_comp_pick_videos, **bt_kw).pack(side='left', padx=(0, 6))
-    btn_row = tk.Frame(dlg, bg=_BG)
-    btn_row.pack(fill='x', padx=14, pady=(12, 20))
-    _btn_center = tk.Frame(btn_row, bg=_BG)
-    _btn_center.pack(anchor='center')
-    def _do_compose_send():
-        to_val = (to_ent.get() or '').strip()
-        cc_val = (cc_ent.get() or '').strip()
-        subj_val = (subj_ent.get() or '').strip()
-        body_val = compose_txt.get('1.0', 'end-1c').strip()
-        if not to_val:
-            _set_dlg_status('Укажите адрес получателя', _AMBER)
-            return
-        if not body_val and not comp_attach:
-            _set_dlg_status('Введите текст письма или добавьте вложения', _AMBER)
-            return
-        total_b = sum(p.stat().st_size for p in comp_attach if p.is_file())
-        if total_b > 26 * 1024 * 1024:
-            _set_dlg_status('Вложения > 25 МБ — уменьшите размер', _RED)
-            return
-        _set_dlg_status('Отправка…', _AMBER)
-        paths_copy = [Path(x) for x in comp_attach]
-        def work():
-            ok, msg = send_message(
-                to_addr=to_val,
-                subject=subj_val,
-                body=body_val,
-                cc=cc_val,
-                attachments=paths_copy,
-            )
-            def _done():
-                _set_dlg_status(msg, _GREEN if ok else _RED)
-                if ok:
-                    if set_status:
-                        set_status(f'Письмо отправлено → {to_val}', _GREEN)
-                    dlg.after(1200, dlg.destroy)
-            dlg.after(0, _done)
-        threading.Thread(target=work, daemon=True).start()
-    ctk.CTkButton(
-        _btn_center, text='ОТПРАВИТЬ', width=220, height=JStyle.H_HUGE,
-        font=(hud._F, _sf(12), 'bold'),
-        fg_color=_blend(_GREEN, 0.25), hover_color=_blend(_GREEN, 0.45), text_color=_GREEN,
-        command=_do_compose_send,
-    ).pack(side='left', padx=10)
-    ctk.CTkButton(
-        _btn_center, text=i18n.tr('buttons.cancel'), width=160, height=JStyle.H_HUGE,
-        font=(hud._F, _sf(11), 'bold'),
-        fg_color=_blend(_CYAN, 0.12), hover_color=_blend(_CYAN, 0.22),
-        command=dlg.destroy,
-    ).pack(side='left')
-    to_ent.focus_set()
+from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon, _place_dialog
+from .extensions_common import _bind_ctk_entry_clipboard
+from .mail_shared import _sf, _bind_text_clipboard, _show_confirm_hud
+from .mail_compose_dlg import open_compose_dialog
+
 def open_mail_client(hud, reopen: bool = False) -> None:
     if not reopen and hasattr(hud, '_mail_win') and hud._mail_win and hud._mail_win.winfo_exists():
         hud._mail_win.lift()
@@ -293,7 +28,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     _set_dark_title_bar(win)
     win.after(100, lambda: _set_dark_title_bar(win))
     hud._track_subwin('mail', win, lambda: open_mail_client(hud, reopen=True))
-    win.configure(bg=_BG)
+    win.configure(bg=_BG)  # type: ignore[call-arg]
     win.overrideredirect(True)
     _apply_window_icon(win, hud)
     sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
@@ -438,15 +173,15 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     selected_idx = [None]
     card_widgets: list[tk.Frame] = []
     def _set_card_colors(card, bg_c, strip_c, brd_c):
-        card.configure(bg=bg_c, highlightbackground=brd_c)
+        card.configure(bg=bg_c, highlightbackground=brd_c)  # type: ignore[call-arg]
         for ch in card.winfo_children():
             if isinstance(ch, tk.Frame) and ch.cget('width') == 4:
-                ch.configure(bg=strip_c)
+                ch.configure(bg=strip_c)  # type: ignore[call-arg]
             elif isinstance(ch, tk.Frame):
-                ch.configure(bg=bg_c)
+                ch.configure(bg=bg_c)  # type: ignore[call-arg]
                 for sub in ch.winfo_children():
                     if isinstance(sub, tk.Label):
-                        sub.configure(bg=bg_c)
+                        sub.configure(bg=bg_c)  # type: ignore[call-arg]
     def _select_card(idx):
         prev = selected_idx[0]
         selected_idx[0] = idx
@@ -508,24 +243,24 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             date_l.bind('<MouseWheel>', _on_mousewheel)
         def _enter(e, c=card, s=strip, i=idx):
             if selected_idx[0] != i:
-                c.configure(bg=_CARD_HOVER, highlightbackground=_blend(_CYAN, 0.4))
-                s.configure(bg=_blend(_CYAN, 0.5))
+                c.configure(bg=_CARD_HOVER, highlightbackground=_blend(_CYAN, 0.4))  # type: ignore[call-arg]
+                s.configure(bg=_blend(_CYAN, 0.5))  # type: ignore[call-arg]
                 for w in c.winfo_children():
                     if isinstance(w, tk.Frame) and w != s:
-                        w.configure(bg=_CARD_HOVER)
+                        w.configure(bg=_CARD_HOVER)  # type: ignore[call-arg]
                         for ch in w.winfo_children():
                             if isinstance(ch, tk.Label):
-                                ch.configure(bg=_CARD_HOVER)
+                                ch.configure(bg=_CARD_HOVER)  # type: ignore[call-arg]
         def _leave(e, c=card, s=strip, i=idx):
             if selected_idx[0] != i:
-                c.configure(bg=_CARD_IDLE, highlightbackground=_blend(_CYAN, 0.12))
-                s.configure(bg=_SEP)
+                c.configure(bg=_CARD_IDLE, highlightbackground=_blend(_CYAN, 0.12))  # type: ignore[call-arg]
+                s.configure(bg=_SEP)  # type: ignore[call-arg]
                 for w in c.winfo_children():
                     if isinstance(w, tk.Frame) and w != s:
-                        w.configure(bg=_CARD_IDLE)
+                        w.configure(bg=_CARD_IDLE)  # type: ignore[call-arg]
                         for ch in w.winfo_children():
                             if isinstance(ch, tk.Label):
-                                ch.configure(bg=_CARD_IDLE)
+                                ch.configure(bg=_CARD_IDLE)  # type: ignore[call-arg]
         for widget in (card, body, subj_l, sender_l, strip):
             widget.bind('<Button-1>', lambda e, i=idx: _select_card(i))
             widget.bind('<Enter>', _enter)
@@ -707,13 +442,12 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     def _add_link_dialog():
         dlg = tk.Toplevel(win)
         dlg.title('Ссылка в ответ')
-        dlg.configure(bg=_BG)
+        dlg.configure(bg=_BG)  # type: ignore[call-arg]
         dlg.transient(win)
         dlg.grab_set()
         _set_dark_title_bar(dlg)
         _apply_window_icon(dlg, hud)
-        dw = 460
-        dlg.geometry(f'{int(dw*hud.zoom_factor)}x{int(132*hud.zoom_factor)}')
+        _place_dialog(dlg, hud, 460, 132, grab=False)
         dlg.minsize(380, 110)
         tk.Label(
             dlg,
@@ -721,12 +455,12 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             bg=_BG,
             fg=_DIM,
             font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
-            wraplength=dw - 24,
+            wraplength=460 - 24,
             justify='left',
         ).pack(anchor='w', padx=12, pady=(12, 6))
         ent = ctk.CTkEntry(
             dlg,
-            width=dw - 24,
+            width=460 - 24,
             height=34,
             font=(hud._F, _sf(11), 'bold'),
             fg_color=_blend(_CYAN, 0.08),

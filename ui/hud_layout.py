@@ -75,7 +75,7 @@ def build_left(hud) -> None:
         hud._cpu_val = _dummy_cpu
         hud._gpu_container = tk.Frame(p, bg=_PANEL)
         hud._gpu_container.pack(fill='x')
-        hud._gpu_bar, hud._gpu_val, hud._gpu_bar_frame = bar_row(hud, hud._gpu_container, 'ТЕМПЕРАТУРА ВИДЕОКАРТЫ', _AMBER)
+        hud._gpu_bar, hud._gpu_val, hud._gpu_bar_frame = bar_row(hud, hud._gpu_container, tr('video_card_temp'), _AMBER)
         for child in hud._gpu_container.winfo_children():
             child.pack_forget()
         hud._gpu_bar_visible = False
@@ -213,17 +213,26 @@ def build_center(hud) -> None:
     hud._canvas = tk.Canvas(hud._mid, bg=_BG, highlightthickness=0)
     hud._canvas.pack(fill='both', expand=True)
     hud._canvas.bind('<Configure>', hud._on_resize)
+    hud._canvas.bind('<Button-1>', hud._on_reactor_click)
+    hud._canvas.bind('<Motion>', hud._on_reactor_motion)
     hud._bot_strip = tk.Frame(hud._mid, bg=_BG, height=hud._px(48))
     hud._bot_strip.pack(fill='x', side='bottom')
     hud._bot_strip.pack_propagate(False)
     tk.Frame(hud._bot_strip, bg=_BRD_I, height=1).pack(fill='x', side='top')
     hud._left_toggle.pack(in_=hud._bot_strip, side='left', padx=(10, 5))
     hud._right_toggle.pack(in_=hud._bot_strip, side='right', padx=(5, 10))
-    
+
+    from ui.hud_style import JStyle
+    hud._bot_timer_lbl = tk.Label(
+        hud._bot_strip, text='', bg=_BG, fg=_AMBER,
+        font=(hud._F, JStyle.TEXT_SMALL, 'bold')
+    )
+    hud._bot_timer_lbl.pack(side='right', padx=(0, 10))
+
     hud._bot_canvas = tk.Canvas(hud._bot_strip, bg=_BG, highlightthickness=0)
     hud._bot_canvas.pack(side='left', fill='both', expand=True)
     hud._bot_canvas.bind('<Configure>', hud._draw_bot_strip)
-    
+
     hud._bot_items = []
 
 def build_right(hud) -> None:
@@ -256,7 +265,10 @@ def build_right(hud) -> None:
     p.bind('<Configure>', _update_scroll)
     _scroll_canvas.bind('<Configure>', _on_canvas_cfg)
     _scroll_canvas.yview_moveto(0)
-    
+
+    from ui.hud_timer_widget import build_alert_section
+    build_alert_section(hud, p)
+
     if hud._widget_vis.get('storage', True):
         section_hdr(hud, p, tr('storage_analytics'), _MAG, pady=(0, 4))
         tk.Label(p, text=tr('storage_analytics'), bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), anchor='w').pack(fill='x', padx=14, pady=(6, 2))

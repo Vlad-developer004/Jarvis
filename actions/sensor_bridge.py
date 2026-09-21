@@ -36,4 +36,6 @@ def grab_real_temp():
         except Exception as e:
             time.sleep(5)
         time.sleep(1)
-grab_real_temp()
+
+if __name__ == '__main__':
+    grab_real_temp()

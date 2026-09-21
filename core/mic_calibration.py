@@ -10,12 +10,6 @@ _REQUIRED_SAMPLES = 5
 _LISTEN_WINDOW_SEC = 4.0
 _MIN_THRESH = 50
 _CANDIDATE_RATES = [16000, 8000, 22050, 44100, 48000]
-def is_calibrated() -> bool:
-    try:
-        data = json.loads(_PROFILE_PATH.read_text(encoding='utf-8'))
-        return bool(data.get('calibrated'))
-    except Exception:
-        return False
 def load_profile() -> dict:
     try:
         return json.loads(_PROFILE_PATH.read_text(encoding='utf-8'))

@@ -6,6 +6,8 @@ import win32con
 import sys
 import os
 import winreg
+from core.logging_setup import get_logger as _get_logger
+_log = _get_logger('windows')
 _AUTOSTART_KEY = 'Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 _AUTOSTART_NAME = 'Jarvis'
 def _exe_path() -> str:
@@ -81,16 +83,21 @@ def force_foreground(hwnd: int) -> None:
     if _user32.IsIconic(hwnd):
         _user32.ShowWindow(hwnd, SW_RESTORE)
     cur_tid = _kernel32.GetCurrentThreadId()
+    tgt_tid = _user32.GetWindowThreadProcessId(hwnd, None)
     fg_hwnd = _user32.GetForegroundWindow()
-    fg_tid = _user32.GetWindowThreadProcessId(fg_hwnd, None)
+    fg_tid  = _user32.GetWindowThreadProcessId(fg_hwnd, None)
+    # Attach both threads so SetFocus works cross-thread
     if fg_tid and fg_tid != cur_tid:
         _user32.AttachThreadInput(fg_tid, cur_tid, True)
-        _user32.BringWindowToTop(hwnd)
-        _user32.SetForegroundWindow(hwnd)
+    if tgt_tid and tgt_tid != cur_tid:
+        _user32.AttachThreadInput(tgt_tid, cur_tid, True)
+    _user32.BringWindowToTop(hwnd)
+    _user32.SetForegroundWindow(hwnd)
+    _user32.SetFocus(hwnd)
+    if tgt_tid and tgt_tid != cur_tid:
+        _user32.AttachThreadInput(tgt_tid, cur_tid, False)
+    if fg_tid and fg_tid != cur_tid:
         _user32.AttachThreadInput(fg_tid, cur_tid, False)
-    else:
-        _user32.BringWindowToTop(hwnd)
-        _user32.SetForegroundWindow(hwnd)
 
 def get_known_folder_path(folder_guid: str) -> str | None:
     import ctypes
@@ -208,7 +215,7 @@ def set_process_priority(level: str) -> bool:
         ok = ctypes.windll.kernel32.SetPriorityClass(handle, levels.get(level.lower(), 0x00000020))
         return bool(ok)
     except Exception as e:
-        print(f"[set_process_priority] Error: {e}")
+        _log.error(f"[set_process_priority] Error: {e}")
         return False
 def get_foreground_process_name() -> str | None:
     try:

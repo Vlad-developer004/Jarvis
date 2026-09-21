@@ -14,28 +14,41 @@ THEMES = {
         'TEXT':  '#d1d7ef', 'DIM':   '#8e98c9',
     },
     'dark': {
-        'BG':    '#0d0d0d', 'PANEL': '#141414', 'BRD':  '#222222',
-        'BRD_I': '#2a2a2a', 'SEP':   '#1a1a1a', 'GRID': '#080808',
-        'CYAN':  '#4da6ff', 'MAG':   '#b366ff', 'GREEN': '#55cc55',
-        'AMBER': '#ffaa33', 'RED':   '#ff5555', 'WHITE': '#ffffff',
-        'TEXT':  '#e8e8e8', 'DIM':   '#888888',
+        'BG':    '#0c0c0e', 'PANEL': '#13131a', 'BRD':  '#1e1e2a',
+        'BRD_I': '#26263a', 'SEP':   '#16161e', 'GRID': '#0a0a0c',
+        'CYAN':  '#4895ef', 'MAG':   '#4895ef', 'GREEN': '#4895ef',
+        'AMBER': '#f9a825', 'RED':   '#ef5350', 'WHITE': '#f0f0f0',
+        'TEXT':  '#f0f0f0', 'DIM':   '#888899',
     },
-    'light': {
-        'BG':    '#f4f6fa', 'PANEL': '#ffffff', 'BRD':  '#dde1ea',
-        'BRD_I': '#c8cdd8', 'SEP':   '#eceef3', 'GRID': '#f9fafc',
-        'CYAN':  '#0055cc', 'MAG':   '#9900aa', 'GREEN': '#1a7a1a',
-        'AMBER': '#cc5500', 'RED':   '#bb0000', 'WHITE': '#111111',
-        'TEXT':  '#1a1a2e', 'DIM':   '#5a5a7a',
+    'neon_white': {
+        'BG':    '#f4f4f6', 'PANEL': '#ebebee', 'BRD':  '#d8d8dd',
+        'BRD_I': '#c8c8ce', 'SEP':   '#e4e4e8', 'GRID': '#f8f8fa',
+        'CYAN':  '#0077cc', 'MAG':   '#0077cc', 'GREEN': '#0077cc',
+        'AMBER': '#e8780a', 'RED':   '#cc2200', 'WHITE': '#111111',
+        'TEXT':  '#111111', 'DIM':   '#777788',
+    },
+    'minimal': {
+        'BG':    '#fafafa', 'PANEL': '#f2f2f2', 'BRD':  '#dedede',
+        'BRD_I': '#cecece', 'SEP':   '#e8e8e8', 'GRID': '#f6f6f6',
+        'CYAN':  '#1a56db', 'MAG':   '#1a56db', 'GREEN': '#1a56db',
+        'AMBER': '#1a56db', 'RED':   '#cc2200', 'WHITE': '#111111',
+        'TEXT':  '#111111', 'DIM':   '#888888',
     },
 }
 
-_SETTINGS_PATH = os.path.join('data', 'jarvis_settings.json')
+def _settings_path() -> str:
+    try:
+        from config_pack.config import get_settings_path
+        return get_settings_path()
+    except Exception:
+        return os.path.join('data', 'jarvis_settings.json')
 
 
 def get_current_theme_name() -> str:
     try:
-        if os.path.exists(_SETTINGS_PATH):
-            with open(_SETTINGS_PATH, 'r', encoding='utf-8') as f:
+        p = _settings_path()
+        if os.path.exists(p):
+            with open(p, 'r', encoding='utf-8') as f:
                 return json.load(f).get('theme', 'cyber')
     except Exception:
         pass
@@ -44,13 +57,14 @@ def get_current_theme_name() -> str:
 
 def save_theme_name(name: str) -> None:
     try:
+        p = _settings_path()
         data = {}
-        if os.path.exists(_SETTINGS_PATH):
-            with open(_SETTINGS_PATH, 'r', encoding='utf-8') as f:
+        if os.path.exists(p):
+            with open(p, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         data['theme'] = name
-        os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
-        with open(_SETTINGS_PATH, 'w', encoding='utf-8') as f:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
@@ -97,6 +111,12 @@ def apply_theme(name: str = None) -> None:
 
     try:
         import customtkinter as ctk
-        ctk.set_appearance_mode('light' if name == 'light' else 'dark')
+        ctk.set_appearance_mode('light' if name in ('neon_white', 'minimal') else 'dark')
+    except Exception:
+        pass
+
+    try:
+        from ui.hud_utils import _blend
+        _blend.cache_clear()
     except Exception:
         pass

@@ -1,11 +1,12 @@
 from __future__ import annotations
 from core import i18n
-import math, time
+import math, time, random
 import tkinter as tk
 from . import hud_constants as _c
-from .hud_constants import _CYAN, _MAG, _GREEN, _WHITE, _DYN, _STA, _GRID, _DIM, _TEXT, _AMBER
+from .hud_constants import _CYAN, _MAG, _GREEN, _WHITE, _DYN, _STA, _GRID, _DIM, _TEXT, _AMBER, _BG, _RED
 from .hud_state import HudState, STATE
 from .hud_utils import _blend
+from core.system import app_state
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Animation Constants
@@ -118,6 +119,10 @@ def init_anim_objects(hud) -> None:
         c.create_oval(cx - nr0, cy - nr0, cx + nr0, cy + nr0,
                       fill=_WHITE, outline='', tags=_DYN),
     ]
+    hud._mic_icon_id = c.create_text(
+        cx, cy, text='🎤', fill=_BG,
+        font=(hud._F, max(10, int(scale * 0.16)), 'normal'), tags=_DYN,
+    )
     _title_fs = max(10, int(scale * 0.092))
     _state_fs = max(8,  int(scale * 0.062))
     hud._title_shadow_id = c.create_text(
@@ -164,8 +169,17 @@ def draw_frame(hud) -> None:
     if getattr(hud, '_last_mode', None) != mode:
         hud._last_mode = mode
         hud._draw_bot_strip()
-    
-    if mode == HudState.IDLE:
+
+    glitching = t < getattr(hud, '_reactor_glitch_until', 0)
+    if glitching:
+        cx += random.randint(-4, 4)
+        cy += random.randint(-4, 4)
+
+    if mode == HudState.LOADING:
+        core_col = _AMBER
+        spd   = 1.6
+        pulse = math.sin(t * 3.0) * 4
+    elif mode == HudState.IDLE:
         core_col = _CYAN
         spd   = 1.0
         pulse = math.sin(t * 1.5) * 3
@@ -177,6 +191,20 @@ def draw_frame(hud) -> None:
         core_col = _MAG
         spd   = 3.8
         pulse = math.sin(t * 14.0) * 4
+    color_override = getattr(hud, '_reactor_color_override', None)
+    if color_override:
+        core_col = color_override
+    if t < getattr(hud, '_reactor_pulse_until', 0):
+        pulse *= 3.5
+        spd *= 1.6
+    muted = app_state.ignore_mode
+    if muted:
+        core_col = _DIM
+        spd *= 0.2
+        pulse *= 0.3
+    elif glitching:
+        core_col = random.choice([core_col, _WHITE, _RED])
+        spd *= 2.2
     cols = _get_mode_colors(core_col)
     scale  = hud._anim_scale
     r_out  = scale * 0.74
@@ -236,6 +264,10 @@ def draw_frame(hud) -> None:
              cx - nr * 1.4, cy - nr * 1.4, cx + nr * 1.4, cy + nr * 1.4)
     c.itemconfig(hud._core_ids[1], fill=cols['core1'])
     c.coords(hud._core_ids[2], cx - nr, cy - nr, cx + nr, cy + nr)
+    c.coords(hud._mic_icon_id, cx, cy)
+    if muted != getattr(hud, '_last_muted', None):
+        hud._last_muted = muted
+        c.itemconfig(hud._mic_icon_id, text='🔇' if muted else '🎤', fill=_RED if muted else _BG)
     # status_col = _CYAN if mode == HudState.IDLE else core_col
     c.itemconfig(hud._status_id, text='') # Hidden to avoid duplication with bottom bar
     hud._tick += 1
@@ -299,22 +331,23 @@ def draw_top_strip(hud, evt=None) -> None:
             tx = bx + ico_sz + gap
             c.create_text(tx, ty_lbl, text=label, anchor='nw', fill=_DIM, font=(hud._F, fs_lbl, 'bold'), tags='top_txt')
             c.create_text(tx, ty_time, text=time_str, anchor='nw', fill=time_col, font=(hud._F, fs_time, 'bold'), tags='top_txt')
-    _draw_block(left_x, hud._rise_icon_img, 'ВОСХОД', hud._top_rise, _AMBER, is_left=True)
+    _draw_block(left_x, hud._rise_icon_img, i18n.tr('hud.sunrise'), hud._top_rise, _AMBER, is_left=True)
     c.create_line(cx, pad_v, cx, pad_v + row_h, fill=_CYAN, width=2)
-    _draw_block(right_x, hud._set_icon_img, 'ЗАКАТ', hud._top_set, _MAG, is_left=False)
+    _draw_block(right_x, hud._set_icon_img, i18n.tr('hud.sunset'), hud._top_set, _MAG, is_left=False)
     label_y = pad_v + row_h + row_gap
     bar_y = label_y + fs_bar + bar_mb
     bx0, bx1 = (bar_pad, W - bar_pad)
-    _tcol = _AMBER if 'ДЕНЬ' in hud._top_week else _MAG
+    is_day = (hud._top_day == i18n.tr('hud.until_sunset'))
+    _tcol = _AMBER if is_day else _MAG
     l_week = hud._top_week
     l_day = hud._top_day
     if is_small:
-        if 'СВЕТОВОЙ' in l_week:
-            l_week = 'ДЕНЬ'
-            l_day = 'ЗАКАТ'
-        if 'НОЧНОЙ' in l_week:
-            l_week = 'НОЧЬ'
-            l_day = 'РАССВЕТ'
+        if is_day:
+            l_week = i18n.tr('hud.day')
+            l_day = i18n.tr('hud.sunset')
+        else:
+            l_week = i18n.tr('hud.night')
+            l_day = i18n.tr('hud.dawn')
     c.create_text(bx0, label_y, text=l_week, anchor='nw', fill=_tcol, font=(hud._F, fs_bar, 'bold'))
     c.create_text(cx, label_y, text=hud._top_pct_str, anchor='n', fill=_TEXT, font=(hud._F, fs_bar, 'bold'))
     c.create_text(bx1, label_y, text=l_day, anchor='ne', fill=_tcol, font=(hud._F, fs_bar, 'bold'))
@@ -351,7 +384,11 @@ def draw_bot_strip(hud, evt=None) -> None:
     dot_r = max(2, int(3 * s))
     
     # 1. Pre-calculate if FULL names fit
-    full_states = ['ОЖИДАНИЕ', 'СЛУШАЮ', 'ГОВОРЮ']
+    full_states = [
+        i18n.tr('hud.state.waiting'),
+        i18n.tr('hud.state.listening'),
+        i18n.tr('hud.state.speaking')
+    ]
     tw_full = 0
     for txt in full_states:
         tid = c.create_text(0, -500, text=txt, font=(hud._F, fs, 'bold'))
@@ -374,12 +411,23 @@ def draw_bot_strip(hud, evt=None) -> None:
 
     # In ultra-narrow mode, we ONLY show the active state
     mode = STATE.mode
-    if is_ultra_narrow:
-        states = [(mode, 'ОЖИД.' if mode == HudState.IDLE else ('СЛУШ.' if mode == HudState.LISTENING else 'ГОВ.'))]
+    if mode == HudState.LOADING:
+        lbl = i18n.tr('hud.state.loading_short') if is_narrow or is_ultra_narrow else i18n.tr('hud.state.loading')
+        states = [(HudState.LOADING, lbl)]
+    elif is_ultra_narrow:
+        if mode == HudState.IDLE:
+            lbl = i18n.tr('hud.state.waiting_short')
+        elif mode == HudState.LISTENING:
+            lbl = i18n.tr('hud.state.listening_short')
+        else:
+            lbl = i18n.tr('hud.state.speaking_short')
+        states = [(mode, lbl)]
     else:
-        states = [(HudState.IDLE, 'ОЖИД.' if is_narrow else 'ОЖИДАНИЕ'), 
-                  (HudState.LISTENING, 'СЛУШ.' if is_narrow else 'СЛУШАЮ'), 
-                  (HudState.SPEAKING, 'ГОВ.' if is_narrow else 'ГОВОРЮ')]
+        states = [
+            (HudState.IDLE, i18n.tr('hud.state.waiting_short') if is_narrow else i18n.tr('hud.state.waiting')),
+            (HudState.LISTENING, i18n.tr('hud.state.listening_short') if is_narrow else i18n.tr('hud.state.listening')),
+            (HudState.SPEAKING, i18n.tr('hud.state.speaking_short') if is_narrow else i18n.tr('hud.state.speaking'))
+        ]
     
     boxes = []
     tw_total = 0
@@ -396,7 +444,7 @@ def draw_bot_strip(hud, evt=None) -> None:
     spacing = max(tw_total // 2.5, W // 3.8) if is_narrow else max(tw_total // 2, W // 3.2)
     cx = W // 2
     cy = H // 2
-    active_col = {HudState.IDLE: _CYAN, HudState.LISTENING: _GREEN, HudState.SPEAKING: _MAG}
+    active_col = {HudState.IDLE: _CYAN, HudState.LISTENING: _GREEN, HudState.SPEAKING: _MAG, HudState.LOADING: _AMBER}
     
     for i, (state, text) in enumerate(states):
         is_active = (state == mode) or is_ultra_narrow
@@ -408,7 +456,7 @@ def draw_bot_strip(hud, evt=None) -> None:
         bx_h = th + box_pad_y * 2
         
         # Position calculation
-        if is_ultra_narrow:
+        if is_ultra_narrow or len(states) == 1:
             target_cx = cx
         else:
             target_cx = cx + (i - 1) * spacing
@@ -430,3 +478,13 @@ def draw_bot_strip(hud, evt=None) -> None:
         txt_id = c.create_text(dx + dot_r + 10, cy, text=text, anchor='w', fill=tc, font=(hud._F, fs, 'bold'))
         ids.extend([dot_id, txt_id])
         hud._bot_items.append({'state': state, 'col': col, 'ids': ids})
+
+    # Small amber NLP-loading indicator (shown while semantic model warms up)
+    try:
+        from core.system.state import app_state as _app_state
+        if _app_state.nlp_loading and mode != HudState.LOADING:
+            nlp_fs = max(7, int(8 * s))
+            c.create_text(W - 6, H - 4, text='NLP...', anchor='se',
+                          font=(hud._F, nlp_fs, 'normal'), fill=_AMBER)
+    except Exception:
+        pass

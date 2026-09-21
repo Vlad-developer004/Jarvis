@@ -7,23 +7,31 @@ build/
 models/
 dist/
 logs/
+installer_output/
 
-# Compiled Python files
 *.pyc
 *.pyo
 *.pyd
 .Python
+AGENTS.md
 
-# Testing & temporary
-test_*.py
+/test_*.py
 scratch/
 *.bak
 *.swp
 *.tmp
 
-# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+
+.claude/settings.local.json
+
+data/jarvis_settings.json
+data/exe_cache.json
+data/commands_vault.json
+data/model_cache.json
+
+data/intent_model_onnx_quant/
 

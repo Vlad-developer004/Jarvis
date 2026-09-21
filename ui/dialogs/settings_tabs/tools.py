@@ -175,10 +175,9 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
         apps = get_installed_apps()
         pick_win = ctk.CTkToplevel(win)
         pick_win.title(i18n.tr('app_picker.title'))
-        pick_win.geometry(f"{hud._px(820)}x{hud._px(740)}")
         from ui.hud_utils import _center_window
         _center_window(pick_win, 820, 740, hud.zoom_factor)
-        pick_win.configure(bg=_BG)
+        pick_win.configure(fg_color=_BG)  # type: ignore[call-arg]
         _set_dark_title_bar(pick_win)
         pick_win.attributes("-topmost", True)
         _apply_window_icon(pick_win, hud)
@@ -251,9 +250,13 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
     
     _v_row = tk.Frame(c_yt, bg=_PANEL)
     _v_row.pack(fill='x', pady=(14, 0))
+    def _open_videos_mgr():
+        from ui.dialogs.manage_dlg import open_videos_manager
+        open_videos_manager(hud)
+
     ctk.CTkButton(
         _v_row, text=i18n.tr('tools.view_videos'),
-        command=lambda: __import__('ui.dialogs.manage_dlg', fromlist=['open_videos_manager']).open_videos_manager(hud),
+        command=_open_videos_mgr,
         height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'),
         fg_color='transparent', hover_color=_blend(_CYAN, 0.25),
         text_color=_WHITE, border_color=_blend(_CYAN, 0.8),
@@ -317,9 +320,13 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
         **_m_btn_k
     ).grid(row=0, column=0, padx=4, sticky='ew')
 
+    def _open_meetings_mgr():
+        from ui.dialogs.manage_dlg import open_meetings_manager
+        open_meetings_manager(hud)
+
     ctk.CTkButton(
         btn_row_mtg, text=i18n.tr('tools.manage_links'),
-        command=lambda: __import__('ui.dialogs.manage_dlg', fromlist=['open_meetings_manager']).open_meetings_manager(hud),
+        command=_open_meetings_mgr,
         fg_color='transparent', hover_color=_blend(_CYAN, 0.25),
         text_color=_WHITE, border_color=_blend(_CYAN, 0.8),
         **_m_btn_k
@@ -481,5 +488,10 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
                   command=lambda: (_launch_rules.pop(next(k for k in _launch_rules if k.lower() == _launch_lb.get(_launch_lb.curselection()[0]).strip().split(' ◈ ')[0].strip().lower())), _refresh_launch_lb(), _save_launch_now()) if _launch_lb.curselection() else None,
                   fg_color='transparent', hover_color=_blend(_RED, 0.25), text_color=_WHITE,
                   border_color=_blend(_RED, 0.8), **_l_btn_k).pack(side='left', fill='x', expand=True, padx=4, pady=4)
+
+    c_remote = _card('📲', i18n.tr('tools.remote_title'), _CYAN)
+    _hint(c_remote, i18n.tr('tools.remote_hint'))
+    from ui.dialogs.settings_tabs.tools_remote import build_remote_card
+    build_remote_card(c_remote, hud, _add_context_menu)
 
     _refresh_launch_lb()

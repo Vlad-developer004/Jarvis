@@ -38,12 +38,3 @@ def load_briefing_prefs() -> dict:
     except Exception:
         pass
     return out
-def merge_default_briefing_into_settings(data: dict) -> dict:
-    cur = data.get('briefing')
-    if not isinstance(cur, dict):
-        data['briefing'] = deepcopy(_DEFAULT)
-    else:
-        merged = deepcopy(_DEFAULT)
-        merged.update(cur)
-        data['briefing'] = merged
-    return data

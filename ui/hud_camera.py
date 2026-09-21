@@ -23,19 +23,40 @@ def draw_cam_standby(hud) -> None:
     c.delete('all')
     w, h = c.winfo_width(), c.winfo_height()
     if w < 10:
-        w, h = hud._panel_w - 28, int((hud._panel_w - 28) * 3 / 4)
+        w, h = hud._panel_w_left - 28, int((hud._panel_w_left - 28) * 3 / 4)
     cx, cy = w // 2, h // 2
     r = min(w, h) // 4
-    c.create_oval(cx - r, cy - r, cx + r, cy + r, outline=_CYAN, width=1, dash=(4, 4))
+    # Guard mode (voice-activated, features/guard.py) runs its own periodic
+    # snapshot capture independent of this live-preview panel — they'd
+    # fight over the same webcam device if both tried to hold it open. This
+    # only reflects guard's on/off state here so the panel isn't misleadingly
+    # blank while it's actually watching; it never touches the capture.
+    guard_on = getattr(hud, '_guard_active', False)
+    ring_col = _AMBER if guard_on else _CYAN
+    c.create_oval(cx - r, cy - r, cx + r, cy + r, outline=ring_col, width=1, dash=(4, 4))
     _ext = hud._px(15)
-    c.create_line(cx - r - _ext, cy, cx + r + _ext, cy, fill=_CYAN, width=1, dash=(2, 2))
-    c.create_line(cx, cy - r - _ext, cx, cy + r + _ext, fill=_CYAN, width=1, dash=(2, 2))
+    c.create_line(cx - r - _ext, cy, cx + r + _ext, cy, fill=ring_col, width=1, dash=(2, 2))
+    c.create_line(cx, cy - r - _ext, cx, cy + r + _ext, fill=ring_col, width=1, dash=(2, 2))
     s = hud._px(20)
     for x, y, dx, dy in [(hud._px(10), hud._px(10), 1, 1), (w - hud._px(10), hud._px(10), -1, 1), (hud._px(10), h - hud._px(10), 1, -1), (w - hud._px(10), h - hud._px(10), -1, -1)]:
-        c.create_line(x, y, x + dx * s, y, fill=_CYAN, width=2)
-        c.create_line(x, y, x, y + dy * s, fill=_CYAN, width=2)
-    c.create_text(cx, cy + r + hud._px(35), text=i18n.tr('hud.camera.status.waiting'), fill=_blend(_CYAN, 0.5), font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
-    c.create_text(cx, cy + r + hud._px(60), text=i18n.tr('hud.camera.status.signal_not_found'), fill=_RED, font=(hud._F, JStyle.TEXT_TINY))
+        c.create_line(x, y, x + dx * s, y, fill=ring_col, width=2)
+        c.create_line(x, y, x, y + dy * s, fill=ring_col, width=2)
+    if guard_on:
+        c.create_text(cx, cy + r + hud._px(35), text=i18n.tr('hud.camera.status.guard_active'), fill=_AMBER, font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
+        c.create_text(cx, cy + r + hud._px(60), text=i18n.tr('hud.camera.status.guard_watching'), fill=_blend(_AMBER, 0.6), font=(hud._F, JStyle.TEXT_TINY))
+    else:
+        c.create_text(cx, cy + r + hud._px(35), text=i18n.tr('hud.camera.status.waiting'), fill=_blend(_CYAN, 0.5), font=(hud._F, JStyle.TEXT_SMALL, 'bold'))
+        c.create_text(cx, cy + r + hud._px(60), text=i18n.tr('hud.camera.status.signal_not_found'), fill=_RED, font=(hud._F, JStyle.TEXT_TINY))
+
+def set_guard_status(hud, active: bool) -> None:
+    """Reflect features/guard.py's on/off state in the HUD's video-sensor
+    placeholder — called from the guard_on/guard_off command handlers via
+    hud._hud_queue. Never touches the actual camera; if the live preview
+    (toggle_cam) is already running, leave that alone since it's already
+    showing something real."""
+    hud._guard_active = active
+    if not hud._cam_run:
+        draw_cam_standby(hud)
 def toggle_cam(hud) -> None:
     if not _CV2_OK or not _PIL_OK:
         return

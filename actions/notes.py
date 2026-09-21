@@ -2,7 +2,6 @@ import os
 import threading
 import winsound
 from datetime import datetime
-from pathlib import Path
 ONEDRIVE_DESKTOP = os.path.join(os.path.expanduser('~'), 'OneDrive', 'Desktop')
 if not os.path.isdir(ONEDRIVE_DESKTOP):
     ONEDRIVE_DESKTOP = os.path.join(os.path.expanduser('~'), 'Desktop')
@@ -32,8 +31,9 @@ def _reminder_fire(message: str, reminder_info: dict):
         time.sleep(0.3)
     try:
         from core.speech import speak
+        from core.responses import spk
         display_msg = message if message else 'Время вышло'
-        speak(f'Сэр, напоминание: {display_msg}')
+        speak(spk('reminder.notify_v2', msg=display_msg))
     except Exception as e:
         pass
     display_msg = message if message else 'Время вышло!'

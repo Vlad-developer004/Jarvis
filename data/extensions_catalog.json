@@ -34,6 +34,17 @@
       "bundled": true
     },
     {
+      "id": "game_planetbase",
+      "name": "Planetbase",
+      "description": "Голосовое управление колонией + телеметрия в реальном времени. Уведомления о состоянии ресурсов, катастрофах и колонистах. Требует установки мода в игру.",
+      "type": "game_profile",
+      "category": "Игровые профили",
+      "icon": "⊙",
+      "file": "planetbase.json",
+      "features": [],
+      "bundled": true
+    },
+    {
       "id": "feature_guard_cam",
       "name": "Охранная камера",
       "description": "Активирует LIVE-поток с камеры в панели HUD. Голосовые команды: «включи камеру», «выключи камеру».",

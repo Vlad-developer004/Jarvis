@@ -12,7 +12,7 @@ import pygetwindow as gw
 import psutil
 import ctypes
 import win32process
-import urllib.parse
+
 try:
     import win32com.client
     WIN32COM_AVAILABLE = True

@@ -1,8 +1,13 @@
 import re
-import ctypes
 import time
+from actions import keysend
 from core.system import app_state
-DICTATION_STOP_WORDS = ['закончили', 'стоп диктовка', 'хватит', 'конец диктовки', 'заверши диктовку', 'прекрати', 'стоп']
+DICTATION_STOP_WORDS = [
+    'закончили', 'стоп диктовка', 'стоп диктовку', 'хватит', 'конец диктовки',
+    'заверши диктовку', 'прекрати', 'стоп',
+    'отмени диктовку', 'отмени режим диктовки', 'отключи диктовку', 'отключи режим диктовки',
+    'выключи диктовку', 'выключи режим диктовки', 'отменить диктовку',
+]
 DICTATION_SUBMIT_WORDS = ['отправь', 'отправить', 'отправляй', 'нажми ввод', 'ввод', 'нажми enter', 'нажми энтер', 'энтер', 'enter', 'нажимай энтер']
 _PUNCTUATION_MAP = {'точка': '.', 'запятая': ',', 'вопросительный знак': '?', 'знак вопроса': '?', 'восклицательный знак': '!', 'новая строка': '\n', 'абзац': '\n'}
 def is_dictation_active() -> bool:
@@ -12,21 +17,13 @@ def start_dictation() -> None:
 def stop_dictation() -> None:
     app_state.dictation_mode = False
 def _press_enter_dictation():
-    user32 = ctypes.windll.user32
-    user32.keybd_event(13, 0, 0, 0)
-    time.sleep(0.05)
-    user32.keybd_event(13, 0, 2, 0)
+    keysend.press('enter')
 def _type_text(text: str):
     import pyperclip
-    user32 = ctypes.windll.user32
     old = pyperclip.paste()
     pyperclip.copy(text)
     time.sleep(0.05)
-    user32.keybd_event(17, 0, 0, 0)
-    user32.keybd_event(86, 0, 0, 0)
-    time.sleep(0.05)
-    user32.keybd_event(86, 0, 2, 0)
-    user32.keybd_event(17, 0, 2, 0)
+    keysend.hotkey('ctrl', 'v')
     time.sleep(0.05)
     try:
         pyperclip.copy(old if old else '')

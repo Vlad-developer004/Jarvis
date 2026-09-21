@@ -7,13 +7,25 @@ def weather_tick(hud) -> None:
     if not hud._widget_vis.get('weather', True):
         return
     threading.Thread(target=lambda: _fetch_weather(hud), daemon=True).start()
-    
+
     # Adaptive retry: if last data failed, retry much sooner (30s) instead of 10m
     delay = 600000
     if hasattr(hud, '_last_weather_data') and hud._last_weather_data and not hud._last_weather_data.get('ok'):
         delay = 30000
-        
+
     hud.root.after(delay, lambda: weather_tick(hud))
+
+def register_weather_lang_refresh(hud) -> None:
+    """Re-fetch weather immediately when UI language changes."""
+    from core import i18n
+    from actions.weather import _hud_cache
+
+    def _on_lang_change():
+        # Invalidate cache for old language so next fetch uses new lang
+        _hud_cache.clear()
+        threading.Thread(target=lambda: _fetch_weather(hud), daemon=True).start()
+
+    i18n.register_refresh(_on_lang_change)
 def _fetch_weather(hud) -> None:
     try:
         from actions.weather import get_weather_hud
@@ -29,7 +41,7 @@ def apply_weather(hud, d: dict) -> None:
         col = d.get('color', '#ffffff')
         hud._wx_icon_lbl.configure(text=d.get('icon', '?'), fg=col)
         hud._wx_temp_lbl.configure(text=f"{d.get('temp', 0):+d}°" if d.get('ok') else '—°', fg=_WHITE)
-        hud._wx_feels_lbl.configure(text=f"ощущается {d.get('feels', 0):+d}°")
+        hud._wx_feels_lbl.configure(text=f"{i18n.tr('hud.feels_like')} {d.get('feels', 0):+d}°")
         hud._wx_desc_lbl.configure(text=d.get('desc', '—').upper(), fg=_TEXT if d.get('ok') else _DIM)
         hud._wx_city_lbl.configure(text=d.get('city', '—'))
         hud._wx_wind_lbl.configure(text=str(d.get('wind', '—')))

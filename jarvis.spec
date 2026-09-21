@@ -40,6 +40,20 @@ def _project_datas() -> list[tuple[str, str]]:
     datas += _walk_datas(os.path.join(ROOT, "audio"), "audio", exts=(".wav", ".mp3", ".ogg"))
     gp_dir = os.path.join(ROOT, "data", "game_profiles")
     datas += _walk_datas(gp_dir, os.path.join("data", "game_profiles"), exts=(".json",))
+    # core/i18n.py resolves this dir via Path(__file__).parent.parent, not
+    # config_pack.config.get_data_dir() — so it must be bundled here (lands
+    # next to the frozen core/i18n.py inside the PyInstaller archive), not
+    # copied next to Jarvis.exe by build.bat like the config_pack.config-based
+    # data files below. Missing this silently ships a build with no RU/UK
+    # strings at all (i18n.tr() would just echo raw keys).
+    locales_dir = os.path.join(ROOT, "data", "locales")
+    datas += _walk_datas(locales_dir, os.path.join("data", "locales"), exts=(".json",))
+    # Same __file__-relative pattern in features/planetbase/installer.py —
+    # this is the compiled mod payload (PBPatcher.exe, telemetry DLL) it
+    # deploys into the game, not the mod's C# source (that's in mods/,
+    # dev-only, never needed at runtime).
+    integrations_dir = os.path.join(ROOT, "data", "integrations")
+    datas += _walk_datas(integrations_dir, os.path.join("data", "integrations"))
     safe_files = [
         os.path.join(ROOT, "data", "extensions_catalog.json"),
         os.path.join(ROOT, "data", "jarvis_settings.example.json"),
@@ -65,12 +79,17 @@ def _filter_datas(datas_list):
         if name in forbidden or name == '.env' or name == 'secrets.env' or name.endswith('.log'):
             continue
         
-        # If it's in data/ but not in profiles/catalog/example, skip it
-        # This protects new files that might be added to data/ in the future
+        # If it's in data/ but not in one of these known-safe/needed groups,
+        # skip it — this protects personal/session data that might land in
+        # data/ in the future. Keep this allowlist in sync with
+        # _project_datas() above whenever a new __file__-relative data dir
+        # is added there.
         if d_norm.startswith('data/'):
             is_gp = d_norm.startswith('data/game_profiles/')
+            is_locales = d_norm.startswith('data/locales/')
+            is_integrations = d_norm.startswith('data/integrations/')
             is_safe = name in ['extensions_catalog.json', 'jarvis_settings.example.json']
-            if not (is_gp or is_safe):
+            if not (is_gp or is_locales or is_integrations or is_safe):
                 continue
         
         filtered.append((src, dst))
@@ -98,7 +117,7 @@ hiddenimports = (
         "actions.app_launcher", "actions.bluetooth", "actions.clipboard",
         "actions.command_vault", "actions.currency", "actions.dictation",
         "actions.explorer", "actions.filesystem", "actions.game_audio",
-        "actions.game_input", "actions.git_commit", "actions.mouse",
+        "actions.game_input", "actions.git_commit",
         "actions.notes", "actions.ocr", "actions.recent", "actions.screenshot",
         "actions.sensor_bridge", "actions.session_ghost",
         "actions.system", "actions.system_control", "actions.volume",
@@ -106,7 +125,30 @@ hiddenimports = (
         "actions.ets2_telemetry", "actions.ets2_telemetry_installer",
         "actions.briefing_config", "actions.calendar_ics", "actions.inbox_imap",
         "actions.mail_client", "actions.meetings", "actions.programming_extensions",
-        "core.system.updater",
+        "actions.dev_projects", "actions.game_timer", "actions.nasa",
+        "actions.keysend", "actions.keysend_parts.keymap",
+        "actions.system_parts.push_to_talk",
+        "core.system.updater", "core.address", "core.responses",
+        "core.engine.ets2_commands", "core.handler.yt_play",
+        "core.handler.commands.reactor",
+        "core.nlp.commands_data", "core.nlp.intents", "core.nlp.semantic",
+        "core.nlp.semantic_encoder",
+        "core.speech.asr_manager", "core.speech.sound",
+        "features.ets2.llm", "features.ets2.monitor_state",
+        "features.ets2.monitor_checks_progress", "features.ets2.monitor_checks_safety",
+        "features.ets2.monitor_checks_speed",
+        "features.ets2.phrases_common", "features.ets2.phrases_driving",
+        "features.ets2.phrases_job", "features.ets2.phrases_warnings",
+        "features.planetbase", "features.planetbase.installer",
+        "features.planetbase.monitor", "features.planetbase.telemetry",
+        "features.remote_control", "features.remote_control.client",
+        "features.qa.model_fetcher",
+        "ui.dialogs.extensions_common", "ui.dialogs.extensions_setup",
+        "ui.dialogs.keybind_editor", "ui.dialogs.mail_client_dlg",
+        "ui.dialogs.mail_compose_dlg", "ui.dialogs.mail_shared",
+        "ui.dialogs.settings_tabs.tools_remote", "ui.dialogs.spell_editor",
+        "ui.dialogs.yt_picker_dlg", "ui.dialogs.deck",
+        "ui.hud_ai_window", "ui.hud_reactor_fx", "ui.hud_timer_widget",
         "truck_telemetry",
         "truck_telemetry.truck_telemetry",
         "truck_telemetry.telemetry_version",
@@ -117,9 +159,9 @@ hiddenimports = (
         "features.guard", "features.lag_hunter", "features.morning_briefing",
         "features.calendar_reminders",
         "features.qa", "features.ets2.monitor",
-        "ui.dialogs.settings_dlg", "ui.dialogs.mail_dlg", "ui.dialogs.name_dlg",
+        "ui.dialogs.settings_dlg", "ui.dialogs.name_dlg",
         "ui.dialogs.file_type_dlg", "ui.dialogs.manage_dlg", "ui.dialogs.welcome_dlg",
-        "ui.dialogs.extensions", "ui.dialogs.editors", "ui.dialogs.commit_dlg",
+        "ui.dialogs.extensions", "ui.dialogs.commit_dlg",
         "ui.dialogs.settings_tabs.appearance",
         "ui.dialogs.settings_tabs.voice",
         "ui.dialogs.settings_tabs.modules",

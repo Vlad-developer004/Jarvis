@@ -23,7 +23,7 @@ def open_deck(hud, reopen: bool = False) -> None:
     hud._deck_win = win
     hud._track_subwin('deck', win, lambda: open_deck(hud, reopen=True))
     
-    win.configure(bg=_BG)
+    win.configure(bg=_BG)  # type: ignore[call-arg]
     _set_dark_title_bar(win)
     win.after(150, lambda: _set_dark_title_bar(win))
     _apply_window_icon(win, hud)
@@ -186,7 +186,6 @@ def open_deck(hud, reopen: bool = False) -> None:
         'mouse_slower': ('Мышь: Медленнее', 'Снижение скорости текущего движения курсора для точности.', 'медленнее'),
         'mouse_click': ('Мышь: Клик', 'Эмуляция нажатия левой кнопки мыши в текущей позиции.', 'клик'),
         'mouse_dblclick': ('Мышь: Двойной клик', 'Быстрое двойное нажатие левой кнопки мыши.', 'двойной клик'),
-        'mouse_stop': ('Мышь: Стоп', 'Мгновенная остановка любого движения курсора мыши.', 'стоп'),
         'praise': ('Похвала', 'Ответная реакция ассистента на благодарность пользователя.', 'молодец'),
         'restart': ('Перезагрузка ПК', 'Полная перезагрузка операционной системы Windows.', 'перезагрузка'),
         'clip_copy': ('Буфер: Копировать', 'Копирование выделенного объекта (эмуляция Ctrl+C).', 'скопируй'),
@@ -248,6 +247,7 @@ def open_deck(hud, reopen: bool = False) -> None:
         'open_keybinds': ('Макросы/Клавиши', 'Редактор голосовых макросов для приложений.', 'открой макросы'),
         'open_extensions': ('Магазин модулей', 'Управление дополнительными навыками и профилями.', 'открой расширения'),
         'open_perf': ('Мониторинг', 'Открытие детального окна графиков нагрузки ПК.', 'мониторинг ресурсов'),
+        'open_deck': ('База команд', 'Это самое окно — полный список всех голосовых команд с описанием.', 'покажи все команды'),
         'shutdown': ('Выключить компьютер', 'Безопасное завершение работы ПК (команда shutdown /s /t 0).', 'выключи компьютер'),
         'shutdown_timer': ('Таймер выключения', 'Запланированное выключение через N минут (shutdown /s /t ...).', 'выключи компьютер через [время]'),
         'wifi_toggle': ('Wi-Fi', 'Программное включение или отключение Wi-Fi адаптера.', 'выключи вай фай'),
@@ -260,6 +260,7 @@ def open_deck(hud, reopen: bool = False) -> None:
         'win_snap_left': ('Окно: Влево', 'Расположение окна на левой половине экрана.', 'окно влево'),
         'win_snap_right': ('Окно: Вправо', 'Расположение окна на правой половине экрана.', 'окно вправо'),
         'weather': ('Погода', 'Запрос актуального прогноза погоды для вашего региона.', 'какая погода'),
+        'nasa_apod': ('NASA: Картинка дня', 'Астрономическая картинка дня NASA с описанием, показывается в окне ИИ-ассистента.', 'покажи картинку дня от наса'),
         'reminder': ('Напоминание', 'Установка голосового напоминания через заданный интервал.', 'напомни через [время]'),
         'google_search': ('Поиск Google', 'Открытие браузера с результатами поиска по вашему запросу.', 'найди в гугле [запрос]'),
         'git_commit': ('Git: Коммит', 'Автоматический git add, git commit и git push для проекта.', 'сделай коммит'),
@@ -269,17 +270,42 @@ def open_deck(hud, reopen: bool = False) -> None:
         'open_browser': ('Запустить Браузер', 'Открытие веб-браузера по умолчанию.', 'открой браузер'),
         'open_discord': ('Запустить Discord', 'Запуск приложения Discord.', 'открой дискорд'),
         'open_telegram': ('Запустить Telegram', 'Запуск мессенджера Telegram.', 'открой телеграм'),
-        'open_steam': ('Запустить Steam', 'Запуск игрового клиента Steam.', 'открой стим')
+        'open_steam': ('Запустить Steam', 'Запуск игрового клиента Steam.', 'открой стим'),
+        'cancel_timer': ('Отмена выключения', 'Отмена активного запланированного выключения или перезагрузки.', 'отмени выключение'),
+        'change_layout': ('Раскладка клавиатуры', 'Переключение языка раскладки клавиатуры (русский/английский/украинский/немецкий).', 'смени раскладку'),
+        'figma_auto_layout': ('Figma: Автолейаут', 'Применение функции Auto Layout к выделению в Figma (Shift+A).', 'сделай автолейаут'),
+        'figma_group': ('Figma: Группировка', 'Объединение выделенных слоев в группу в Figma (Ctrl+G).', 'сгруппируй'),
+        'media_play': ('Медиа: Продолжить', 'Продолжение воспроизведения медиа/видео.', 'продолжай'),
+        'play_yt': ('YouTube: Включить', 'Поиск и воспроизведение видео или музыки на YouTube.', 'включи песню'),
+        'ps_brush': ('Photoshop: Кисть', 'Выбор основного инструмента рисования «Кисть» (B) в Photoshop.', 'возьми кисть'),
+        'ps_eraser': ('Photoshop: Ластик', 'Выбор инструмента «Ластик» (E) для стирания в Photoshop.', 'дай ластик'),
+        'ps_save': ('Photoshop: Сохранить', 'Сохранение текущего состояния холста в файл .PSD (Ctrl+S).', 'сохрани проект'),
+        'qa_search': ('Вопрос ИИ', 'Запрос к искусственному интеллекту для получения ответа на любой вопрос.', 'скажи, кто такой Тесла'),
+        'reactor_color_amber': ('Реактор: Жёлтый', 'Смена цвета реактора HUD на жёлтый/оранжевый.', 'сделай реактор жёлтым'),
+        'reactor_color_cyan': ('Реактор: Синий', 'Смена цвета реактора HUD на синий.', 'сделай реактор синим'),
+        'reactor_color_green': ('Реактор: Зелёный', 'Смена цвета реактора HUD на зелёный.', 'сделай реактор зелёным'),
+        'reactor_color_magenta': ('Реактор: Фиолетовый', 'Смена цвета реактора HUD на фиолетовый.', 'сделай реактор фиолетовым'),
+        'reactor_color_red': ('Реактор: Красный', 'Смена цвета реактора HUD на красный.', 'сделай реактор красным'),
+        'reactor_color_white': ('Реактор: Белый', 'Смена цвета реактора HUD на белый.', 'сделай реактор белым'),
+        'reactor_glitch': ('Реактор: Глитч', 'Разовый эффект глитч-тряски реактора HUD.', 'тряхни реактор'),
+        'reactor_pulse': ('Реактор: Пульс', 'Разовый эффект усиленной пульсации реактора HUD.', 'пульс реактора'),
+        'reactor_reset': ('Реактор: Сброс цвета', 'Сброс цвета реактора HUD к обычному режимному цвету.', 'верни реактор'),
+        'set_weather_city': ('Город погоды', 'Установка города для прогноза погоды вручную.', 'установи город Москва'),
+        'timer_add': ('Таймер: Добавить время', 'Добавить время к активному таймеру.', 'добавь 5 минут к таймеру'),
+        'timer_cancel': ('Таймер: Отменить', 'Отменить активный таймер.', 'отмени таймер'),
+        'timer_set': ('Таймер: Установить', 'Запуск таймера обратного отсчёта с предупреждениями.', 'поставь таймер на 10 минут'),
+        'timer_status': ('Таймер: Остаток', 'Узнать сколько осталось на таймере.', 'сколько осталось на таймере'),
+        'yt_channel': ('YouTube: Канал', 'Открытие указанного YouTube канала.', 'открой канал'),
     }
     
     CAT_MAP = {
-        'ОСНОВНЫЕ (СИСТЕМА)': ['session', 'system', 'shutdown', 'cancel_timer', 'economy', 'time_now', 'keyboard_', 'show_help', 'restart', 'guard', 'listen', 'wake', 'how_are_you', 'praise', 'open_settings', 'open_keybinds', 'open_extensions', 'open_perf'],
+        'ОСНОВНЫЕ (СИСТЕМА)': ['session', 'system', 'shutdown', 'cancel_timer', 'economy', 'time_now', 'keyboard_', 'show_help', 'restart', 'guard', 'listen', 'wake', 'how_are_you', 'praise', 'open_settings', 'open_keybinds', 'open_extensions', 'open_perf', 'open_deck'],
         'ЮТЮБ И МЕДИА': ['yt_', 'video', 'cinema', 'clipchamp', 'media', 'open_youtube', 'download_video', 'save_video', 'open_saved', 'open_last_video'],
         'ЗВУК И ЭКРАН': ['vol_', 'app_vol', 'audio_switch', 'brightness', 'screenshot', 'start_video', 'move_monitor'],
         'ПРИЛОЖЕНИЯ И ОКНА': ['app_', 'win_', 'min_', 'max_', 'close_', 'browser_tab', 'open_task_manager', 'open_obs', 'terminal', 'google_', 'git_', 'clip_', 'undo', 'redo', 'select_all', 'press_enter', 'change_layout', 'context_close'],
         'ФАЙЛЫ И ДОКУМЕНТЫ': ['folder', 'doc', 'sheet', 'pres', 'any', 'paste_file', 'create_', 'delete_', 'explorer_', 'find_', 'recent_', 'empty_trash'],
-        'ИГРЫ И АВТОМАТИЗАЦИЯ': ['game_mode', 'mouse_', 'dictation_', 'note_save', 'cancel_reminder', 'reminder', 'ocr_', 'weather'],
-        'ИНТЕРФЕЙС HUD': ['show_hud', 'min_win']
+        'ИГРЫ И АВТОМАТИЗАЦИЯ': ['game_mode', 'mouse_', 'dictation_', 'note_save', 'cancel_reminder', 'reminder', 'ocr_', 'weather', 'nasa_apod'],
+        'ИНТЕРФЕЙС HUD': ['show_hud', 'min_win', 'reactor_']
     }
 
     _commands: dict[str, list[tuple[str, str, str, str]]] = {} # pid, name, phrase, desc
@@ -300,6 +326,23 @@ def open_deck(hud, reopen: bool = False) -> None:
             canon_rev[cid] = []
         canon_rev[cid].append(phrase)
 
+    def _format_variants(primary: str, extra: list, limit: int = 3) -> str:
+        # Show several real phrasings per command (not just the one curated
+        # example) so the user can see "you can say it this way, or this
+        # way" instead of assuming there's exactly one magic phrase.
+        seen = set()
+        out = []
+        for p in [primary] + list(extra):
+            p = str(p).replace('{N}', '[число]').strip()
+            key = p.lower()
+            if not p or key in seen:
+                continue
+            seen.add(key)
+            out.append(p)
+            if len(out) >= limit:
+                break
+        return ' / '.join(f'«{p}»' for p in out)
+
     seen_ids = set()
     # 1. Process COMMAND_PATTERNS
     for pat in COMMAND_PATTERNS:
@@ -308,20 +351,23 @@ def open_deck(hud, reopen: bool = False) -> None:
         name = CMD_META.get(pid, (pid.replace('_', ' ').title(), '', ''))[0]
         desc = CMD_META.get(pid, ('', pat.get('description', 'Голосовая команда'), ''))[1]
         phrase_from_meta = CMD_META.get(pid, ('', '', ''))[2]
-        phrase_str = phrase_from_meta if phrase_from_meta else pat['patterns'][0].replace('{N}', '[число]')
-        phrase = f"«{phrase_str}»"
+        primary = phrase_from_meta if phrase_from_meta else pat['patterns'][0]
+        extra = list(pat.get('patterns', [])) + canon_rev.get(pid, [])
+        phrase = _format_variants(primary, extra)
         _add_cmd(pid, name, phrase, desc)
 
     # 2. Process CANON_SIMPLE
     for cid in canon_rev:
         if cid in seen_ids or cid == 'system_insult': continue
+        variants = sorted(canon_rev[cid], key=len)
         if cid in CMD_META:
             name, desc, phrase_str = CMD_META[cid]
+            primary = phrase_str
         else:
             name = cid.replace('_', ' ').title()
             desc = 'Голосовая команда'
-            phrase_str = sorted(canon_rev[cid], key=len)[0]
-        phrase = f"«{phrase_str}»"
+            primary = variants[0]
+        phrase = _format_variants(primary, variants)
         _add_cmd(cid, name, phrase, desc)
 
     _all_items: list[tuple[str, str, str, str, str]] = [] # cat, pid, name, phrase, desc
@@ -334,12 +380,28 @@ def open_deck(hud, reopen: bool = False) -> None:
         if w >= int(750 * hud.zoom_factor): return 2
         return 1
 
+    def _tr_cat(cat_name: str) -> str:
+        cat_keys = {
+            'ОСНОВНЫЕ (СИСТЕМА)': 'keybind.main',
+            'ЮТЮБ И МЕДИА': 'keybind.youtube',
+            'ЗВУК И ЭКРАН': 'keybind.sound',
+            'ПРИЛОЖЕНИЯ И ОКНА': 'keybind.apps',
+            'ФАЙЛЫ И ДОКУМЕНТЫ': 'keybind.files',
+            'ИГРЫ И АВТОМАТИЗАЦИЯ': 'keybind.games',
+            'ИНТЕРФЕЙС HUD': 'keybind.hud',
+            'РАЗНОЕ': 'keybind.other'
+        }
+        key = cat_keys.get(cat_name)
+        if key:
+            return i18n.tr(key)
+        return cat_name
+
     def _make_card(parent, name: str, phrase: str, desc: str, cat: str = '', wrap_w: int = 300) -> tk.Frame:
         card = tk.Frame(parent, bg=_PANEL, highlightbackground=_BRD, highlightthickness=1)
         card.grid_columnconfigure(0, weight=1)
         tk.Label(card, text=name, bg=_PANEL, fg=_WHITE, font=(hud._F, _f13, 'bold'), anchor='w', wraplength=wrap_w, justify='left').grid(row=0, column=0, sticky='ew', padx=hud._px(15), pady=(hud._px(12), hud._px(4)))
         tk.Label(card, text=phrase, bg=_PANEL, fg=_CYAN, font=(hud._F, _f12, 'bold'), anchor='w', wraplength=wrap_w, justify='left').grid(row=1, column=0, sticky='ew', padx=hud._px(15))
-        _desc_text = f'{desc}  ·  {cat}' if cat else desc
+        _desc_text = f'{desc}  ·  {_tr_cat(cat)}' if cat else desc
         tk.Label(card, text=_desc_text, bg=_PANEL, fg=_TEXT, font=(hud._F, _f10), anchor='w', wraplength=wrap_w, justify='left').grid(row=2, column=0, sticky='ew', padx=hud._px(15), pady=(hud._px(4), hud._px(12)))
         return card
 
@@ -373,14 +435,14 @@ def open_deck(hud, reopen: bool = False) -> None:
         if q:
             matched = [(cat, name, phrase, desc) for cat, pid, name, phrase, desc in _all_items if q in name.lower() or q in phrase.lower() or q in desc.lower() or q in pid.lower()]
             if not matched:
-                tk.Label(inner, text='КОМАНДЫ НЕ НАЙДЕНЫ', bg=_BG, fg=_RED, font=(hud._F, _f12, 'bold')).pack(pady=hud._px(50))
+                tk.Label(inner, text=i18n.tr('dialogs.deck.no_commands'), bg=_BG, fg=_RED, font=(hud._F, _f12, 'bold')).pack(pady=hud._px(50))
             else:
                 _grid_section(matched)
         else:
             mode = _sort_mode.get()
             if mode == 'cat':
                 for cat, items in _commands.items():
-                    tk.Label(inner, text=cat, bg=_BG, fg=_MAG, font=(hud._F, _f11, 'bold'), anchor='w').pack(fill='x', padx=hud._px(10), pady=(hud._px(24), hud._px(8)))
+                    tk.Label(inner, text=_tr_cat(cat), bg=_BG, fg=_MAG, font=(hud._F, _f11, 'bold'), anchor='w').pack(fill='x', padx=hud._px(10), pady=(hud._px(24), hud._px(8)))
                     tk.Frame(inner, bg=_MAG, height=hud._px(1)).pack(fill='x', padx=hud._px(10), pady=(0, hud._px(12)))
                     _grid_section([(cat, name, phrase, desc) for pid, name, phrase, desc in items])
             elif mode == 'ru':

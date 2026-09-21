@@ -1,9 +1,7 @@
 import os
 import subprocess
 import time
-from core.system import app_state as _jarvis_state
 KILL_PROCESSES = ['firefox.exe', 'msedge.exe', 'opera.exe', 'WINWORD.EXE', 'EXCEL.EXE', 'POWERPNT.EXE', 'OUTLOOK.EXE', 'ONENOTE.EXE', 'Teams.exe', 'Telegram.exe', 'Viber.exe', 'Skype.exe', 'Spotify.exe', 'spotify.exe', 'SearchApp.exe', 'SearchHost.exe', 'Widgets.exe', 'WidgetService.exe', 'GameBar.exe', 'GameBarPresenceWriter.exe', 'PhoneExperienceHost.exe', 'YourPhone.exe', 'MicrosoftEdgeUpdate.exe', 'BraveUpdate.exe', 'GoogleUpdate.exe', 'jusched.exe', 'jucheck.exe']
-from actions.app_launcher import SYSTEM_WHITELIST
 _saved_power_plan = None
 POWER_PLAN_FILE = os.path.join('data', 'previous_power_plan.txt')
 def _run_system_async(func, *args):
@@ -338,4 +336,4 @@ def clean_system() -> tuple[bool, str]:
     import threading
     from core.speech import speak as _speak
     threading.Thread(target=_do_clean, args=(_speak,), daemon=True, name='jarvis-cleanup').start()
-    return (True, 'Начинаю уборку, сэр. Чищу временные файлы, кэши браузеров, мусор Windows. Доложу по завершении.')
+    return (True, '')

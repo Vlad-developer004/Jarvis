@@ -63,6 +63,15 @@ def _force_init() -> bool:
         _tlog(f"Force-init failed: {_e}")
         return False
 def _read_raw() -> Optional[dict]:
+    # Serialized: the background poll thread and any direct caller (e.g. the
+    # telemetry_diag voice command) both end up here. Without this lock they
+    # can race inside truck_telemetry's init/get_data, and whichever call
+    # loses transiently returns None even though the SDK is fine — that
+    # showed up as a spurious "недоступна" right before fresh data arrived.
+    with _lock:
+        return _read_raw_locked()
+
+def _read_raw_locked() -> Optional[dict]:
     global _initialized
     if not _AVAILABLE:
         return None
@@ -81,24 +90,34 @@ def _read_raw() -> Optional[dict]:
                         return None
                 elif ("No such file" in err_msg or "FileNotFoundError" in err_msg or "not found" in err_msg.lower()
                       or "WinError 2" in err_msg or "SCSTelemetry" in err_msg):
+                    _tlog(f"Init: shared memory not found (game likely not running): {_init_err}")
                     return None
                 else:
                     _tlog(f"Init error (unexpected): {_init_err}")
                     return None
         data = _tt.get_data()
         if not data:
+            _tlog("get_data() returned falsy/empty — SDK init succeeded but no data came back")
             return None
         sdk_flag = data.get("sdkActive")
         if sdk_flag is None:
             sdk_flag = data.get("sdk_active") or data.get("connected")
-        if sdk_flag is None:
-            sdk_flag = any(k in data for k in _TRUCK_DATA_KEYS)
+        if not sdk_flag:
+            # sdkActive can misread as False after a game update shifts the SDK
+            # struct layout (e.g. ETS2 1.60's expanded rest mechanic) — don't
+            # treat the feed as unavailable if the core fields are clearly populated.
+            present_keys = sorted(k for k in _TRUCK_DATA_KEYS if k in data)
+            sdk_flag = bool(present_keys)
+            if not sdk_flag:
+                _tlog(f"sdkActive={data.get('sdkActive')!r} and none of {sorted(_TRUCK_DATA_KEYS)} present. "
+                      f"All keys in data: {sorted(data.keys())}")
         if not sdk_flag:
             return None
         return data
     except Exception as e:
         em = str(e)
         if "WinError 2" in em or "SCSTelemetry" in em:
+            _tlog(f"_read_raw: shared memory vanished mid-read: {e}")
             return None
         _tlog(f"_read_raw error: {e}")
         return None
@@ -138,8 +157,6 @@ def start_background_poll():
             _read_raw_into_cache()
     _poll_thread = threading.Thread(target=_loop, daemon=True, name="ets2_telem_poll")
     _poll_thread.start()
-def stop_background_poll():
-    _poll_stop.set()
 def _read_raw_into_cache():
     global _cache, _last_read
     data = _read_raw()

@@ -67,39 +67,40 @@ def _install_modal_content(
     # Use underlying tk.Toplevel method to avoid CTK's empty string parsing crash
     tk.Toplevel.geometry(win, "")
     
-    win.configure(bg=_BG, fg_color=_BG)
+    win.configure(fg_color=_BG)  # type: ignore[call-arg]
     _set_dark_title_bar(win)
     win.after(150, lambda: _set_dark_title_bar(win))
     _apply_window_icon(win, hud)
 
     win.title(title.upper())
 
-    def _recenter():
-        # Step 1: collapse to content size (bypasses CTK scaling crash with empty string)
+    _centered_once = [False]
+
+    def _recenter(force_collapse: bool = False):
+        # Collapse to content size only on the FIRST show (avoid flicker on nav updates)
         win.update_idletasks()
-        tk.Toplevel.geometry(win, "")
-        win.update_idletasks()
-        
-        # Step 2: read the ACTUAL rendered physical size — already correct, no CTK zoom applied
+        if force_collapse or not _centered_once[0]:
+            tk.Toplevel.geometry(win, "")
+            win.update_idletasks()
+
         rw = win.winfo_width()
         rh = win.winfo_height()
-        if rw < 10:  # not rendered yet, fallback to reqwidth
+        if rw < 10:
             rw = main_frame.winfo_reqwidth()
             rh = main_frame.winfo_reqheight()
-        
-        # Step 3: calculate center position in the work area
+
         from ui.hud_utils import _get_work_area
         l, t, r, b = _get_work_area()
         x = l + (r - l) // 2 - rw // 2
         y = t + (b - t) // 2 - rh // 2
         x = max(l, min(x, r - rw))
         y = max(t, min(y, b - rh))
-        
-        # Step 4: position-only (no resize) — use tk.Toplevel directly to bypass CTK double-scaling
+
         tk.Toplevel.geometry(win, f'+{x}+{y}')
-        
-        # Защита от слишком маленького размера модального окна
-        win.minsize(hud._px(550), hud._px(250))
+        _centered_once[0] = True
+
+        # minsize: bypass CTK to avoid double-scaling (CTK window_scaling already enlarges widgets)
+        tk.Toplevel.minsize(win, 550, 250)
 
     main_frame = tk.Frame(win, bg=_BG, bd=0)
     main_frame.pack(fill="both") # Removed expand=True to prevent bottom stretching
@@ -118,7 +119,7 @@ def _install_modal_content(
     header_f = tk.Frame(content, bg=_BG)
     header_f.pack(fill="x")
     
-    icon_char = "📁" if "ПАПКУ" in header.upper() else "📄"
+    icon_char = "📁" if "ПАПК" in header.upper() else "📄"
     tk.Label(header_f, text=icon_char, font=("Consolas", JStyle.TEXT_H1), fg=_ACCENT, bg=_BG).pack(side="left", padx=(0, 10))
     tk.Label(header_f, text=header.upper(), font=F_HDR, fg=_ACCENT, bg=_BG, anchor="w").pack(side="left")
     
@@ -127,7 +128,7 @@ def _install_modal_content(
     is_file_op = "ФАЙЛ" in header.upper() or "ДОКУМЕНТ" in header.upper() or show_extension_field
     entry_path = None
     if initial_path is not None:
-        tk.Label(content, text="РАСПОЛОЖЕНИЕ:", font=("Consolas", 9, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x")
+        tk.Label(content, text=i18n.tr('file.location'), font=("Consolas", 9, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x")
         path_frame = tk.Frame(content, bg=_BG)
         path_frame.pack(fill="x", pady=(2, 6))
         entry_path = ctk.CTkEntry(
@@ -202,7 +203,7 @@ def _install_modal_content(
             MAX_COLS = 4
             for i, (label, target, is_file) in enumerate(nav_items):
                 r, c = divmod(i, MAX_COLS)
-                btn = ctk.CTkButton(nav_scroll, text=label, fg_color=_blend(_ACCENT, 0.1), command=lambda t=target, f=is_file: _select_item(t, f), **{k:v for k,v in _btn_kw.items() if k != 'fg_color'})
+                btn = ctk.CTkButton(nav_scroll, text=label, fg_color=_blend(_ACCENT, 0.1), command=lambda t=target, f=is_file: _select_item(t, f), **{k:v for k,v in _btn_kw.items() if k != 'fg_color'})  # type: ignore
                 btn.grid(row=r, column=c, padx=3, pady=3)
             _recenter()
             
@@ -211,10 +212,11 @@ def _install_modal_content(
     entry = None
     entry_name = None
     combo_ext = None
+    ext_var = None
     if initial_path and show_extension_field:
         from actions.programming_extensions import get_programming_extensions
-        tk.Label(content, text="ИМЯ ФАЙЛА (БЕЗ РАСШИРЕНИЯ):", font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, 2))
-        _name_ph = (placeholder or "").strip() or "например utils или readme"
+        tk.Label(content, text=i18n.tr('file.name_no_ext'), font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, 2))
+        _name_ph = (placeholder or "").strip() or ("наприклад utils або readme" if i18n.get_language() == "uk" else "например utils или readme")
         entry_name = ctk.CTkEntry(
             content, height=JStyle.H_NORM, font=("Consolas", 13),
             fg_color=_PANEL, border_color=_blend(_CYAN, 0.3), text_color=_TEXT,
@@ -224,8 +226,34 @@ def _install_modal_content(
         entry_name.pack(fill="x", pady=(0, 8))
         if initial_value: entry_name.insert(0, initial_value)
         
-        tk.Label(content, text="ТИП / РАСШИРЕНИЕ (НАПР. VUE, RS):", font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, 2))
-        _CORE_DESC = {"docx": "Word Документ  (.docx)", "xlsx": "Excel Таблица  (.xlsx)", "pptx": "PowerPoint Презентация  (.pptx)", "txt":  "Текстовый файл  (.txt)", "tsx":  "TypeScript JSX  (.tsx)", "ts":   "TypeScript файл  (.ts)", "py":   "Python Скрипт  (.py)", "js":   "JavaScript Файл  (.js)", "html": "Веб-страница  (.html)", "md":   "Markdown Документ  (.md)"}
+        tk.Label(content, text=i18n.tr('file.type_label'), font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(0, 2))
+        is_uk = (i18n.get_language() == 'uk')
+        if is_uk:
+            _CORE_DESC = {
+                "docx": "Word Документ  (.docx)",
+                "xlsx": "Excel Таблиця  (.xlsx)",
+                "pptx": "PowerPoint Презентація  (.pptx)",
+                "txt":  "Текстовий файл  (.txt)",
+                "tsx":  "TypeScript JSX  (.tsx)",
+                "ts":   "TypeScript файл  (.ts)",
+                "py":   "Python Скрипт  (.py)",
+                "js":   "JavaScript Файл  (.js)",
+                "html": "Веб-сторінка  (.html)",
+                "md":   "Markdown Документ  (.md)"
+            }
+        else:
+            _CORE_DESC = {
+                "docx": "Word Документ  (.docx)",
+                "xlsx": "Excel Таблица  (.xlsx)",
+                "pptx": "PowerPoint Презентация  (.pptx)",
+                "txt":  "Текстовый файл  (.txt)",
+                "tsx":  "TypeScript JSX  (.tsx)",
+                "ts":   "TypeScript файл  (.ts)",
+                "py":   "Python Скрипт  (.py)",
+                "js":   "JavaScript Файл  (.js)",
+                "html": "Веб-страница  (.html)",
+                "md":   "Markdown Документ  (.md)"
+            }
         vals = []
         for ext in ["docx", "xlsx", "pptx", "txt"]: vals.append(_CORE_DESC[ext])
         for pe in get_programming_extensions():
@@ -239,11 +267,11 @@ def _install_modal_content(
         entry_name.focus_set()
     else:
         if initial_path:
-            tk.Label(content, text="ИМЯ ФАЙЛА:" if is_file_op else "ИМЯ ПАПКИ:", font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(4, 2))
+            tk.Label(content, text=i18n.tr('file.name') if is_file_op else i18n.tr('name_dlg.folder_name'), font=("Consolas", 12, "bold"), fg=_DIM, bg=_BG, anchor="w").pack(fill="x", pady=(4, 2))
         entry = ctk.CTkEntry(
             content, height=JStyle.H_NORM, font=("Consolas", 14),
             fg_color=_PANEL, border_color=_blend(_CYAN, 0.5), text_color=_WHITE,
-            placeholder_text=(placeholder or "").strip() or "Введите здесь...",
+            placeholder_text=(placeholder or "").strip() or i18n.tr('name_dlg.type_here'),
             placeholder_text_color=_blend(_WHITE, 0.2), border_width=2, corner_radius=JStyle.RAD_PANEL
         )
         entry.pack(fill="x", pady=(4, 15))
@@ -257,7 +285,7 @@ def _install_modal_content(
     
     def _confirm():
         nonlocal result
-        if initial_path is not None and show_extension_field and entry_name is not None and combo_ext is not None:
+        if initial_path is not None and show_extension_field and entry_name is not None and combo_ext is not None and ext_var is not None and entry_path is not None:
             stem = entry_name.get().strip()
             if not stem: return
             raw_ext = ext_var.get().strip().lower()
@@ -270,7 +298,7 @@ def _install_modal_content(
             _cancel(); return
         msg = entry.get().strip() if entry is not None else ""
         if require_message_to_confirm and not msg: return
-        if initial_path is not None: result[0] = (entry_path.get().strip(), msg)
+        if initial_path is not None and entry_path is not None: result[0] = (entry_path.get().strip(), msg)
         else: result[0] = msg
         _cancel()
 
@@ -293,11 +321,13 @@ def _install_modal_content(
     if entry_name:
         entry_name.bind("<Return>", lambda e: _confirm()); entry_name.bind("<Escape>", lambda e: _cancel())
 
-    win.deiconify(); win.lift(); win.focus_force()
+    win.deiconify(); win.lift(); win.focus_force()  # type: ignore[attr-defined]
+    try: win.grab_set()
+    except: pass
     win.update_idletasks() # Ensure sizes are calculated
     _recenter()
     from ui.hud_utils import _make_resizable
-    _make_resizable(win)
+    _make_resizable(win)  # type: ignore[arg-type]
 
 def _ask_via_hud(hud, master: tk.Misc, **kwargs) -> str | tuple[str, str] | tuple[str, str, str] | None:
     out = [None]; done = threading.Event()
@@ -311,7 +341,7 @@ def _ask_via_hud(hud, master: tk.Misc, **kwargs) -> str | tuple[str, str] | tupl
             traceback.print_exc()
         finally:
             done.set()
-    hud._hud_queue.put(work); done.wait(timeout=60.0)
+    hud._hud_queue.put(work); done.wait()
     return out[0]
 
 def _ask_standalone(**kwargs) -> str | tuple[str, str] | tuple[str, str, str] | None:
@@ -320,7 +350,13 @@ def _ask_standalone(**kwargs) -> str | tuple[str, str] | tuple[str, str, str] | 
     root.mainloop()
     return out[0]
 
-def ask_text(*, title, header, ok_text="ОК", cancel_text=i18n.tr('buttons.cancel'), placeholder="", width=640, height=JStyle.H_TOOL, hint_voice=_DEFAULT_HINT, voice_confirm_phrases=None, voice_cancel_phrases=None, require_message_to_confirm=False, initial_path=None, show_extension_field=False, default_extension=None, initial_value=None):
+def ask_text(*, title, header, ok_text=None, cancel_text=None, placeholder="", width=640, height=JStyle.H_TOOL, hint_voice=None, voice_confirm_phrases=None, voice_cancel_phrases=None, require_message_to_confirm=False, initial_path=None, show_extension_field=False, default_extension=None, initial_value=None):
+    if ok_text is None:
+        ok_text = i18n.tr('buttons.ok') or "ОК"
+    if cancel_text is None:
+        cancel_text = i18n.tr('buttons.cancel')
+    if hint_voice is None:
+        hint_voice = i18n.tr('name_dlg.default_hint')
     vc = tuple(voice_confirm_phrases) if voice_confirm_phrases is not None else _VOICE_DOC_CONFIRM
     vz = tuple(voice_cancel_phrases) if voice_cancel_phrases is not None else _VOICE_DOC_CANCEL
     hud, master = _hud_root()

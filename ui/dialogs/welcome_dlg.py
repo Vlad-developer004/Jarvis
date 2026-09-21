@@ -53,8 +53,8 @@ def open_welcome(hud, force: bool = False) -> None:
     _apply_window_icon(win, hud)
     win.after(160, lambda: _set_dark_title_bar(win))
     
-    win.title('J.A.R.V.I.S. — Руководство пользователя')
-    win.configure(fg_color=_BG)
+    win.title(i18n.tr('welcome.win_title'))
+    win.configure(fg_color=_BG)  # type: ignore[call-arg]
     win.resizable(True, True)
     win.minsize(820, 520)
     
@@ -111,7 +111,7 @@ def open_welcome(hud, force: bool = False) -> None:
     tk.Label(title_col, text='Just A Rather Very Intelligent System',
              bg=_BG, fg=_DIM, font=(F, _sf(10), 'italic'), anchor='w').pack(anchor='w', pady=(_px(2), 0))
     tk.Label(title_col,
-             text='Голосовое управление вашей системой. Скажите «Джарвис» — и начните.',
+             text=i18n.tr('welcome.subtitle'),
              bg=_BG, fg=_TEXT, font=(F, _sf(12)), anchor='w').pack(anchor='w', pady=(_px(6), 0))
 
     badge = tk.Frame(hdr, bg=_blend(_CYAN, 0.08),
@@ -133,25 +133,159 @@ def open_welcome(hud, force: bool = False) -> None:
     center_wrap = tk.Frame(scroll_frame, bg=_BG)
     center_wrap.pack(fill='both', expand=True)
 
+    # --- Address selection (first-run only) ---
+    _addr_section = tk.Frame(scroll_frame, bg=_BG)
+    _addr_section.pack(fill='x', padx=_px(24), pady=(_px(10), _px(4)))
+
+    is_uk_lang = (i18n.get_language() == 'uk')
+    _addr_title = 'ХТО ВИ?' if is_uk_lang else 'КТО ВЫ?'
+    _addr_subtitle = (
+        'Оберіть звернення — Джарвіс буде звертатися до вас відповідно'
+        if is_uk_lang else
+        'Выберите обращение — Джарвис будет обращаться к вам соответственно'
+    )
+
+    tk.Label(_addr_section, text=_addr_title, bg=_BG, fg=_CYAN,
+             font=(F, _sf(13), 'bold'), anchor='w').pack(anchor='w')
+    tk.Label(_addr_section, text=_addr_subtitle, bg=_BG, fg=_DIM,
+             font=(F, _sf(10)), anchor='w').pack(anchor='w', pady=(_px(3), _px(10)))
+
+    _addr_row = tk.Frame(_addr_section, bg=_BG)
+    _addr_row.pack(fill='x')
+
+    import json as _json
+    from config_pack.config import get_settings_path as _get_sp
+
+    def _load_addr_settings() -> dict:
+        try:
+            with open(_get_sp(), 'r', encoding='utf-8') as _f:
+                return _json.load(_f)
+        except Exception:
+            return {}
+
+    def _save_addr_field(key: str, val) -> None:
+        try:
+            _d = _load_addr_settings()
+            _d[key] = val
+            p = _get_sp()
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, 'w', encoding='utf-8') as _f:
+                _json.dump(_d, _f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    _cur_mode = _load_addr_settings().get('address_mode', 'male')
+    _addr_mode_var = tk.StringVar(value=_cur_mode)
+
+    def _on_addr_mode(*_):
+        _save_addr_field('address_mode', _addr_mode_var.get())
+        _custom_frame.pack_forget() if _addr_mode_var.get() != 'custom' else _custom_frame.pack(fill='x', pady=(_px(6), 0))
+
+    _btn_cfg = dict(bg=_BG, activebackground=_BG, relief='flat', cursor='hand2', font=(F, _sf(11)))
+
+    for _val, _lbl_ru, _lbl_uk, _col in [
+        ('male',   '♂  Сэр',   '♂  Сер',  _CYAN),
+        ('female', '♀  Леди',  '♀  Пані', _MAG),
+        ('custom', '✏  Своё',  '✏  Своє', _AMBER),
+    ]:
+        _lbl_text = _lbl_uk if is_uk_lang else _lbl_ru
+        _btn_frame = tk.Frame(_addr_row, bg=_BG, highlightbackground=_blend(_col, 0.4),
+                              highlightthickness=1)
+        _btn_frame.pack(side='left', padx=(_px(0), _px(10)), pady=_px(2))
+
+        _rb = ctk.CTkRadioButton(
+            _btn_frame, text=_lbl_text,
+            variable=_addr_mode_var, value=_val,
+            font=(F, _sf(11) + 6), fg_color=_col, hover_color=_blend(_col, 0.7),
+            command=_on_addr_mode,
+        )
+        _rb.pack(padx=_px(12), pady=_px(8))
+
+    _custom_frame = tk.Frame(_addr_section, bg=_BG)
+    _cur_custom = _load_addr_settings().get('custom_address', '')
+    _custom_var = tk.StringVar(value=_cur_custom)
+
+    _custom_hint = 'Введіть своє звернення:' if is_uk_lang else 'Введите своё обращение:'
+    tk.Label(_custom_frame, text=_custom_hint, bg=_BG, fg=_DIM,
+             font=(F, _sf(10))).pack(anchor='w')
+    _custom_entry = tk.Entry(
+        _custom_frame, textvariable=_custom_var, width=22,
+        bg=_PANEL, fg=_WHITE, insertbackground=_CYAN,
+        relief='flat', highlightthickness=1, highlightbackground=_BRD_I,
+        highlightcolor=_CYAN, font=(F, _sf(11))
+    )
+    _custom_entry.pack(anchor='w', pady=(_px(4), 0), ipady=_px(5))
+
+    def _on_custom_change(*_):
+        _save_addr_field('custom_address', _custom_var.get())
+
+    _custom_var.trace_add('write', _on_custom_change)
+
+    if _cur_mode == 'custom':
+        _custom_frame.pack(fill='x', pady=(_px(6), 0))
+
+    tk.Frame(_addr_section, bg=_BRD, height=1).pack(fill='x', pady=(_px(14), _px(4)))
+
     # Simplified, shorter card texts for first-time users
-    CARDS = [
-        (_CYAN,  '🗣  ОТВЕТЫ НА ИМЯ (WAKE WORD)',
-         'Скажите «Джарвис» — система вас услышит (он активен 30 секунд). В настройках можно выбрать: либо он отвечает «Да, сэр» только 1 раз при пробуждении (не спамит на имя), либо всегда отвечает на имя.'),
-        (_GREEN, '🧹  УБОРКА И СИСТЕМА',
-         'Скажите «Джарвис, приберись» — он очистит кэш браузеров, временные файлы и память. Также можно голосом выключать ПК, управлять Bluetooth и Wi-Fi.'),
-        (_MAG,   '🌐  ИНТЕРНЕТ И МЕДИА',
-         '«Открой ютуб», «Открой новую вкладку» или «Сделай погромче». Джарвис сам найдёт всё в интернете и поможет управлять просмотром без мышки.'),
-        (_AMBER, '🎮  ИГРОВОЙ РЕЖИМ (ETS2)',
-         'Играете за рулём? Скажите «Статус грузовика» или «Круиз-контроль на 90», и Джарвис мгновенно выполнит действия в игре, не отвлекая от дороги.'),
-        (_CYAN,  '📝  ГОЛОСОВАЯ ДИКТОВКА',
-         'Поставьте курсор в чат или документ и включите режим диктовки. Джарвис будет печатать всё, что вы говорите, сам расставляя знаки препинания.'),
-        (_GREEN, '⏰  УМНЫЙ ПОМОЩНИК',
-         '«Напомни выключить духовку через 20 минут» или «Выключи компьютер через час». Джарвис всё запомнит и вовремя выведет сообщение на экран.'),
-        (_MAG,   '⚙️  ГДЕ ИСКАТЬ НАСТРОЙКИ?',
-         'Нажмите на кнопку с шестеренкой внизу или скажите «Открой настройки». Там можно откалибровать микрофон, если Джарвис вас плохо слышит.'),
-        (_AMBER, '🔒  ЗАЧЕМ ЭТО НУЖНО?',
-         'Чтобы управлять ПК со свободными руками! При этом Джарвис работает локально (без интернета), поэтому ваши разговоры в полной безопасности.'),
-    ]
+    is_uk = (i18n.get_language() == 'uk')
+    if is_uk:
+        CARDS = [
+            (_CYAN,  '🗣  ВІДПОВІДІ НА ІМ\'Я (WAKE WORD)',
+             'Скажіть «Джарвіс» — система вас почує і лишиться активною деякий час без повтору імені (за замовчуванням 30 секунд, час можна змінити в Налаштуваннях → Голос). Там само можна вибрати: або він відповідає «Так, сер» тільки 1 раз при пробудженні (не спамить на ім\'я), або завжди відповідає на ім\'я.'),
+            (_GREEN, '🧹  ПРИБИРАННЯ ТА СИСТЕМА',
+             'Скажіть «Джарвіс, приберися» — він очистить кеш браузерів, тимчасові файли та пам\'ять. Також можна голосом вимикати ПК, керувати Bluetooth та Wi-Fi.'),
+            (_MAG,   '🌐  ІНТЕРНЕТ ТА МЕДІА',
+             '«Відкрий ютуб», «Відкрий нову вкладку» або «Зроби голосніше». Джарвіс сам знайде все в інтернеті та допоможе керувати переглядом без мишки.'),
+            (_AMBER, '🎮  ІГРОВИЙ РЕЖИМ (ETS2)',
+             'Граєте за кермом? Скажіть «Статус вантажівки» або «Круїз-контроль на 90», і Джарвіс миттєво виконає дії в грі, не відволікаючи від дороги.'),
+            (_CYAN,  '📝  ГОЛОСОВЕ ВВЕДЕННЯ',
+             'Поставте курсор у чат або документ і увімкніть режим диктовки. Джарвіс буде друкувати все, що ви говорите, сам розставляючи розділові знаки.'),
+            (_GREEN, '⏰  РОЗУМНИЙ ПОМІЧНИК',
+             '«Нагадай вимкнути духовку через 20 хвилин» або «Вимкни комп\'ютер через годину». Джарвіс все запам\'ятає і вчасно виведе повідомлення на екран.'),
+            (_MAG,   '⚙️  ДЕ ШУКАТИ НАЛАШТУВАННЯ?',
+             'Натисніть на кнопку з шестірнею внизу або скажіть «Відкрий налаштування». Там можна відкалібрувати мікрофон, якщо Джарвіс вас погано чує.'),
+            (_AMBER, '🔒  НАВІЩО ЦЕ ПОТРІБНО?',
+             'Щоб керувати ПК з вільними руками! При цьому Джарвіс працює локально (без інтернету), тому ваші розмови в повній безпеці.'),
+            (_MAG,   '◈  БАЗА КОМАНД',
+             'Команд дуже багато, і всі не запам\'ятати — скажіть «покажи всі команди» (або «база команд») будь-якої миті, і Джарвіс відкриє повний список із прикладами фраз і поясненнями.'),
+            (_CYAN,  '🗣  КІЛЬКА СПОСОБІВ СКАЗАТИ ОДНЕ Й ТЕ САМЕ',
+             'Не потрібно запам\'ятовувати точне формулювання — більшість команд розуміються кількома варіантами («пауза» = «зупини» = «стоп»). У базі команд для кожної дії показано одразу декілька прикладів.'),
+            (_GREEN, '❓  ЯКЩО ДЖАРВІС НЕ ЗРОЗУМІВ',
+             'Якщо фраза не розпізналась, Джарвіс скаже про це вголос («не розчув, повторіть») замість того, щоб мовчати — так завжди зрозуміло, почув він вас чи ні.'),
+            (_AMBER, '🚀  КАРТИНКА ДНЯ ВІД NASA',
+             'Скажіть «покажи картинку дня від наса» — Джарвіс завантажить астрономічне фото чи відео дня NASA з описом і покаже прямо у своєму вікні, без браузера.'),
+            (_MAG,   '🎬  ВИБІР З КІЛЬКОХ ВІДЕО',
+             'Кажете «увімкни пісню X» — якщо на YouTube знайшлося кілька схожих відео (кліп, live, кавер), Джарвіс покаже картки з прев\'ю і запропонує обрати: кліком або голосом («друге»).'),
+        ]
+    else:
+        CARDS = [
+            (_CYAN,  '🗣  ОТВЕТЫ НА ИМЯ (WAKE WORD)',
+             'Скажите «Джарвис» — система вас услышит и останется активной некоторое время без повтора имени (по умолчанию 30 секунд, время настраивается в Настройках → Голос). Там же можно выбрать: либо он отвечает «Да, сэр» только 1 раз при пробуждении (не спамит на имя), либо всегда отвечает на имя.'),
+            (_GREEN, '🧹  УБОРКА И СИСТЕМА',
+             'Скажите «Джарвис, приберись» — он очистит кэш браузеров, временные файлы и память. Также можно голосом выключать ПК, управлять Bluetooth и Wi-Fi.'),
+            (_MAG,   '🌐  ИНТЕРНЕТ И МЕДИА',
+             '«Открой ютуб», «Открой новую вкладку» или «Сделай погромче». Джарвис сам найдёт всё в интернете и поможет управлять просмотром без мышки.'),
+            (_AMBER, '🎮  ИГРОВОЙ РЕЖИМ (ETS2)',
+             'Играете за рулём? Скажите «Статус грузовика» или «Круиз-контроль на 90», и Джарвис мгновенно выполнит действия в игре, не отвлекая от дороги.'),
+            (_CYAN,  '📝  ГОЛОСОВАЯ ДИКТОВКА',
+             'Поставьте курсор в чат или документ и включите режим диктовки. Джарвис будет печатать всё, что вы говорите, сам расставляя знаки препинания.'),
+            (_GREEN, '⏰  УМНЫЙ ПОМОЩНИК',
+             '«Напомни выключить духовку через 20 минут» или «Выключи компьютер через час». Джарвис всё запомнит и вовремя выведет сообщение на экран.'),
+            (_MAG,   '⚙️  ГДЕ ИСКАТЬ НАСТРОЙКИ?',
+             'Нажмите на кнопку с шестеренкой внизу или скажите «Открой настройки». Там можно откалибровать микрофон, если Джарвис вас плохо слышит.'),
+            (_AMBER, '🔒  ЗАЧЕМ ЭТО НУЖНО?',
+             'Чтобы управлять ПК со свободными руками! При этом Джарвис работает локально (без интернета), поэтому ваши разговоры в полной безопасности.'),
+            (_MAG,   '◈  БАЗА КОМАНД',
+             'Команд очень много, и все не запомнить — скажите «покажи все команды» (или «база команд») в любой момент, и Джарвис откроет полный список с примерами фраз и описанием.'),
+            (_CYAN,  '🗣  НЕСКОЛЬКО СПОСОБОВ СКАЗАТЬ ОДНО И ТО ЖЕ',
+             'Не нужно запоминать точную формулировку — большинство команд понимаются несколькими вариантами («пауза» = «останови» = «стоп»). В базе команд для каждого действия сразу показано несколько примеров.'),
+            (_GREEN, '❓  ЕСЛИ ДЖАРВИС НЕ ПОНЯЛ',
+             'Если фраза не распозналась, Джарвис скажет об этом вслух («не расслышал, повторите») вместо того, чтобы молчать — так всегда понятно, услышал он вас или нет.'),
+            (_AMBER, '🚀  КАРТИНКА ДНЯ ОТ NASA',
+             'Скажите «покажи картинку дня от наса» — Джарвис скачает астрономическое фото или видео дня NASA с описанием и покажет прямо в своём окне, без браузера.'),
+            (_MAG,   '🎬  ВЫБОР ИЗ НЕСКОЛЬКИХ ВИДЕО',
+             'Говорите «включи песню X» — если в YouTube нашлось несколько похожих видео (клип, live, кавер), Джарвис покажет карточки с превью и предложит выбрать: кликом или голосом («второе»).'),
+        ]
 
     grid = tk.Frame(center_wrap, bg=_BG)
     grid.pack(fill='both', expand=True, padx=_px(8), pady=_px(6))
@@ -198,7 +332,7 @@ def open_welcome(hud, force: bool = False) -> None:
     bot = tk.Frame(win, bg=_PANEL)
     bot.pack(fill='x', side='bottom')
     
-    tk.Label(bot, text='Настройте Джарвиса под себя, сэр. Мы всегда готовы к работе.',
+    tk.Label(bot, text=i18n.tr('welcome.footer_text'),
              bg=_PANEL, fg=_DIM, font=(F, _sf(10))).pack(side='left', padx=_px(20), pady=_px(14))
 
     def _open_settings():
@@ -208,14 +342,26 @@ def open_welcome(hud, force: bool = False) -> None:
         except Exception:
             pass
 
+    def _open_deck():
+        try:
+            hud._open_deck()
+        except Exception:
+            pass
+
     # CTK widgets automatically scale by zoom_factor, so pass base logical pixels
-    ctk.CTkButton(bot, text='⚙  Настройки', command=_open_settings,
+    ctk.CTkButton(bot, text=i18n.tr('welcome.settings_btn'), command=_open_settings,
                   height=JStyle.H_LARGE, font=(F, 12),
                   fg_color='transparent', hover_color=_blend(_DIM, 0.1),
                   text_color=_DIM, border_color=_blend(_DIM, 0.3),
                   border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(4), _px(14)), pady=_px(10))
 
-    ctk.CTkButton(bot, text='  Продолжить  ▶', command=win.destroy,
+    ctk.CTkButton(bot, text=i18n.tr('welcome.deck_btn'), command=_open_deck,
+                  height=JStyle.H_LARGE, font=(F, 12),
+                  fg_color='transparent', hover_color=_blend(_MAG, 0.1),
+                  text_color=_MAG, border_color=_blend(_MAG, 0.3),
+                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(4), _px(4)), pady=_px(10))
+
+    ctk.CTkButton(bot, text=i18n.tr('dialog.continue'), command=win.destroy,
                   height=JStyle.H_LARGE, font=(F, 13, 'bold'),
                   fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.28),
                   text_color=_CYAN, border_color=_blend(_CYAN, 0.65),

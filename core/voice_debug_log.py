@@ -5,8 +5,6 @@ import time
 from pathlib import Path
 _LOCK = threading.Lock()
 _PATH = Path('logs') / 'voice_engine.log'
-_LAST_HB = 0.0
-_HB_INTERVAL_SEC = 2.5
 _MAX_FILE_BYTES = 1_500_000
 def _enabled() -> bool:
     v = os.environ.get('JARVIS_VOICE_DEBUG', '1').strip().lower()
@@ -32,28 +30,3 @@ def _write_line(msg: str) -> None:
             pass
 def voice_event(msg: str) -> None:
     _write_line(msg)
-def voice_heartbeat(
-    *,
-    rms: float,
-    voice_on: int,
-    voice_off: int,
-    energy: int,
-    game: bool,
-    jarvis_on: bool,
-    speaking: bool,
-    tts: bool,
-    gain: float,
-) -> None:
-    if not _enabled():
-        return
-    global _LAST_HB
-    now = time.time()
-    if now - _LAST_HB < _HB_INTERVAL_SEC:
-        return
-    _LAST_HB = now
-    _write_line(
-        f'HB rms={rms:.0f} v_on={voice_on} v_off={voice_off} et={energy} '
-        f'game={int(game)} jarvis={int(jarvis_on)} speak={int(speaking)} tts={int(tts)} gain={gain:.2f}'
-    )
-def voice_session_banner(stt_engine: str, rate: int, chunk: int) -> None:
-    _write_line(f'=== session stt={stt_engine!r} rate={rate} chunk={chunk} (JARVIS_VOICE_DEBUG=0 to disable) ===')

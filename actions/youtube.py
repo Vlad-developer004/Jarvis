@@ -1,9 +1,75 @@
 import os
+import re
 import time
 import win32con
 import pygetwindow as gw
 from actions.windows import send_hardware_key, _ensure_en_layout, _restore_layout
 from core.system import force_foreground
+
+def search_youtube_candidates(query: str, limit: int = 5) -> list[dict]:
+    """Top `limit` YouTube search results as [{'id','title','url','thumbnail'}].
+
+    Uses yt_dlp's flat search extraction (same dependency/technique as
+    _get_url_by_search below) instead of regex-scraping the search results
+    page HTML — gives clean titles + thumbnails, needed to let the user pick
+    when several results look like the same song (see candidates_are_ambiguous).
+    Caller is responsible for appending any "песня"/"видео" disambiguator to
+    `query` beforehand — this function doesn't second-guess intent.
+    """
+    try:
+        import yt_dlp
+    except Exception:
+        return []
+    opts = {
+        'quiet': True, 'no_warnings': True, 'extract_flat': True, 'noplaylist': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f'ytsearch{limit}:{query}', download=False)
+    except Exception:
+        return []
+    entries = (info or {}).get('entries') or []
+    results = []
+    for e in entries:
+        vid = e.get('id')
+        if not vid:
+            continue
+        thumbs = e.get('thumbnails') or []
+        results.append({
+            'id': vid,
+            'title': e.get('title') or '',
+            'url': f'https://www.youtube.com/watch?v={vid}',
+            'thumbnail': thumbs[-1].get('url') if thumbs else None,
+        })
+    return results
+
+def _normalize_title_for_similarity(title: str) -> str:
+    t = re.sub(r'[\(\[][^)\]]*[\)\]]', '', title or '')
+    return re.sub(r'\s+', ' ', t).strip().lower()
+
+def candidates_are_ambiguous(candidates: list[dict], threshold: int = 85) -> bool:
+    """True if 2+ of the top results normalize to (near-)the same title —
+    e.g. official video / lyrics / live / audio versions of one song —
+    meaning auto-picking the first result is a real guess, not an obvious win.
+    Bracketed noise like "(Official Video)"/"(Lyrics)" is stripped first so
+    those don't count as a difference.
+
+    With 0 or 1 candidates there's nothing to disambiguate — that's an
+    explicit False here (not just "falls out of the loop"), so the caller
+    (core/handler/yt_play.py) always just plays the single result directly
+    instead of ever popping the picker for a single-video search."""
+    if len(candidates) < 2:
+        return False
+    from rapidfuzz import fuzz
+    top_norm = _normalize_title_for_similarity(candidates[0]['title'])
+    if not top_norm:
+        return False
+    return any(
+        fuzz.token_sort_ratio(top_norm, _normalize_title_for_similarity(c['title'])) >= threshold
+        for c in candidates[1:]
+    )
+
 def _get_url_by_search(title: str) -> str | None:
     if not title: return None
     import yt_dlp
@@ -105,6 +171,7 @@ def _get_current_url() -> str | None:
         old_clip = pyperclip.paste()
     except Exception:
         pass
+    fs_toggled_off = False
     try:
         import win32process
         import win32api
@@ -144,6 +211,7 @@ def _get_current_url() -> str | None:
             user32.keybd_event(0x7A, 0, 0, 0)
             time.sleep(0.05)
             user32.keybd_event(0x7A, 0, 2, 0)
+            fs_toggled_off = True
             for _ in range(30):
                 left, top, right, bottom = _wg.GetWindowRect(hwnd)
                 if top > 0:
@@ -184,26 +252,31 @@ def _get_current_url() -> str | None:
         time.sleep(0.05)
         user32.keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0)
         time.sleep(0.1)
-        if is_fullscreen:
-            user32.keybd_event(0x7A, 0, 0, 0)
-            time.sleep(0.05)
-            user32.keybd_event(0x7A, 0, 2, 0)
-            time.sleep(0.3)
         print(f'[_get_current_url] got: {url!r}', flush=True)
         if url.startswith('http'):
             return url
     except Exception as e:
         print(f'[_get_current_url] error: {e}', flush=True)
     finally:
+        # Always restore fullscreen if we toggled it off, even if something above raised.
+        if fs_toggled_off:
+            try:
+                user32.keybd_event(0x7A, 0, 0, 0)
+                time.sleep(0.05)
+                user32.keybd_event(0x7A, 0, 2, 0)
+                time.sleep(0.3)
+            except Exception:
+                pass
         try:
             if old_clip:
                 pyperclip.copy(old_clip)
         except Exception:
             pass
     return None
-def _open_youtube_url(url: str):
+def _open_youtube_url(url: str, background: bool = False):
     import subprocess
     from pathlib import Path
+
     browser_paths = [
         Path(r'C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe'),
         Path(r'C:\Program Files\Google\Chrome\Application\chrome.exe'),
@@ -212,28 +285,49 @@ def _open_youtube_url(url: str):
         Path.home() / r'AppData\Local\Google\Chrome\Application\chrome.exe',
     ]
     browser_exe = next((str(p) for p in browser_paths if p.exists()), None)
+
+    # If just opening YouTube, open in app-mode window (works with or without PWA installed)
+    if url == 'https://www.youtube.com' and browser_exe:
+        subprocess.Popen([browser_exe, '--app=https://www.youtube.com'])
+        return True
+
+    # If playing a specific video/song, force a new browser tab
+    # (Because Chromium completely blocks CLI deep-linking into existing PWAs)
     if browser_exe:
-        subprocess.Popen([browser_exe, '--new-tab', url])
+        if background:
+            # Open without stealing focus from the game (SW_SHOWNOACTIVATE = 4)
+            si = subprocess.STARTUPINFO()
+            si.dwFlags = subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 4
+            subprocess.Popen([browser_exe, '--new-tab', url], startupinfo=si)
+        else:
+            subprocess.Popen([browser_exe, '--new-tab', url])
     else:
-        import webbrowser
-        webbrowser.open(url)
+        import os
+        try:
+            os.startfile(url)
+        except Exception:
+            import webbrowser
+            webbrowser.open(url)
     return True
-def open_youtube_channel(channel_name: str):
+def open_youtube_channel(channel_name: str, background: bool = False):
     import urllib.parse
     import urllib.request
     import re
-    
+
     q_encoded = urllib.parse.quote(channel_name)
     url = None
     try:
         req = urllib.request.Request(
             f'https://www.youtube.com/results?search_query={q_encoded}&sp=EgIQAg%3D%3D',
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                     'Accept-Language': 'en-US,en;q=0.9'}
+                     'Accept-Language': 'en-US,en;q=0.9',
+                     # Bypasses the EU cookie-consent interstitial, which otherwise
+                     # returns a consent page with no channel data in the markup.
+                     'Cookie': 'CONSENT=YES+1'}
         )
-        with urllib.request.urlopen(req, timeout=3) as r:
+        with urllib.request.urlopen(req, timeout=5) as r:
             html = r.read().decode('utf-8', errors='ignore')
-            # Extract the first channel found in the results
             match = re.search(r'"canonicalBaseUrl":"(/@[^"]+)"', html)
             if match:
                 url = f'https://www.youtube.com{match.group(1)}'
@@ -243,11 +337,11 @@ def open_youtube_channel(channel_name: str):
                     url = f'https://www.youtube.com/channel/{match.group(1)}'
     except Exception as e:
         print(f'[open_youtube_channel] error: {e}', flush=True)
-        
+
     if url:
-        _open_youtube_url(url)
+        _open_youtube_url(url, background=background)
     else:
-        _open_youtube_url(f'https://www.youtube.com/results?search_query={q_encoded}&sp=EgIQAg%3D%3D')
+        _open_youtube_url(f'https://www.youtube.com/results?search_query={q_encoded}&sp=EgIQAg%3D%3D', background=background)
     return (True, 'OK')
 def download_youtube_video():
     import pyperclip
@@ -311,27 +405,31 @@ def control_youtube(action: str, amount: int=5):
     except:
         pass
 
-    target_hwnd = None
+    fg_hwnd = win32gui.GetForegroundWindow()
     browser_exes = ('brave.exe', 'chrome.exe', 'msedge.exe', 'opera.exe', 'browser.exe', 'firefox.exe')
-    
-    # Priority: Window with "YouTube" in title + Browser process
+    media_kw = ('youtube', 'ютуб', 'video', 'видео', 'netflix', 'twitch', 'rutube')
+
+    # Score every candidate: foreground > YouTube title > any browser
+    candidates: list[tuple[int, int]] = []  # (score, hwnd)
     for hwnd in all_windows:
         title = win32gui.GetWindowText(hwnd).lower()
         p_name = get_hwnd_process_name(hwnd)
-        if ('youtube' in title or 'ютуб' in title) and p_name in browser_exes:
-            target_hwnd = hwnd
-            break
-            
-    if not target_hwnd:
-        # Fallback: Just any browser
-        for hwnd in all_windows:
-            p_name = get_hwnd_process_name(hwnd)
-            if p_name in browser_exes:
-                target_hwnd = hwnd
-                break
+        if p_name not in browser_exes:
+            continue
+        score = 0
+        if hwnd == fg_hwnd:
+            score += 10_000   # user was here when they spoke
+        if any(k in title for k in media_kw):
+            score += 100      # has media-related title
+        if title:
+            score += 1        # prefer windows with any title over empty
+        candidates.append((score, hwnd))
 
-    if not target_hwnd:
+    if not candidates:
         return False
+
+    candidates.sort(reverse=True)
+    target_hwnd = candidates[0][1]
 
     # 2. Silent vs Focused control
     if action == 'play_pause':
@@ -339,25 +437,43 @@ def control_youtube(action: str, amount: int=5):
         win32gui.SendMessage(target_hwnd, 0x0319, 0, 14 << 16)
         return True
 
-    # For other actions like rewind/fullscreen, we might still need focus
+    # For seek and fullscreen: save foreground, focus browser briefly, restore.
+    # This avoids permanently stealing focus while still delivering key events.
+    prev_hwnd = win32gui.GetForegroundWindow()
     if win32gui.IsIconic(target_hwnd):
         win32gui.ShowWindow(target_hwnd, 9)
     force_foreground(target_hwnd)
-    time.sleep(0.15)
+    time.sleep(0.12)
     if action == 'fullscreen':
         hkl = _ensure_en_layout()
         send_hardware_key(70)
         _restore_layout(hkl)
-    elif action == 'play_pause':
-        send_hardware_key(32)
     elif action == 'forward':
-        for _ in range(max(1, amount // 5)):
+        # YouTube: L = +10s, Right arrow = +5s. Use L for the bulk of a big seek
+        # so a 2-minute jump is ~12 keypresses instead of 24 — fewer, more reliable.
+        amount = max(amount, 5)
+        tens, rem = divmod(amount, 10)
+        fives = rem // 5 or (1 if tens == 0 else 0)
+        hkl = _ensure_en_layout()
+        for _ in range(tens):
+            send_hardware_key(0x4C)  # VK_L = +10s
+            time.sleep(0.05)
+        for _ in range(fives):
             send_hardware_key(win32con.VK_RIGHT)
-            time.sleep(0.01)
+            time.sleep(0.05)
+        _restore_layout(hkl)
     elif action == 'backward':
-        for _ in range(max(1, amount // 5)):
+        amount = max(amount, 5)
+        tens, rem = divmod(amount, 10)
+        fives = rem // 5 or (1 if tens == 0 else 0)
+        hkl = _ensure_en_layout()
+        for _ in range(tens):
+            send_hardware_key(0x4A)  # VK_J = -10s
+            time.sleep(0.05)
+        for _ in range(fives):
             send_hardware_key(win32con.VK_LEFT)
-            time.sleep(0.01)
+            time.sleep(0.05)
+        _restore_layout(hkl)
     elif action == 'next_video':
         from actions.windows import send_hotkey_hardware
         hkl = _ensure_en_layout()
@@ -370,6 +486,14 @@ def control_youtube(action: str, amount: int=5):
         _restore_layout(hkl)
     elif action == 'close':
         pyautogui.hotkey('ctrl', 'w')
+
+    # Restore previous focus so the browser disappears from foreground
+    time.sleep(0.05)
+    if prev_hwnd and prev_hwnd != target_hwnd:
+        try:
+            force_foreground(prev_hwnd)
+        except Exception:
+            pass
     return True
 def save_current_video():
     from config_pack.config import MAX_SAVED_VIDEOS
@@ -435,7 +559,7 @@ def save_current_video():
     with open(save_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
     return True
-def open_last_watched_video() -> bool:
+def open_last_watched_video(background: bool = False) -> bool:
     import webbrowser, sqlite3, shutil, tempfile, glob
     from pathlib import Path
     profiles = [Path.home() / 'AppData/Local/BraveSoftware/Brave-Browser/User Data', Path.home() / 'AppData/Local/Google/Chrome/User Data', Path.home() / 'AppData/Local/Microsoft/Edge/User Data']
@@ -464,11 +588,11 @@ def open_last_watched_video() -> bool:
                 except Exception:
                     pass
     if best_url:
-        _open_youtube_url(best_url)
+        _open_youtube_url(best_url, background=background)
         return True
-    _open_youtube_url('https://www.youtube.com/feed/history')
+    _open_youtube_url('https://www.youtube.com/feed/history', background=background)
     return True
-def open_saved_video(index: int = -1):
+def open_saved_video(index: int = -1, background: bool = False):
     save_path = os.path.join(os.path.expanduser('~'), 'Jarvis_YT_Saved.txt')
     print(f'[open_saved_video] index={index}, path={save_path}', flush=True)
     if not os.path.exists(save_path):
@@ -484,5 +608,5 @@ def open_saved_video(index: int = -1):
         return False
     line = lines[idx]
     url = line.split(' - ', 1)[1].strip()
-    _open_youtube_url(url)
+    _open_youtube_url(url, background=background)
     return True

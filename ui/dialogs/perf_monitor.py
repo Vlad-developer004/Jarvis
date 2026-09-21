@@ -20,14 +20,20 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
     _px = hud._px
     win = tk.Toplevel(hud.root)
     hud._perf_win = win
+    hud._perf_dialog_open = True
     hud._track_subwin('perf_monitor', win, lambda: open_perf_monitor(hud, reopen=True))
     win.overrideredirect(True)
-    
+
     def _on_map(e):
         if e.widget == win and not win.overrideredirect():
             win.overrideredirect(True)
     win.bind('<Map>', _on_map)
-    win.configure(bg=_BG)
+
+    def _on_destroy(e):
+        if e.widget == win:
+            hud._perf_dialog_open = False
+    win.bind('<Destroy>', _on_destroy)
+    win.configure(bg=_BG)  # type: ignore[call-arg]
     
     def _start_drag(e): win._drag_data = (e.x_root, e.y_root)
     def _do_drag(e):
@@ -104,14 +110,14 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
         if _ghost.get(): win.attributes('-transparentcolor', _T_COL)
         else: win.attributes('-transparentcolor', '')
             
-        win.configure(bg=new_bg)
-        bg_c.configure(bg=new_bg)
-        hdr.configure(bg=new_bg)
-        content_f.configure(bg=new_bg)
+        win.configure(bg=new_bg)  # type: ignore[call-arg]
+        bg_c.configure(bg=new_bg)  # type: ignore[call-arg]
+        hdr.configure(bg=new_bg)  # type: ignore[call-arg]
+        content_f.configure(bg=new_bg)  # type: ignore[call-arg]
         
-        main_area.configure(bg=_T_COL if _ghost.get() else _MAIN_BG)
-        sidebar.configure(bg=_T_COL if _ghost.get() else _SIDE_BG)
-        for c in _canvases.values(): c.configure(bg=_T_COL if _ghost.get() else _MAIN_BG)
+        main_area.configure(bg=_T_COL if _ghost.get() else _MAIN_BG)  # type: ignore[call-arg]
+        sidebar.configure(bg=_T_COL if _ghost.get() else _SIDE_BG)  # type: ignore[call-arg]
+        for c in _canvases.values(): c.configure(bg=_T_COL if _ghost.get() else _MAIN_BG)  # type: ignore[call-arg]
             
         _draw_base()
         _draw_header()
@@ -149,7 +155,7 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             hdr.create_rectangle(0, 0, w, 46, fill=_blend(_CYAN, 0.08), outline='')
             hdr.create_line(0, 45, w, 45, fill=_CYAN, width=1)
         
-        main_title = '⌬  СИСТЕМА' if _compact.get() else '⌬  СИСТЕМНЫЙ МОНИТОРИНГ J.A.R.V.I.S.'
+        main_title = i18n.tr('perf.title_compact') if _compact.get() else i18n.tr('perf.title_full')
         title_id = hdr.create_text(16, 23, text=main_title, fill=_CYAN, font=(_f, _fs(10 if _compact.get() else 12), 'bold'), anchor='w')
         
         bx = w - 10
@@ -175,10 +181,10 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             except: pass
 
         _btn('✕', win.destroy, hint=i18n.tr('buttons.close'), h_col=_RED)
-        _btn('—', _on_minimize, hint="СВЕРНУТЬ")
-        _btn('📌', _toggle_pin, hint="ЗАКРЕПИТЬ ПОВЕРХ", col=_CYAN if _pinned.get() else _DIM)
-        _btn('🔝', _toggle_ghost, hint="ПРОЗРАЧНЫЙ РЕЖИМ", col=_CYAN if _ghost.get() else _DIM)
-        _btn('◰', _toggle_compact, hint="КОМПАКТНЫЙ РЕЖИМ")
+        _btn('—', _on_minimize, hint=i18n.tr('perf.hint_minimize'))
+        _btn('📌', _toggle_pin, hint=i18n.tr('perf.hint_pin'), col=_CYAN if _pinned.get() else _DIM)
+        _btn('🔝', _toggle_ghost, hint=i18n.tr('perf.hint_ghost'), col=_CYAN if _ghost.get() else _DIM)
+        _btn('◰', _toggle_compact, hint=i18n.tr('perf.hint_compact'))
 
     hdr = tk.Canvas(win, bg=_BG, height=46, highlightthickness=0)
     hdr.place(x=1, y=1, relwidth=1.0, width=-2)
@@ -201,11 +207,11 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
     _active = tk.StringVar(value='ram')
     _canvases = {}
     _META = {
-        'ram':      ('ОПЕРАТИВНАЯ ПАМЯТЬ',   _CYAN,  100, '%',  'ПАМЯТЬ'),
-        'dsk_util': ('ЛОКАЛЬНЫЙ ДИСК',       _GREEN, 100, '%',  'ДИСК'),
-        'net_io':   ('WI-FI  (WLAN)',        _MAG,   None, ' КБ/с', 'WI-FI'),
-        'gpu_util': ('ГРАФИЧЕСКИЙ ПРОЦЕССОР',_AMBER, 100, '%',  'ГРАФИКА'),
-        'gaming':   ('ИГРОВАЯ СТАТИСТИКА',   _CYAN,  300, ' ms', 'ИГРА'),
+        'ram':      (i18n.tr('perf.ram'),   _CYAN,  100, '%',  i18n.tr('perf.ram_short')),
+        'dsk_util': (i18n.tr('perf.disk'),  _GREEN, 100, '%',  i18n.tr('perf.disk_short')),
+        'net_io':   (i18n.tr('perf.wifi'),  _MAG,   None, ' КБ/с', i18n.tr('perf.wifi_short')),
+        'gpu_util': (i18n.tr('perf.gpu'),   _AMBER, 100, '%',  i18n.tr('perf.gpu_short')),
+        'gaming':   (i18n.tr('perf.gaming'),_CYAN,  300, ' ms', i18n.tr('perf.gaming_short')),
     }
 
     def _on_select(key):
@@ -218,13 +224,13 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
                 is_sel = (k == key)
                 bg_col = sel_bg if is_sel else base_side
                 
-                btn_f.configure(bg=bg_col)
-                info_f.configure(bg=bg_col)
-                l_name.configure(bg=bg_col, fg=_CYAN if is_sel else _blend(_CYAN, 0.4))
-                val_lbl.configure(bg=bg_col, fg=_WHITE if is_sel else _DIM, font=(_f, _fs(18 if is_sel else 14), 'bold'))
-                spark.configure(bg=bg_col) 
+                btn_f.configure(bg=bg_col)  # type: ignore[call-arg]
+                info_f.configure(bg=bg_col)  # type: ignore[call-arg]
+                l_name.configure(bg=bg_col, fg=_CYAN if is_sel else _blend(_CYAN, 0.4))  # type: ignore[call-arg]
+                val_lbl.configure(bg=bg_col, fg=_WHITE if is_sel else _DIM, font=(_f, _fs(18 if is_sel else 14), 'bold'))  # type: ignore[call-arg]
+                spark.configure(bg=bg_col)  # type: ignore[call-arg]
                 
-                accent.configure(bg=_META[k][1] if is_sel else _blend(_META[k][1], 0.2), width=4 if is_sel else 2)
+                accent.configure(bg=_META[k][1] if is_sel else _blend(_META[k][1], 0.2), width=4 if is_sel else 2)  # type: ignore[call-arg]
                 
         for k, c in _canvases.items():
             if k == key and not _compact.get(): c.pack(fill='both', expand=True, padx=20, pady=15)
@@ -314,9 +320,9 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
         c.create_line(coords, fill=col, width=1.5, tags='dyn')
         
         titles = {
-            'ram': "ИСПОЛЬЗОВАНИЕ ПАМЯТИ (%)", 'dsk_util': "АКТИВНОЕ ВРЕМЯ ДИСКА (%)",
-            'net_io': "ПРОПУСКНАЯ СПОСОБНОСТЬ", 'gpu_util': "ИСПОЛЬЗОВАНИЕ ГП (%)",
-            'gaming': "ЗАДЕРЖКА СЕТИ (ms)"
+            'ram': i18n.tr('perf.ram_title'), 'dsk_util': i18n.tr('perf.disk_title'),
+            'net_io': i18n.tr('perf.wifi_title'), 'gpu_util': i18n.tr('perf.gpu_title'),
+            'gaming': i18n.tr('perf.gaming_title')
         }
         c.create_text(PX_L, PY_T - 10, text=titles.get(key, ""), fill=_blend(col, 0.8), font=(_f, _fs(10), 'bold'), anchor='sw', tags='dyn')
         
@@ -325,7 +331,7 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
         
         hw_name = ""
         if key == 'gpu_util': hw_name = hw_info.get('gpu', '')
-        elif key == 'ram': hw_name = f"ПАМЯТЬ: {meta_all.get('ram', {}).get('total', '')}"
+        elif key == 'ram': hw_name = f"{i18n.tr('perf.ram_short')}: {meta_all.get('ram', {}).get('total', '')}"
         if hw_name: c.create_text(sw - 30, 10, text=hw_name, fill=_CYAN, font=(_f, _fs(10), 'bold'), anchor='ne', tags='dyn')
         
         # --- ИДЕАЛЬНАЯ СЕТКА СТАТИСТИКИ (3 колонки, без наездов) ---
@@ -342,42 +348,42 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
 
         if key == 'ram':
             m = meta_all.get('ram', {})
-            draw_stat(0, 0, "В ИСПОЛЬЗОВАНИИ", f"{pts[-1]:.1f}%" if pts else "0%")
-            draw_stat(1, 0, "ВСЕГО", m.get('total', '—'))
-            draw_stat(2, 0, "ДОСТУПНО", m.get('avail', '—'))
-            draw_stat(0, 1, "СКОРОСТЬ", m.get('speed', '—'))
-            draw_stat(1, 1, "КЭШИРОВАНИЕ", m.get('cached', '—'))
-            draw_stat(2, 1, "СЛОТЫ", m.get('slots', '—'))
-            draw_stat(0, 2, "ВЫДЕЛЕНО", m.get('committed', '—'))
-            draw_stat(1, 2, "ФОРМ-ФАКТОР", m.get('form', '—'))
-            draw_stat(2, 2, "ЗАБРОНИРОВАНО", m.get('h_res', '0 МБ'))
+            draw_stat(0, 0, i18n.tr("perf.ram.used"), f"{pts[-1]:.1f}%" if pts else "0%")
+            draw_stat(1, 0, i18n.tr("perf.ram.total"), m.get('total', '—'))
+            draw_stat(2, 0, i18n.tr("perf.ram.avail"), m.get('avail', '—'))
+            draw_stat(0, 1, i18n.tr("perf.ram.speed"), m.get('speed', '—'))
+            draw_stat(1, 1, i18n.tr("perf.ram.cached"), m.get('cached', '—'))
+            draw_stat(2, 1, i18n.tr("perf.ram.slots"), m.get('slots', '—'))
+            draw_stat(0, 2, i18n.tr("perf.ram.committed"), m.get('committed', '—'))
+            draw_stat(1, 2, i18n.tr("perf.ram.form"), m.get('form', '—'))
+            draw_stat(2, 2, i18n.tr("perf.ram.reserved"), m.get('h_res', '0 МБ'))
         elif key == 'dsk_util':
             m = meta_all.get('disk', {})
-            draw_stat(0, 0, "АКТИВНОЕ ВРЕМЯ", m.get('active_time', '0%'))
-            draw_stat(1, 0, "ВРЕМЯ ОТВЕТА", m.get('latency', '0 мс'))
-            draw_stat(2, 0, "ТИП ДИСКА", m.get('type', 'SSD'))
-            draw_stat(0, 1, "ЧТЕНИЕ", m.get('read_speed', '0 КБ/с'))
-            draw_stat(1, 1, "ЗАПИСЬ", m.get('write_speed', '0 КБ/с'))
-            draw_stat(2, 1, "ЕМКОСТЬ", m.get('total', '—'))
+            draw_stat(0, 0, i18n.tr("perf.disk.active"), m.get('active_time', '0%'))
+            draw_stat(1, 0, i18n.tr("perf.disk.latency"), m.get('latency', '0 мс'))
+            draw_stat(2, 0, i18n.tr("perf.disk.type"), m.get('type', 'SSD'))
+            draw_stat(0, 1, i18n.tr("perf.disk.read"), m.get('read_speed', '0 КБ/с'))
+            draw_stat(1, 1, i18n.tr("perf.disk.write"), m.get('write_speed', '0 КБ/с'))
+            draw_stat(2, 1, i18n.tr("perf.disk.capacity"), m.get('total', '—'))
         elif key == 'net_io':
             m = meta_all.get('net', {})
-            draw_stat(0, 0, "ПРИЕМ", m.get('dn_speed', '0 КБ/с'))
-            draw_stat(1, 0, "ОТПРАВКА", m.get('up_speed', '0 КБ/с'))
-            draw_stat(2, 0, "ТИП СЕТИ", "802.11ac")
-            draw_stat(0, 1, "SSID (СЕТЬ)", m.get('ssid', '—'))
-            draw_stat(1, 1, "LINK SPEED", m.get('link_speed', '—'))
-            draw_stat(2, 1, "IPv4 АДРЕС", m.get('ipv4', '—'))
-            draw_stat(0, 2, "IPv6 АДРЕС", m.get('ipv6', '—'))
-            draw_stat(1, 2, "АДАПТЕР", m.get('adapter', '—'), color=_CYAN)
+            draw_stat(0, 0, i18n.tr("perf.wifi.recv"), m.get('dn_speed', '0 КБ/с'))
+            draw_stat(1, 0, i18n.tr("perf.wifi.send"), m.get('up_speed', '0 КБ/с'))
+            draw_stat(2, 0, i18n.tr("perf.wifi.type"), "802.11ac")
+            draw_stat(0, 1, i18n.tr("perf.wifi.ssid"), m.get('ssid', '—'))
+            draw_stat(1, 1, i18n.tr("perf.wifi.speed"), m.get('link_speed', '—'))
+            draw_stat(2, 1, i18n.tr("perf.wifi.ipv4"), m.get('ipv4', '—'))
+            draw_stat(0, 2, i18n.tr("perf.wifi.ipv6"), m.get('ipv6', '—'))
+            draw_stat(1, 2, i18n.tr("perf.wifi.adapter"), m.get('adapter', '—'), color=_CYAN)
         elif key == 'gpu_util':
             m = meta_all.get('gpu', {})
-            draw_stat(0, 0, "ЗАГРУЗКА ГП", f"{pts[-1]:.1f}%" if pts else "0%")
-            draw_stat(1, 0, "ТЕМПЕРАТУРА", m.get('temp', '0°C'), color=_AMBER)
-            draw_stat(2, 0, "ЧАСТОТА ЯДРА", m.get('clock', '0 МГц'))
-            draw_stat(0, 1, "ПАМЯТЬ ГП", m.get('mem_used', '0 МБ'))
-            draw_stat(1, 1, "ЗАГРУЗКА VRAM", m.get('mem_load', '0%'))
-            draw_stat(2, 1, "ПИТАНИЕ (TDP)", m.get('pwr', '0 Вт'))
-            draw_stat(0, 2, "ВЕРСИЯ ДРАЙВЕРА", m.get('driver', '—'))
+            draw_stat(0, 0, i18n.tr("perf.gpu.load"), f"{pts[-1]:.1f}%" if pts else "0%")
+            draw_stat(1, 0, i18n.tr("perf.gpu.temp"), m.get('temp', '0°C'), color=_AMBER)
+            draw_stat(2, 0, i18n.tr("perf.gpu.clock"), m.get('clock', '0 МГц'))
+            draw_stat(0, 1, i18n.tr("perf.gpu.mem"), m.get('mem_used', '0 МБ'))
+            draw_stat(1, 1, i18n.tr("perf.gpu.vram"), m.get('mem_load', '0%'))
+            draw_stat(2, 1, i18n.tr("perf.gpu.power"), m.get('pwr', '0 Вт'))
+            draw_stat(0, 2, i18n.tr("perf.gpu.driver"), m.get('driver', '—'))
         elif key == 'gaming':
             lat_pts = list(hud._perf_history.get('latency', [0]))
             lat = lat_pts[-1] if lat_pts else 0
@@ -387,14 +393,14 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             fps = random.randint(140, 144) if cpu_pct > 10 else 60
             ftime = 1000.0 / fps if fps > 0 else 0
             
-            draw_stat(0, 0, "ЗАДЕРЖКА (PING)", f"{lat} мс", color=_CYAN)
-            draw_stat(1, 0, "НАГРУЗКА СИСТЕМЫ", f"{int((cpu_pct + gpu_pct)/2)}%", color=_MAG)
-            draw_stat(2, 0, "КАДРОВ В СЕКУНДУ", f"{fps} FPS", color=_GREEN)
-            draw_stat(0, 1, "ВРЕМЯ КАДРА", f"{ftime:.1f} мс", color=_AMBER)
-            draw_stat(1, 1, "TTRF (ОТКЛИК)", f"{lat + ftime:.1f} мс")
-            draw_stat(2, 1, "MEMORY", f"{hud._sys_data.get('ram_pct', 0):.0f}%")
-            draw_stat(0, 2, "CPU LOAD", f"{cpu_pct:.1f}%")
-            draw_stat(1, 2, "GPU LOAD", f"{gpu_pct:.1f}%")
+            draw_stat(0, 0, i18n.tr("perf.game.ping"), f"{lat} мс", color=_CYAN)
+            draw_stat(1, 0, i18n.tr("perf.game.sys_load"), f"{int((cpu_pct + gpu_pct)/2)}%", color=_MAG)
+            draw_stat(2, 0, i18n.tr("perf.game.fps"), f"{fps} FPS", color=_GREEN)
+            draw_stat(0, 1, i18n.tr("perf.game.ftime"), f"{ftime:.1f} мс", color=_AMBER)
+            draw_stat(1, 1, i18n.tr("perf.game.ttrf"), f"{lat + ftime:.1f} мс")
+            draw_stat(2, 1, i18n.tr("perf.game.mem"), f"{hud._sys_data.get('ram_pct', 0):.0f}%")
+            draw_stat(0, 2, i18n.tr("perf.game.cpu"), f"{cpu_pct:.1f}%")
+            draw_stat(1, 2, i18n.tr("perf.game.gpu"), f"{gpu_pct:.1f}%")
 
     _widget_cfg = {
         'cpu': tk.BooleanVar(value=True),

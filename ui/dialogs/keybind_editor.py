@@ -1,3 +1,6 @@
+"""Key-macro binding editor dialog. Split out of the old editors.py
+purely for file size; no behavior change.
+"""
 from __future__ import annotations
 from core import i18n
 from ui.hud_style import JStyle
@@ -22,11 +25,21 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     profiles_data: dict[str, dict] = {}
     profile_files: dict[str, Path] = {}
     
+    is_uk = (i18n.get_language() == 'uk')
+    
     # 1. Load all profiles
     for p in profiles_dir.glob('*.json'):
+        stem = p.stem
+        if is_uk and not stem.endswith('_uk'):
+            continue
+        if not is_uk and stem.endswith('_uk'):
+            continue
+            
         try:
             d = json.loads(p.read_text(encoding='utf-8-sig'))
             game_name = d.get('game', p.stem)
+            if game_name.endswith('_uk'):
+                game_name = game_name[:-3]
             profiles_data[game_name] = d
             profile_files[game_name] = p
         except Exception:
@@ -34,7 +47,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
             
     if not profiles_data:
         import tkinter.messagebox as mb
-        mb.showinfo('Нет профилей', 'Профили управления не найдены в папке data/game_profiles.')
+        mb.showinfo(i18n.tr('editor.no_profiles'), i18n.tr('editor.profiles_not_found'))
         return
 
     # Sort profiles: ETS2 first, then alphabetical
@@ -80,6 +93,30 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         'close_game': 'Экстренный выход из игры',
         'gear_set': 'Установка передачи (через API)'
     }
+    _UK_LABELS = {
+        'engine': 'Двигун', 'handbrake': 'Стоянкове гальмо', 'cruise': 'Круїз-контроль', 
+        'cruise_up': 'Круїз: Більше', 'cruise_down': 'Круїз: Менше',
+        'differential': 'Диференціал', 'axle_lift': 'Підйом осі', 'trailer': 'Причіп', 
+        'lights_main': 'Фари ближнє', 'lights_high': 'Фари дальнє', 'strobe': 'Проблискові вогні', 
+        'turn_left': 'Поворотник лівий', 'turn_right': 'Поворотник правий', 'hazard': 'Аварійка', 
+        'horn': 'Клаксон', 'air_horn': 'Пневмосигнал', 'wipers': 'Двірники', 'info': 'Інфо', 
+        'navigator': 'Навігатор', 'action': 'Дія', 'gear_up': 'Підвищена передача', 
+        'gear_down': 'Понижена передача', 'refuel': 'Заправка'
+    }
+    _TELEMETRY_UK = {
+        'cruise_set': 'Встановлення швидкості круїзу (через API)',
+        'cruise_adjust': 'Підлаштування швидкості круїзу (через API)',
+        'cruise_limit': 'Круїз за обмеженням (через API)',
+        'auto_cruise_on': 'Активація адаптивного круїзу (AI)',
+        'auto_cruise_off': 'Деактивація адаптивного круизу (AI)',
+        'go_to_sleep': 'Симуляція сну (через API)',
+        'close_game': 'Екстрений вихід з гри',
+        'gear_set': 'Встановлення передачі (через API)'
+    }
+    
+    lang = i18n.get_language()
+    _RU_LABELS = _UK_LABELS if lang == 'uk' else _RU_LABELS
+    _TELEMETRY_RU = _TELEMETRY_UK if lang == 'uk' else _TELEMETRY_RU
     _RU_TO_BIND = {v: k for k, v in _RU_LABELS.items()}
     _BIND_LIST = sorted(_RU_LABELS.values())
 
@@ -100,7 +137,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     try:
         if hasattr(hud, '_ico_path'): win.iconbitmap(hud._ico_path)
     except: pass
-    win.configure(bg=_BG)
+    win.configure(bg=_BG)  # type: ignore[call-arg]
     _set_dark_title_bar(win)
     win.after(150, lambda: _set_dark_title_bar(win))
     _apply_window_icon(win, hud)
@@ -258,7 +295,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
             if btn:
                 v = current_vars.get(bid, '')
                 disp = v.upper() if v and len(v) <= 3 else v or '—'
-                btn.configure(text=disp, fg_color=_blend(_CYAN, 0.1) if v else _BG, text_color=_CYAN if v else '#555566', border_color=_blend(_CYAN, 0.4) if v else _BRD)
+                btn.configure(text=disp, fg_color=_blend(_CYAN, 0.1) if v else _BG, text_color=_CYAN if v else '#555566', border_color=_blend(_CYAN, 0.4) if v else _BRD)  # type: ignore[call-arg]
         _listening[0] = None
         win.unbind('<Key>')
 
@@ -273,7 +310,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         _stop_listen()
         _listening[0] = bid
         btn = key_buttons[bid]
-        btn.configure(text='Нажмите...', fg_color=_blend(_AMBER, 0.15), text_color=_AMBER, border_color=_blend(_AMBER, 0.5))
+        btn.configure(text=i18n.tr('editor.press'), fg_color=_blend(_AMBER, 0.15), text_color=_AMBER, border_color=_blend(_AMBER, 0.5))  # type: ignore[call-arg]
         win.bind('<Key>', lambda e: _on_key(e, bid, game_name))
 
     def _on_spell_grid_change(game_name: str, set_num: int, slot_num: int, chosen_name: str):
@@ -294,33 +331,33 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
 
     def _add_custom_macro(game_name: str):
         d = ctk.CTkToplevel(win)
-        d.title("Новая команда")
+        d.title(i18n.tr("editor.new_command"))
         d.geometry("460x440")
         d.resizable(False, False)
         
         _apply_window_icon(d, hud)
         
         _set_dark_title_bar(d)
-        d.configure(fg_color=_BG)
+        d.configure(fg_color=_BG)  # type: ignore[call-arg]
         d.transient(win)
         
         is_ets = 'truck' in game_name.lower() or 'ets' in game_name.lower()
-        ph_name = "Подготовь тягач..." if is_ets else "Revelio..."
-        ph_vars = "заведи, включи свет, поехали..." if is_ets else "ревелио, покажи скрытое..."
+        ph_name = i18n.tr("ui.подготовь_тягач") if is_ets else "Revelio..."
+        ph_vars = i18n.tr("ui.заведи_включи_свет_поехал") if is_ets else i18n.tr("ui.ревелио_покажи_скрытое")
 
         hdr_f = tk.Frame(d, bg=_BG)
         hdr_f.pack(fill='x', pady=(hud._px(25), hud._px(10)))
-        tk.Label(hdr_f, text="СОЗДАНИЕ МАКРОСА", bg=_BG, fg=_GREEN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(side='left', padx=hud._px(35))
+        tk.Label(hdr_f, text=i18n.tr("editor.create_macro"), bg=_BG, fg=_GREEN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(side='left', padx=hud._px(35))
         
-        tk.Label(d, text="НАЗВАНИЕ КОМАНДЫ", bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=45, pady=(15, 0))
+        tk.Label(d, text=i18n.tr("editor.command_name"), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=45, pady=(15, 0))
         name_e = ctk.CTkEntry(d, placeholder_text=ph_name, width=370, height=JStyle.H_NORM, corner_radius=JStyle.RAD_PANEL, border_width=1, border_color=_BRD_I, font=(hud._F, JStyle.TEXT_BODY))
         name_e.pack(pady=(5, 10))
         
-        tk.Label(d, text="ГОЛОСОВЫЕ ВАРИАНТЫ", bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=45)
+        tk.Label(d, text=i18n.tr("editor.voice_variants"), bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=45)
         vars_e = ctk.CTkEntry(d, placeholder_text=ph_vars, width=370, height=JStyle.H_NORM, corner_radius=JStyle.RAD_PANEL, border_width=1, border_color=_BRD_I, font=(hud._F, JStyle.TEXT_BODY))
         vars_e.pack(pady=(5, 10))
 
-        tk.Label(d, text="ПЕРВОЕ ДЕЙСТВИЕ (Опционально)", bg=_BG, fg=_AMBER, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=45)
+        tk.Label(d, text=i18n.tr("editor.first_action"), bg=_BG, fg=_AMBER, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=45)
         first_cmd_cb = ctk.CTkComboBox(d, values=['—'] + _BIND_LIST, width=370, height=JStyle.H_NORM, corner_radius=JStyle.RAD_PANEL, border_width=1, border_color=_BRD_I, 
                                       dropdown_font=(hud._F, JStyle.TEXT_BODY), dropdown_fg_color=_PANEL)
         first_cmd_cb.set('—')
@@ -347,14 +384,14 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
             d.destroy()
             _load_game_tab(game_name)
 
-        ctk.CTkButton(d, text="СОЗДАТЬ И ПЕРЕЙТИ К РЕДАКТИРОВАНИЮ", command=_done, 
+        ctk.CTkButton(d, text=i18n.tr("editor.create_and_edit"), command=_done, 
                       fg_color=_GREEN, text_color=_BG, font=(hud._F, JStyle.TEXT_BODY, 'bold'), 
                       height=JStyle.H_HUGE, corner_radius=JStyle.RAD_PANEL).pack(pady=10, padx=45, fill='x')
 
     def _open_sequence_editor(game_name: str, entry: dict):
         if not entry: return
         d = ctk.CTkToplevel(win)
-        d.title(f"Макрос: {entry.get('name')}")
+        d.title(f"{i18n.tr('editor.command')}: {entry.get('name')}")
         d.geometry("640x540")
         d.minsize(400, 300)
 
@@ -362,7 +399,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
 
         _set_dark_title_bar(d)
         d.after(200, lambda: _set_dark_title_bar(d))
-        d.configure(fg_color=_BG)
+        d.configure(fg_color=_BG)  # type: ignore[call-arg]
         d.transient(win)
         d.lift()
         d.focus_force()
@@ -371,17 +408,17 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         
         def _delete_macro():
             conf = ctk.CTkToplevel(d)
-            conf.title("Удаление макроса")
+            conf.title(i18n.tr("editor.delete_macro"))
             conf.geometry("400x240")
             conf.resizable(False, False)
             _apply_window_icon(conf, hud)
             _set_dark_title_bar(conf)
-            conf.configure(fg_color=_BG)
+            conf.configure(fg_color=_BG)  # type: ignore[call-arg]
             conf.transient(d); conf.grab_set()
             
-            tk.Label(conf, text="⚠️ ПОДТВЕРЖДЕНИЕ", bg=_BG, fg=_RED, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(pady=(25, 10))
-            tk.Label(conf, text=f"Вы действительно хотите\nполностью удалить макрос\n«{entry.get('name')}»?", 
-                     bg=_BG, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), justify='center').pack(pady=10)
+            tk.Label(conf, text=i18n.tr("editor.confirm"), bg=_BG, fg=_RED, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(pady=(25, 10))
+            tk.Label(conf, text=i18n.tr("editor.delete_confirm").format(entry.get('name')), 
+                      bg=_BG, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), justify='center').pack(pady=10)
             
             btn_f = tk.Frame(conf, bg=_BG)
             btn_f.pack(fill='x', side='bottom', pady=25, padx=30)
@@ -405,7 +442,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         hdr_f.pack(fill='x', pady=(25, 10))
         
         # 1. Delete Button FIRST (to reserve space)
-        ctk.CTkButton(hdr_f, text="УДАЛИТЬ МАКРОС", width=140, height=JStyle.H_NORM, fg_color="transparent", 
+        ctk.CTkButton(hdr_f, text=i18n.tr("editor.delete_macro"), width=140, height=JStyle.H_NORM, fg_color="transparent", 
                      text_color=_RED, hover_color=_blend(_RED, 0.1), font=(hud._F, JStyle.TEXT_BODY, 'bold'),
                      border_width=1, border_color=_blend(_RED, 0.3),
                      command=_delete_macro).pack(side='right', padx=35)
@@ -490,14 +527,14 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
                 t_cont = tk.Frame(t_card, bg=_PANEL)
                 t_cont.pack(side='left', fill='both', expand=True, padx=12, pady=6 if has_seq else 12)
                 
-                type_lbl = "СИСТЕМНЫЙ ТРИГГЕР API" if has_seq else "ЗАПРОС ДАННЫХ ТЕЛЕМЕТРИИ"
+                type_lbl = i18n.tr("editor.system_trigger") if has_seq else i18n.tr("editor.telemetry_request")
                 tk.Label(t_cont, text=type_lbl, bg=_PANEL, fg=_AMBER, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(anchor='w')
                 tk.Label(t_cont, text=_TELEMETRY_RU.get(t_action, t_action), bg=_PANEL, fg=_WHITE, font=(hud._F, JStyle.TEXT_SMALL, 'bold')).pack(anchor='w', pady=(1, 0))
                 
                 if not has_seq:
-                    tk.Label(t_cont, text="Это действие получает данные напрямую из игры.", bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY)).pack(anchor='w', pady=(2, 0))
+                    tk.Label(t_cont, text=i18n.tr("editor.telemetry_desc"), bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY)).pack(anchor='w', pady=(2, 0))
                 else:
-                    tk.Label(t_cont, text="Это действие дополняет макрос командами движка.", bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY)).pack(anchor='w', pady=(1, 0))
+                    tk.Label(t_cont, text=i18n.tr("editor.engine_desc"), bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY)).pack(anchor='w', pady=(1, 0))
 
             for i, step in enumerate(seq):
                 color = _AMBER if 'wait' in step else (_CYAN if 'key' in step else _MAG)
@@ -536,7 +573,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
                 content.pack(side='left', fill='both', expand=True, pady=6)
 
                 if 'wait' in step:
-                    tk.Label(content, text="ПАУЗА (сек)", bg=_PANEL, fg=_DIM,
+                    tk.Label(content, text=i18n.tr("editor.pause"), bg=_PANEL, fg=_DIM,
                              font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(anchor='w')
                     val_e = ctk.CTkEntry(content, width=85, height=JStyle.H_TOOL, border_width=1,
                                          corner_radius=JStyle.RAD_BTN, font=(hud._F, JStyle.TEXT_SMALL))
@@ -546,7 +583,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
                 else:
                     is_bind = 'binding' in step
                     tk.Label(content,
-                             text="ШАГ: ИГРОВОЕ ДЕЙСТВИЕ" if is_bind else "ШАГ: НАЖАТЬ КЛАВИШУ",
+                             text=i18n.tr("editor.game_action") if is_bind else i18n.tr("editor.press_key_step"),
                              bg=_PANEL, fg=_DIM,
                              font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(anchor='w')
 
@@ -642,23 +679,23 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         add_bar = tk.Frame(bottom_f, bg=_BG)
         add_bar.pack(anchor='center', pady=(0, 20))
         
-        ctk.CTkButton(add_bar, text="+ ДОБАВИТЬ КОМАНДУ", width=145, height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), 
+        ctk.CTkButton(add_bar, text=i18n.tr("editor.add_command"), width=145, height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), 
                       fg_color=_blend(_MAG, 0.1), hover_color=_blend(_MAG, 0.2),
                       text_color=_MAG, border_width=1, border_color=_blend(_MAG, 0.3),
                       command=lambda: (seq.append({"binding": "engine"}), _render())).pack(side='left', padx=8)
 
 
-        ctk.CTkButton(add_bar, text="+ ДОБАВИТЬ КЛАВИШУ", width=145, height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), 
+        ctk.CTkButton(add_bar, text=i18n.tr("editor.add_key"), width=145, height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY, 'bold'), 
                       fg_color=_blend(_CYAN, 0.1), hover_color=_blend(_CYAN, 0.2),
                       text_color=_CYAN, border_width=1, border_color=_blend(_CYAN, 0.3),
                       command=lambda: (seq.append({"key": "..."}), _render())).pack(side='left', padx=15)
         
-        ctk.CTkButton(add_bar, text="+ ДОБАВИТЬ ПАУЗУ", width=160, height=JStyle.H_LARGE, font=(hud._F, JStyle.TEXT_BODY, 'bold'), 
+        ctk.CTkButton(add_bar, text=i18n.tr("editor.add_pause"), width=160, height=JStyle.H_LARGE, font=(hud._F, JStyle.TEXT_BODY, 'bold'), 
                       fg_color=_blend(_AMBER, 0.1), hover_color=_blend(_AMBER, 0.2),
                       text_color=_AMBER, border_width=1, border_color=_blend(_AMBER, 0.3),
                       command=lambda: (seq.append({"wait": 0.5}), _render())).pack(side='left', padx=15)
         
-        ctk.CTkButton(bottom_f, text="СОХРАНИТЬ ИЗМЕНЕНИЯ МАКРОСА", fg_color=_CYAN, text_color=_BG, 
+        ctk.CTkButton(bottom_f, text=i18n.tr("editor.save_changes"), fg_color=_CYAN, text_color=_BG, 
                       font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=JStyle.H_HUGE, corner_radius=JStyle.RAD_PANEL,
                       command=_save).pack(fill='x')
 
@@ -694,17 +731,6 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
                 load_profile(profile_files[game_name].stem)
             except: pass
 
-    _RU_LABELS = {
-        'engine': 'Двигатель', 'handbrake': 'Стояночный тормоз', 'cruise': 'Круиз-контроль', 
-        'cruise_up': 'Круиз: Больше', 'cruise_down': 'Круиз: Меньше',
-        'differential': 'Дифференциал', 'axle_lift': 'Подъём оси', 'trailer': 'Прицеп', 
-        'lights_main': 'Фары ближний', 'lights_high': 'Фары дальний', 'strobe': 'Проблесковые огни', 
-        'turn_left': 'Поворотник левый', 'turn_right': 'Поворотник правый', 'hazard': 'Аварийка', 
-        'horn': 'Клаксон', 'air_horn': 'Пневмосигнал', 'wipers': 'Дворники', 'info': 'Инфо', 
-        'navigator': 'Навигатор', 'action': 'Действие', 'gear_up': 'Повышенная передача', 
-        'gear_down': 'Пониженная передача', 'refuel': 'Заправка'
-    }
-
 
     def _load_game_tab(game_name: str):
         nonlocal current_game
@@ -715,11 +741,11 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
         for g, b_tuple in tab_buttons.items():
             btn, ind = b_tuple
             if g == game_name:
-                btn.configure(text_color=_CYAN, fg_color=_blend(_CYAN, 0.05))
-                ind.configure(bg=_CYAN)
+                btn.configure(text_color=_CYAN, fg_color=_blend(_CYAN, 0.05))  # type: ignore[call-arg]
+                ind.configure(bg=_CYAN)  # type: ignore[call-arg]
             else:
-                btn.configure(text_color=_DIM, fg_color='transparent')
-                ind.configure(bg=_BG)
+                btn.configure(text_color=_DIM, fg_color='transparent')  # type: ignore[call-arg]
+                ind.configure(bg=_BG)  # type: ignore[call-arg]
         
         # Hide all cached frames
         for f in tab_frames.values():
@@ -788,7 +814,16 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
                 'Следующая машина в списке': 'След. техника',
                 'Предыдущая машина в списке': 'Пред. техника',
                 'Передача: Выше': 'Передача+',
-                'Передача: Ниже': 'Передача-'
+                'Передача: Ниже': 'Передача-',
+                'Запуск двигуна': 'Двигун',
+                'Запуск / Зупинка Двигуна': 'Двигун',
+                'Газ / Прискорення': 'Газ',
+                'Гальмо / Зупинка': 'Гальмо',
+                'Покинути / Сісти в техніку': 'Техніка',
+                'Наступна машина в списку': 'Наст. техніка',
+                'Попередня машина в списку': 'Попер. техніка',
+                'Передача: Вище': 'Передача+',
+                'Передача: Нижче': 'Передача-'
             }
             res = overrides.get(t, t).strip()
             return res.upper()
@@ -811,7 +846,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
             visible_items.append((bid, clean_name, key_val, is_bind, entry))
 
         if not visible_items and _q and not _is_placeholder:
-            tk.Label(game_f, text=f'🔍 Ничего не найдено по запросу «{_q}»',
+            tk.Label(game_f, text=i18n.tr("editor.nothing_found").format(_q),
                      bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_BODY), anchor='center'
                      ).pack(expand=True, fill='both', pady=60)
             return
@@ -894,7 +929,7 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
             def _clear(b=bid, gn=game_name):
                 _stop_listen()
                 current_vars[b] = ''
-                key_buttons[b].configure(text='—', fg_color='transparent', text_color=_DIM, border_color=_BRD_I)
+                key_buttons[b].configure(text='—', fg_color='transparent', text_color=_DIM, border_color=_BRD_I)  # type: ignore[call-arg]
                 _save_changes(gn)
 
             del_btn = ctk.CTkButton(tools_f, text='✕', 
@@ -1041,160 +1076,3 @@ def open_keybind_editor(hud, reopen: bool = False) -> None:
     
     tk.Frame(win, bg=_CYAN, height=2).pack(fill='x', side='bottom')
 
-def open_spell_editor(hud, reopen: bool = False) -> None:
-    if reopen and hud._spell_win and hud._spell_win.winfo_exists():
-        hud._spell_win.destroy()
-    import sys, json
-    from pathlib import Path
-    _main = sys.modules.get('__main__')
-    profile_display = getattr(_main, '_game_profile', '') if _main else ''
-    
-    profiles_dir = Path('data') / 'game_profiles'
-    profile_file = None
-    
-    # If active profile is not Hogwarts, try to find ANY Hogwarts profile automatically
-    target_kw = 'hogwarts'
-    if not profile_display or target_kw not in profile_display.lower():
-        # Look for first available hogwarts profile
-        for p in profiles_dir.glob('*.json'):
-            try:
-                d = json.loads(p.read_text(encoding='utf-8'))
-                gname = d.get('game', p.stem)
-                if target_kw in gname.lower():
-                    profile_display = gname
-                    profile_file = p
-                    break
-            except Exception: pass
-            
-    # If still not found by search, try to match current active profile if it exists
-    if not profile_file and profile_display:
-        for p in profiles_dir.glob('*.json'):
-            try:
-                d = json.loads(p.read_text(encoding='utf-8'))
-                if d.get('game', p.stem) == profile_display:
-                    profile_file = p
-                    break
-            except Exception: pass
-
-    if not profile_file:
-        import tkinter.messagebox as mb
-        mb.showinfo('Редактор паттернов', 'Профиль Hogwarts Legacy не найден в папке profiles.\nПожалуйста, создайте или установите его.')
-        return
-    data = json.loads(profile_file.read_text(encoding='utf-8'))
-    spells: list = data.get('spells')
-    if not spells:
-        import tkinter.messagebox as mb
-        mb.showinfo('Нет паттернов', 'Этот профиль не содержит паттернов голосовых команд.')
-        return
-    assign: dict[int, dict[int, str]] = {1: {}, 2: {}, 3: {}, 4: {}}
-    for s in spells:
-        sn = s.get('set')
-        sk = s.get('key')
-        if sn in (1, 2, 3, 4) and sk in ('1', '2', '3', '4'):
-            assign[sn][int(sk)] = s.get('name', '')
-    _slottable = [s for s in spells if s.get('name') and (not s.get('mouse')) and (not s.get('key') or s.get('key') in ('1', '2', '3', '4'))]
-    all_names = ['—'] + [s['name'] for s in _slottable]
-    win = tk.Toplevel(hud.root)
-    hud._spell_win = win
-    _set_dark_title_bar(win)
-    win.after(100, lambda: _set_dark_title_bar(win))
-    win.title(f'Редактор паттернов — {profile_display}')
-    try:
-        if hasattr(hud, '_ico_path'):
-            win.iconbitmap(hud._ico_path)
-    except Exception:
-        pass
-    win.configure(bg=_BG)
-    win.resizable(True, False)
-    win.update_idletasks()
-    
-    # Calculate adaptive width that fits the screen even at extreme zoom
-    screen_w = win.winfo_screenwidth()
-    _W = int(min(hud._px(820), screen_w * 0.95))
-    _H = hud._px(500)
-    
-    win.minsize(hud._px(800), hud._px(500))
-    win.geometry(f"{_W}x{_H}")
-    _center_window(win, _W, _H)
-    win.lift()
-    win.focus_force()
-    _F_COLORS = ['#00eaff', '#cc44ff', '#44ff88', '#ffaa00']
-    _SLOT_NUMS = ['①', '②', '③', '④']
-    slot_cbs: dict[tuple[int, int], 'ctk.CTkComboBox'] = {}
-    def _autosave():
-        profile_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
-    def _on_select(set_num: int, slot_num: int, chosen: str):
-        old = assign[set_num].get(slot_num)
-        if old and old != chosen:
-            for s in spells:
-                if s.get('name') == old:
-                    s.pop('set', None)
-                    s.pop('key', None)
-        if chosen != '—':
-            for s in spells:
-                if s.get('name') == chosen:
-                    prev_sn = s.get('set')
-                    prev_sk = s.get('key')
-                    if prev_sn in (1, 2, 3, 4) and prev_sk in ('1', '2', '3', '4'):
-                        prev_slot = int(prev_sk)
-                        if (prev_sn, prev_slot) != (set_num, slot_num):
-                            assign[prev_sn].pop(prev_slot, None)
-                            other = slot_cbs.get((prev_sn, prev_slot))
-                            if other:
-                                other.set('—')
-                    s['set'] = set_num
-                    s['key'] = str(slot_num)
-                    assign[set_num][slot_num] = chosen
-        else:
-            assign[set_num].pop(slot_num, None)
-        _autosave()
-    tk.Frame(win, bg=_AMBER, height=3).pack(fill='x')
-    hdr = tk.Frame(win, bg=_BG)
-    hdr.pack(fill='x', pady=(14, 0))
-    tk.Label(hdr, text='★', bg=_BG, fg=_AMBER, font=(hud._F, JStyle.TEXT_H1)).pack(side='left', padx=(20, 6))
-    tk.Label(hdr, text='РЕДАКТОР ПАТТЕРНОВ', bg=_BG, fg=_AMBER, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(side='left')
-    tk.Label(hdr, text=profile_display, bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL)).pack(side='right', padx=20)
-    col_hdr = tk.Frame(win, bg=_BG)
-    col_hdr.pack(fill='x', padx=20, pady=(10, 2))
-    tk.Frame(col_hdr, bg=_BG, width=hud._px(68)).pack(side='left')
-    for idx in range(4):
-        cell = tk.Frame(col_hdr, bg=_BG)
-        cell.pack(side='left', expand=True, fill='x')
-        tk.Label(cell, text=f'Слот  {_SLOT_NUMS[idx]}', bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL), anchor='center').pack(fill='x')
-    tk.Frame(win, bg=_BRD, height=1).pack(fill='x', padx=20, pady=(0, 6))
-    cards_area = tk.Frame(win, bg=_BG)
-    cards_area.pack(fill='both', expand=True, padx=16, pady=(0, 12))
-    for i, set_num in enumerate([1, 2, 3, 4]):
-        color = _F_COLORS[i]
-        card = tk.Frame(cards_area, bg=_PANEL, highlightthickness=0)
-        card.pack(fill='x', pady=4)
-        tk.Frame(card, bg=color, width=4).pack(side='left', fill='y')
-        badge = tk.Frame(card, bg=_PANEL, width=hud._px(68))
-        badge.pack(side='left', fill='y')
-        badge.pack_propagate(False)
-        
-        
-        tk.Label(badge, text=f'F{set_num}', bg=_PANEL, fg=color, font=(hud._F, JStyle.TEXT_H2, 'bold'), anchor='center').place(relx=0.5, rely=0.5, anchor='center')
-        tk.Frame(card, bg=_BRD, width=1).pack(side='left', fill='y', pady=6)
-        slots_row = tk.Frame(card, bg=_PANEL)
-        slots_row.pack(side='left', fill='both', expand=True, padx=(8, 10), pady=8)
-        for j, slot_num in enumerate([1, 2, 3, 4]):
-            val = assign[set_num].get(slot_num, '—')
-            filled = val != '—'
-            
-            # Use our premium searchable dropdown instead of basic CTkComboBox
-            from ui.hud_widgets import _HUDSearchableDropdown
-            v_var = tk.StringVar(value=val)
-            
-            # Callback to handle selection
-            def _on_pick(chosen, sn=set_num, sl=slot_num):
-                _on_select(sn, sl, chosen)
-
-            cb = _HUDSearchableDropdown(hud, slots_row, all_names, v_var, 
-                                       command=_on_pick, accent=color)
-            cb.configure(height=JStyle.H_TOOL)
-            cb.frame.pack(side='left', fill='x', expand=True, padx=(0, 4) if j < 3 else 0)
-            
-            # Update the global map if we need to set it from elsewhere
-            slot_cbs[set_num, slot_num] = v_var
-    tk.Frame(win, bg=_AMBER, height=2).pack(fill='x', side='bottom')

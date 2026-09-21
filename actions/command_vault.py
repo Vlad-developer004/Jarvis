@@ -1,8 +1,8 @@
 import os
 import json
 import time
-import pyautogui
 import pyperclip
+from actions import keysend
 COMMANDS_FILE = 'data/commands_vault.json'
 def _ensure_data_dir():
     os.makedirs(os.path.dirname(COMMANDS_FILE), exist_ok=True)
@@ -23,9 +23,7 @@ def _save_commands(data):
 def save_command(command_name):
     pyperclip.copy('')
     time.sleep(0.1)
-    pyautogui.keyDown('ctrl')
-    pyautogui.press('insert')
-    pyautogui.keyUp('ctrl')
+    keysend.hotkey('ctrl', 'insert')
     time.sleep(0.3)
     text = pyperclip.paste().strip()
     if not text:
@@ -46,9 +44,7 @@ def get_command(command_name):
         text = commands[clean_name]
         pyperclip.copy(text)
         time.sleep(0.2)
-        pyautogui.keyDown('shift')
-        pyautogui.press('insert')
-        pyautogui.keyUp('shift')
+        keysend.hotkey('shift', 'insert')
         return True
     return False
 def delete_command(command_name):

@@ -1,23 +1,19 @@
-import ctypes
 import time
 import pyperclip
+from actions import keysend
 _clipboard_history = []
 MAX_HISTORY = 20
-user32 = ctypes.windll.user32
 def _press_keys(*vk_codes, hold_ctrl=False, hold_shift=False):
+    mods = []
     if hold_ctrl:
-        user32.keybd_event(17, 0, 0, 0)
+        mods.append(0x11)
     if hold_shift:
-        user32.keybd_event(16, 0, 0, 0)
-    for vk in vk_codes:
-        user32.keybd_event(vk, 0, 0, 0)
-    time.sleep(0.05)
-    for vk in reversed(vk_codes):
-        user32.keybd_event(vk, 0, 2, 0)
-    if hold_shift:
-        user32.keybd_event(16, 0, 2, 0)
-    if hold_ctrl:
-        user32.keybd_event(17, 0, 2, 0)
+        mods.append(0x10)
+    if mods:
+        keysend.hotkey(*mods, *vk_codes)
+    else:
+        for vk in vk_codes:
+            keysend.press(vk)
 def clipboard_copy() -> tuple[bool, str]:
     try:
         _press_keys(67, hold_ctrl=True)
@@ -64,11 +60,7 @@ def clipboard_paste_nth(index: int) -> tuple[bool, str]:
         return (False, str(e))
 def clipboard_open_history() -> tuple[bool, str]:
     try:
-        user32.keybd_event(91, 0, 0, 0)
-        user32.keybd_event(86, 0, 0, 0)
-        time.sleep(0.05)
-        user32.keybd_event(86, 0, 2, 0)
-        user32.keybd_event(91, 0, 2, 0)
+        keysend.hotkey('win', 86)
         return (True, 'Буфер обмена открыт')
     except Exception as e:
         return (False, str(e))

@@ -3,7 +3,6 @@ import time
 import subprocess
 import pygetwindow as gw
 from core.system import force_foreground
-from actions.system_parts.input_hw import _switch_to_hwnd
 def _find_latest_video() -> str | None:
     VIDEO_EXTS = {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.wmv'}
     search_dirs = [os.path.join(os.environ['USERPROFILE'], 'Videos'), os.path.join(os.environ['USERPROFILE'], 'Downloads')]
@@ -346,68 +345,110 @@ def send_play_pause_to_video(prefer: str | None = None, action: str = 'toggle') 
         except Exception:
             continue
 
-    print(f"[Media] Prefer: {prefer}", flush=True)
+    # Capture foreground window BEFORE we do anything — this is what the user
+    # was looking at when they gave the command.
+    fg_hwnd = win32gui.GetForegroundWindow()
+
+    print(f"[Media] Prefer: {prefer}, FG hwnd: {fg_hwnd}", flush=True)
     print(f"[Media] Categorized: YTPWA={len(yt_pwa_wins)}, YTBrowser={len(yt_browser_wins)}, BrowserMedia={len(browser_media_wins)}, PureBrowser={len(pure_browser_wins)}, General={len(general_media_wins)}", flush=True)
 
-    # Heuristic: Sort by title length and minimized state
-    def _rank_and_sort(lst, boost_minimized=False):
+    def _rank_and_sort(lst: list, boost_fg: bool = True) -> list:
+        """Sort by: foreground first → visible before minimized → longer title."""
         def score(item):
-            s = len(item[1])
-            if boost_minimized and item[3]: # item[3] is is_minimized
-                s += 1000
+            hwnd = item[0]
+            s = len(item[1])                        # title length as tiebreaker
+            if item[3]:                             # is_minimized → penalise
+                s -= 500
+            if boost_fg and hwnd == fg_hwnd:        # user was here → top priority
+                s += 10_000
             return s
         lst.sort(key=score, reverse=True)
         return lst
 
-    boost_min = (prefer == 'browser')
-    yt_pwa_wins = _rank_and_sort(yt_pwa_wins, boost_minimized=(prefer == 'youtube'))
-    yt_browser_wins = _rank_and_sort(yt_browser_wins, boost_minimized=boost_min)
-    browser_media_wins = _rank_and_sort(browser_media_wins, boost_minimized=boost_min)
-    pure_browser_wins = _rank_and_sort(pure_browser_wins, boost_minimized=boost_min)
-    general_media_wins = _rank_and_sort(general_media_wins, boost_minimized=False)
+    yt_pwa_wins       = _rank_and_sort(yt_pwa_wins)
+    yt_browser_wins   = _rank_and_sort(yt_browser_wins)
+    browser_media_wins = _rank_and_sort(browser_media_wins)
+    pure_browser_wins  = _rank_and_sort(pure_browser_wins)
+    general_media_wins = _rank_and_sort(general_media_wins)
 
-    if prefer == 'youtube':
-        target_objs = yt_pwa_wins or yt_browser_wins or browser_media_wins or pure_browser_wins or general_media_wins
-    elif prefer == 'browser':
-        target_objs = yt_browser_wins or browser_media_wins or pure_browser_wins or yt_pwa_wins or general_media_wins
+    from core.system import app_state
+
+    # Gather all windows that have media or are browsers
+    video_wins = yt_pwa_wins + yt_browser_wins + browser_media_wins + general_media_wins
+    all_candidates = video_wins + pure_browser_wins
+    fg_is_media_or_browser = any(w[0] == fg_hwnd for w in all_candidates)
+    
+    last_valid = False
+    if getattr(app_state, 'last_media_hwnd', 0):
+        # Verify if the last_media_hwnd is still one of the enumerated windows
+        last_valid = any(hwnd == app_state.last_media_hwnd for hwnd in all_windows)
+
+    target_hwnd = None
+
+    if fg_hwnd and fg_is_media_or_browser:
+        # If we are focused on a media window or any browser window, target it immediately
+        target_hwnd = fg_hwnd
     else:
-        # Default global fallback priority
-        target_objs = yt_pwa_wins or yt_browser_wins or browser_media_wins or general_media_wins or pure_browser_wins
+        # If we are not focused on a media/browser window
+        if len(video_wins) <= 1:
+            if video_wins:
+                target_hwnd = video_wins[0][0]
+            elif last_valid:
+                target_hwnd = app_state.last_media_hwnd
+        else:
+            # Multiple video windows exist but none is in focus
+            if last_valid:
+                target_hwnd = app_state.last_media_hwnd
+            else:
+                if prefer == 'youtube':
+                    candidates = yt_pwa_wins + yt_browser_wins + browser_media_wins + general_media_wins
+                elif prefer == 'browser':
+                    candidates = yt_browser_wins + browser_media_wins + general_media_wins + yt_pwa_wins
+                else:
+                    candidates = video_wins
+                candidates = _rank_and_sort(candidates, boost_fg=False)
+                if candidates:
+                    target_hwnd = candidates[0][0]
 
-    if not target_objs:
+
+    if not target_hwnd:
         print("[Media] No targeted windows identified. Global fallback.", flush=True)
-        if pyautogui: pyautogui.press('playpause'); return True
+        if pyautogui:
+            pyautogui.press('playpause')
+            return True
         return False
 
-    success = False
-    for hwnd, title, p_name, is_min, is_yt in target_objs[:5]:
-        try:
-            status = "Minimized" if is_min else "Visible"
-            print(f"[Media] Targeting: {title} ({p_name}, {status}, HWND: {hwnd}, Action: {action})", flush=True)
-            
-            # Chromium browsers handle WM_APPCOMMAND globally per profile.
-            # If the user explicitly asks for youtube or browser, we bypass the global media
-            # controller by foregrounding the specific window and sending the 'k' key.
-            if prefer in ('youtube', 'browser') and is_yt and pyautogui:
-                if is_min:
-                    win32gui.ShowWindow(hwnd, 9)
-                from core.system import force_foreground
-                force_foreground(hwnd)
-                time.sleep(0.15)
-                pyautogui.press('k')
-            else:
-                root_hwnd = win32gui.GetAncestor(hwnd, 2) 
-                win32gui.PostMessage(root_hwnd, 0x0319, 0, cmd_val << 16)
-            
-            success = True
-            break 
-        except Exception as e:
-            print(f"[Media] Error targeting {hwnd}: {e}", flush=True)
-            continue
+    # Find candidate properties for logging and execution
+    target_tuple = None
+    for item in (video_wins + pure_browser_wins):
+        if item[0] == target_hwnd:
+            target_tuple = item
+            break
 
-    if not success and pyautogui:
-        print("[Media] Silent target failed. Global fallback.", flush=True)
-        pyautogui.press('playpause')
+    title = target_tuple[1] if target_tuple else "Unknown Window"
+    p_name = target_tuple[2] if target_tuple else "unknown"
+    is_min = target_tuple[3] if target_tuple else False
+
+    try:
+        status = "Minimized" if is_min else "Visible"
+        print(f"[Media] Targeting: {title} ({p_name}, {status}, HWND: {target_hwnd}, Action: {action})", flush=True)
+        
+        # If target window is in foreground, press spacebar to control the page directly
+        # instead of WM_APPCOMMAND which Chromium intercepts and routes to background tabs.
+        if target_hwnd == fg_hwnd and pyautogui:
+            pyautogui.press('space')
+        else:
+            root_hwnd = win32gui.GetAncestor(target_hwnd, 2)
+            win32gui.PostMessage(root_hwnd, 0x0319, 0, cmd_val << 16)
+            if is_min:
+                win32gui.ShowWindow(target_hwnd, 9)
+        
+        app_state.last_media_hwnd = target_hwnd
         return True
+    except Exception as e:
+        print(f"[Media] Error targeting {target_hwnd}: {e}", flush=True)
+        if pyautogui:
+            pyautogui.press('playpause')
+            return True
+        return False
 
-    return success

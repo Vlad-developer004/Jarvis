@@ -1,42 +1,8 @@
 from __future__ import annotations
 import ctypes
-from ctypes import wintypes
+from actions import keysend
 from core.system import get_foreground_process_name
-_ULONG_PTR = getattr(wintypes, 'ULONG_PTR', ctypes.c_size_t)
-class MOUSEINPUT(ctypes.Structure):
-    _fields_ = [
-        ("dx", wintypes.LONG),
-        ("dy", wintypes.LONG),
-        ("mouseData", wintypes.DWORD),
-        ("dwFlags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", _ULONG_PTR)
-    ]
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ('wVk', wintypes.WORD),
-        ('wScan', wintypes.WORD),
-        ('dwFlags', wintypes.DWORD),
-        ('time', wintypes.DWORD),
-        ('dwExtraInfo', _ULONG_PTR),
-    ]
-class HARDWAREINPUT(ctypes.Structure):
-    _fields_ = [
-        ("uMsg", wintypes.DWORD),
-        ("wParamL", wintypes.WORD),
-        ("wParamH", wintypes.WORD)
-    ]
-class _INPUT_UNION(ctypes.Union):
-    _fields_ = [
-        ('ki', KEYBDINPUT),
-        ('mi', MOUSEINPUT),
-        ('hi', HARDWAREINPUT)
-    ]
-class INPUT(ctypes.Structure):
-    _fields_ = [('type', wintypes.DWORD), ('union', _INPUT_UNION)]
-INPUT_KEYBOARD = 1
-KEYEVENTF_KEYUP = 0x0002
-KEYEVENTF_SCANCODE = 0x0008
+from core.responses import spk
 def _get_langid_from_foreground() -> int | None:
     try:
         user32 = ctypes.windll.user32
@@ -71,32 +37,9 @@ def _switch_layout_en_temporarily():
             pass
     return _restore
 def _sendinput_press(vk: int) -> None:
-    user32 = ctypes.windll.user32
-    scan = user32.MapVirtualKeyW(vk, 0)
-    down = INPUT(type=INPUT_KEYBOARD, union=_INPUT_UNION(ki=KEYBDINPUT(wVk=0, wScan=scan, dwFlags=KEYEVENTF_SCANCODE, time=0, dwExtraInfo=0)))
-    up   = INPUT(type=INPUT_KEYBOARD, union=_INPUT_UNION(ki=KEYBDINPUT(wVk=0, wScan=scan, dwFlags=KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)))
-    sent = user32.SendInput(2, ctypes.byref((INPUT * 2)(down, up)), ctypes.sizeof(INPUT))
-    if sent != 2:
-        raise RuntimeError(f'SendInput sent={sent}')
+    keysend.press(vk)
 def _sendinput_hotkey(vks: list[int]) -> None:
-    user32 = ctypes.windll.user32
-    def _inp(vk: int, up: bool) -> INPUT:
-        scan = user32.MapVirtualKeyW(vk, 0)
-        flags = KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if up else 0)
-        return INPUT(type=INPUT_KEYBOARD, union=_INPUT_UNION(ki=KEYBDINPUT(wVk=0, wScan=scan, dwFlags=flags, time=0, dwExtraInfo=0)))
-    mods = vks[:-1]
-    main = vks[-1]
-    seq = []
-    for m in mods:
-        seq.append(_inp(m, False))
-    seq.append(_inp(main, False))
-    seq.append(_inp(main, True))
-    for m in reversed(mods):
-        seq.append(_inp(m, True))
-    arr = (INPUT * len(seq))(*seq)
-    sent = user32.SendInput(len(seq), ctypes.byref(arr), ctypes.sizeof(INPUT))
-    if sent != len(seq):
-        raise RuntimeError(f'SendInput sent={sent}/{len(seq)}')
+    keysend.hotkey(*vks)
 def _ensure_process(expected: str) -> bool:
     p = (get_foreground_process_name() or '').lower()
     return (expected.lower() in p)
@@ -135,21 +78,9 @@ def _try_focus_photoshop() -> bool:
         pass
     return False
 def _hotkey(*keys: str) -> None:
-    import pyautogui
-    try:
-        pyautogui.FAILSAFE = False
-        pyautogui.PAUSE = 0.02
-    except Exception:
-        pass
-    pyautogui.hotkey(*keys)
+    keysend.hotkey(*keys)
 def _press(key: str) -> None:
-    import pyautogui
-    try:
-        pyautogui.FAILSAFE = False
-        pyautogui.PAUSE = 0.02
-    except Exception:
-        pass
-    pyautogui.press(key)
+    keysend.press(key)
 def _type(text: str) -> None:
     import pyautogui
     pyautogui.write(text, interval=0.01)
@@ -158,6 +89,125 @@ def _palette_action(name: str) -> None:
         _hotkey('alt', 'l')
         _press('m')
         _press('r')
+
+# ---------------------------------------------------------------------------
+# cmd -> action lookup tables. Each entry is a zero-arg callable; to add a new
+# Photoshop/Figma shortcut, add one row here instead of a new elif branch.
+# ---------------------------------------------------------------------------
+_VK = {
+    'CTRL': 0x11, 'SHIFT': 0x10, 'ALT': 0x12,
+    'F5': 0x74, 'F6': 0x75, 'F7': 0x76,
+    'ESC': 0x1B,
+    'PLUS': 0xBB,
+    'MINUS': 0xBD,
+    '0': 0x30, '1': 0x31,
+}
+def _vk_letter(ch: str) -> int:
+    return ord(ch.upper())
+
+_PS_ACTIONS = {
+    'ps_undo': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('Z')]),
+    'ps_redo': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['SHIFT'], _vk_letter('Z')]),
+    'ps_save': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('S')]),
+    'ps_save_as': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['SHIFT'], _vk_letter('S')]),
+    'ps_export_as': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['ALT'], _VK['SHIFT'], _vk_letter('W')]),
+    'ps_new_layer': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['SHIFT'], _vk_letter('N')]),
+    'ps_dup_layer': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('J')]),
+    'ps_merge_down': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('E')]),
+    'ps_group': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('G')]),
+    'ps_ungroup': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['SHIFT'], _vk_letter('G')]),
+    'ps_invert': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('I')]),
+    'ps_levels': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('L')]),
+    'ps_curves': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('M')]),
+    'ps_hue_sat': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('U')]),
+    'ps_color_balance': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('B')]),
+    'ps_brush': lambda: _sendinput_press(_vk_letter('B')),
+    'ps_eraser': lambda: _sendinput_press(_vk_letter('E')),
+    'ps_move': lambda: _sendinput_press(_vk_letter('V')),
+    'ps_lasso': lambda: _sendinput_press(_vk_letter('L')),
+    'ps_marquee': lambda: _sendinput_press(_vk_letter('M')),
+    'ps_eyedropper': lambda: _sendinput_press(_vk_letter('I')),
+    'ps_text': lambda: _sendinput_press(_vk_letter('T')),
+    'ps_hand': lambda: _sendinput_press(_vk_letter('H')),
+    'ps_zoom': lambda: _sendinput_press(_vk_letter('Z')),
+    'ps_zoom_in': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['PLUS']]),
+    'ps_zoom_out': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['MINUS']]),
+    'ps_fit': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['0']]),
+    'ps_100': lambda: _sendinput_hotkey([_VK['CTRL'], _VK['1']]),
+    'ps_layers_panel': lambda: _sendinput_press(_VK['F7']),
+    'ps_brushes_panel': lambda: _sendinput_press(_VK['F5']),
+    'ps_color_panel': lambda: _sendinput_press(_VK['F6']),
+    'ps_deselect': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('D')]),
+    'ps_select_all': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('A')]),
+    'ps_transform': lambda: _sendinput_hotkey([_VK['CTRL'], _vk_letter('T')]),
+    'ps_fill': lambda: _sendinput_hotkey([_VK['SHIFT'], _VK['F5']]),
+    'ps_mask': lambda: _palette_action('mask'),
+    'ps_default_colors': lambda: _sendinput_press(_vk_letter('D')),
+    'ps_swap_colors': lambda: _sendinput_press(_vk_letter('X')),
+}
+
+_FIGMA_ACTIONS = {
+    'figma_undo': lambda: _hotkey('ctrl', 'z'),
+    'figma_redo': lambda: _hotkey('ctrl', 'shift', 'z'),
+    'figma_save': lambda: _hotkey('ctrl', 's'),
+    'figma_duplicate': lambda: _hotkey('ctrl', 'd'),
+    'figma_group': lambda: _hotkey('ctrl', 'g'),
+    'figma_ungroup': lambda: _hotkey('ctrl', 'shift', 'g'),
+    'figma_copy': lambda: _hotkey('ctrl', 'c'),
+    'figma_paste': lambda: _hotkey('ctrl', 'v'),
+    'figma_component': lambda: _hotkey('ctrl', 'alt', 'k'),
+    'figma_detach_instance': lambda: _hotkey('ctrl', 'alt', 'b'),
+    'figma_auto_layout': lambda: _hotkey('shift', 'a'),
+    'figma_align_left': lambda: _hotkey('alt', 'a'),
+    'figma_align_center': lambda: _hotkey('alt', 'h'),
+    'figma_align_right': lambda: _hotkey('alt', 'd'),
+    'figma_align_top': lambda: _hotkey('alt', 'w'),
+    'figma_align_middle': lambda: _hotkey('alt', 'v'),
+    'figma_align_bottom': lambda: _hotkey('alt', 's'),
+    'figma_bring_front': lambda: _hotkey('ctrl', 'shift', ']'),
+    'figma_send_back': lambda: _hotkey('ctrl', 'shift', '['),
+    'figma_bring_forward': lambda: _hotkey('ctrl', ']'),
+    'figma_send_backward': lambda: _hotkey('ctrl', '['),
+    'figma_frame': lambda: _press('f'),
+    'figma_rect': lambda: _press('r'),
+    'figma_ellipse': lambda: _press('o'),
+    'figma_line': lambda: _press('l'),
+    'figma_arrow': lambda: _hotkey('shift', 'l'),
+    'figma_pen': lambda: _press('p'),
+    'figma_text': lambda: _press('t'),
+    'figma_hand': lambda: _press('h'),
+    'figma_zoom': lambda: _press('z'),
+    'figma_zoom_in': lambda: _hotkey('ctrl', '+'),
+    'figma_zoom_out': lambda: _hotkey('ctrl', '-'),
+    'figma_fit': lambda: _hotkey('shift', '1'),
+    'figma_select_all': lambda: _hotkey('ctrl', 'a'),
+    'figma_deselect': lambda: _press('esc'),
+    'figma_lock': lambda: _hotkey('ctrl', 'shift', 'l'),
+    'figma_hide': lambda: _hotkey('ctrl', 'shift', 'h'),
+    'figma_toggle_ui': lambda: _hotkey('ctrl', '\\'),
+    'figma_export': lambda: _hotkey('ctrl', 'shift', 'e'),
+}
+
+def _run_creative_action(handler, cmd: str, action, error_key: str) -> None:
+    restore_layout = _switch_layout_en_temporarily()
+    try:
+        action()
+    except Exception as exc:
+        try:
+            fg = get_foreground_process_name() or ''
+        except Exception:
+            fg = ''
+        print(f'[{cmd.split("_")[0]}] error cmd={cmd!r} fg={fg!r} err={exc!r}', flush=True)
+        handler.speak(spk(error_key))
+        return
+    finally:
+        try:
+            if restore_layout:
+                restore_layout()
+        except Exception:
+            pass
+    handler.play_response()
+
 def handle_creative(handler, cmd: str, text_lower: str) -> None:
     if cmd.startswith('ps_'):
         if not _ensure_process('photoshop'):
@@ -168,139 +218,22 @@ def handle_creative(handler, cmd: str, text_lower: str) -> None:
                 except Exception:
                     pass
             if not _ensure_process('photoshop'):
-                handler.speak('Окно Photoshop не активно. Откройте Photoshop и сделайте его активным.')
+                handler.speak(spk('ps.not_active_v2'))
                 return
-        restore_layout = _switch_layout_en_temporarily()
-        try:
-            VK = {
-                'CTRL': 0x11, 'SHIFT': 0x10, 'ALT': 0x12,
-                'F5': 0x74, 'F6': 0x75, 'F7': 0x76,
-                'ESC': 0x1B,
-                'PLUS': 0xBB,
-                'MINUS': 0xBD,
-                '0': 0x30, '1': 0x31,
-            }
-            def _vk_letter(ch: str) -> int:
-                return ord(ch.upper())
-            if cmd == 'ps_undo': _sendinput_hotkey([VK['CTRL'], _vk_letter('Z')])
-            elif cmd == 'ps_redo': _sendinput_hotkey([VK['CTRL'], VK['SHIFT'], _vk_letter('Z')])
-            elif cmd == 'ps_save': _sendinput_hotkey([VK['CTRL'], _vk_letter('S')])
-            elif cmd == 'ps_save_as': _sendinput_hotkey([VK['CTRL'], VK['SHIFT'], _vk_letter('S')])
-            elif cmd == 'ps_export_as': _sendinput_hotkey([VK['CTRL'], VK['ALT'], VK['SHIFT'], _vk_letter('W')])
-            elif cmd == 'ps_new_layer': _sendinput_hotkey([VK['CTRL'], VK['SHIFT'], _vk_letter('N')])
-            elif cmd == 'ps_dup_layer': _sendinput_hotkey([VK['CTRL'], _vk_letter('J')])
-            elif cmd == 'ps_merge_down': _sendinput_hotkey([VK['CTRL'], _vk_letter('E')])
-            elif cmd == 'ps_group': _sendinput_hotkey([VK['CTRL'], _vk_letter('G')])
-            elif cmd == 'ps_ungroup': _sendinput_hotkey([VK['CTRL'], VK['SHIFT'], _vk_letter('G')])
-            elif cmd == 'ps_invert': _sendinput_hotkey([VK['CTRL'], _vk_letter('I')])
-            elif cmd == 'ps_levels': _sendinput_hotkey([VK['CTRL'], _vk_letter('L')])
-            elif cmd == 'ps_curves': _sendinput_hotkey([VK['CTRL'], _vk_letter('M')])
-            elif cmd == 'ps_hue_sat': _sendinput_hotkey([VK['CTRL'], _vk_letter('U')])
-            elif cmd == 'ps_color_balance': _sendinput_hotkey([VK['CTRL'], _vk_letter('B')])
-            elif cmd == 'ps_brush': _sendinput_press(_vk_letter('B'))
-            elif cmd == 'ps_eraser': _sendinput_press(_vk_letter('E'))
-            elif cmd == 'ps_move': _sendinput_press(_vk_letter('V'))
-            elif cmd == 'ps_lasso': _sendinput_press(_vk_letter('L'))
-            elif cmd == 'ps_marquee': _sendinput_press(_vk_letter('M'))
-            elif cmd == 'ps_eyedropper': _sendinput_press(_vk_letter('I'))
-            elif cmd == 'ps_text': _sendinput_press(_vk_letter('T'))
-            elif cmd == 'ps_hand': _sendinput_press(_vk_letter('H'))
-            elif cmd == 'ps_zoom': _sendinput_press(_vk_letter('Z'))
-            elif cmd == 'ps_zoom_in': _sendinput_hotkey([VK['CTRL'], VK['PLUS']])
-            elif cmd == 'ps_zoom_out': _sendinput_hotkey([VK['CTRL'], VK['MINUS']])
-            elif cmd == 'ps_fit': _sendinput_hotkey([VK['CTRL'], VK['0']])
-            elif cmd == 'ps_100': _sendinput_hotkey([VK['CTRL'], VK['1']])
-            elif cmd == 'ps_layers_panel': _sendinput_press(VK['F7'])
-            elif cmd == 'ps_brushes_panel': _sendinput_press(VK['F5'])
-            elif cmd == 'ps_color_panel': _sendinput_press(VK['F6'])
-            elif cmd == 'ps_deselect': _sendinput_hotkey([VK['CTRL'], _vk_letter('D')])
-            elif cmd == 'ps_select_all': _sendinput_hotkey([VK['CTRL'], _vk_letter('A')])
-            elif cmd == 'ps_transform': _sendinput_hotkey([VK['CTRL'], _vk_letter('T')])
-            elif cmd == 'ps_fill': _sendinput_hotkey([VK['SHIFT'], VK['F5']])
-            elif cmd == 'ps_mask': _palette_action('mask')
-            elif cmd == 'ps_default_colors': _sendinput_press(_vk_letter('D'))
-            elif cmd == 'ps_swap_colors': _sendinput_press(_vk_letter('X'))
-            else:
-                handler.speak('Команда Photoshop не распознана.')
-                return
-        except Exception as exc:
-            try:
-                fg = get_foreground_process_name() or ''
-            except Exception:
-                fg = ''
-            print(f'[ps] error cmd={cmd!r} fg={fg!r} err={exc!r}', flush=True)
-            handler.speak('Не получилось отправить команду в Photoshop. Проверьте, что Photoshop не запущен от администратора.')
+        action = _PS_ACTIONS.get(cmd)
+        if action is None:
+            handler.speak(spk('ps.unknown_cmd'))
             return
-        finally:
-            try:
-                if restore_layout:
-                    restore_layout()
-            except Exception:
-                pass
-        handler.play_response()
+        _run_creative_action(handler, cmd, action, 'ps.send_error_v2')
         return
     if cmd.startswith('figma_'):
         if not (_ensure_process('figma') or _ensure_process('chrome') or _ensure_process('brave') or _ensure_process('msedge')):
-            handler.speak('Сэр, активируйте окно Figma.')
+            handler.speak(spk('figma.not_active'))
             return
-        restore_layout = _switch_layout_en_temporarily()
-        try:
-            if cmd == 'figma_undo': _hotkey('ctrl', 'z')
-            elif cmd == 'figma_redo': _hotkey('ctrl', 'shift', 'z')
-            elif cmd == 'figma_save': _hotkey('ctrl', 's')
-            elif cmd == 'figma_duplicate': _hotkey('ctrl', 'd')
-            elif cmd == 'figma_group': _hotkey('ctrl', 'g')
-            elif cmd == 'figma_ungroup': _hotkey('ctrl', 'shift', 'g')
-            elif cmd == 'figma_copy': _hotkey('ctrl', 'c')
-            elif cmd == 'figma_paste': _hotkey('ctrl', 'v')
-            elif cmd == 'figma_component': _hotkey('ctrl', 'alt', 'k')
-            elif cmd == 'figma_detach_instance': _hotkey('ctrl', 'alt', 'b')
-            elif cmd == 'figma_auto_layout': _hotkey('shift', 'a')
-            elif cmd == 'figma_align_left': _hotkey('alt', 'a')
-            elif cmd == 'figma_align_center': _hotkey('alt', 'h')
-            elif cmd == 'figma_align_right': _hotkey('alt', 'd')
-            elif cmd == 'figma_align_top': _hotkey('alt', 'w')
-            elif cmd == 'figma_align_middle': _hotkey('alt', 'v')
-            elif cmd == 'figma_align_bottom': _hotkey('alt', 's')
-            elif cmd == 'figma_bring_front': _hotkey('ctrl', 'shift', ']')
-            elif cmd == 'figma_send_back': _hotkey('ctrl', 'shift', '[')
-            elif cmd == 'figma_bring_forward': _hotkey('ctrl', ']')
-            elif cmd == 'figma_send_backward': _hotkey('ctrl', '[')
-            elif cmd == 'figma_frame': _press('f')
-            elif cmd == 'figma_rect': _press('r')
-            elif cmd == 'figma_ellipse': _press('o')
-            elif cmd == 'figma_line': _press('l')
-            elif cmd == 'figma_arrow': _hotkey('shift', 'l')
-            elif cmd == 'figma_pen': _press('p')
-            elif cmd == 'figma_text': _press('t')
-            elif cmd == 'figma_hand': _press('h')
-            elif cmd == 'figma_zoom': _press('z')
-            elif cmd == 'figma_zoom_in': _hotkey('ctrl', '+')
-            elif cmd == 'figma_zoom_out': _hotkey('ctrl', '-')
-            elif cmd == 'figma_fit': _hotkey('shift', '1')
-            elif cmd == 'figma_select_all': _hotkey('ctrl', 'a')
-            elif cmd == 'figma_deselect': _press('esc')
-            elif cmd == 'figma_lock': _hotkey('ctrl', 'shift', 'l')
-            elif cmd == 'figma_hide': _hotkey('ctrl', 'shift', 'h')
-            elif cmd == 'figma_toggle_ui': _hotkey('ctrl', '\\')
-            elif cmd == 'figma_export': _hotkey('ctrl', 'shift', 'e')
-            else:
-                handler.speak('Команда Figma не распознана.')
-                return
-        except Exception as exc:
-            try:
-                fg = get_foreground_process_name() or ''
-            except Exception:
-                fg = ''
-            print(f'[figma] error cmd={cmd!r} fg={fg!r} err={exc!r}', flush=True)
-            handler.speak('Не получилось отправить команду в Figma. Проверьте, что приложение не запущено от администратора.')
+        action = _FIGMA_ACTIONS.get(cmd)
+        if action is None:
+            handler.speak(spk('figma.unknown_cmd'))
             return
-        finally:
-            try:
-                if restore_layout:
-                    restore_layout()
-            except Exception:
-                pass
-        handler.play_response()
+        _run_creative_action(handler, cmd, action, 'figma.send_error_v2')
         return
-    handler.speak('Команда не поддерживается.')
+    handler.speak(spk('cmd.not_supported'))

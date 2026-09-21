@@ -4,7 +4,15 @@ import threading
 import time
 from core.system import app_state
 from core.speech import speak, normalize_for_tts
+from core.responses import spk
+from core.logging_setup import get_logger as _get_logger
+_log = _get_logger('game')
 def apply_game_profile(handler, profile, msg_name):
+    from actions.game_input_parts.profile import get_loaded_profile_stem
+    if app_state.game_mode and get_loaded_profile_stem() == profile:
+        app_state.jarvis_active = True
+        app_state.last_command_time = time.time()
+        return
     from actions.game_input import load_profile
     ok, msg = load_profile(profile)
     if ok:
@@ -40,9 +48,16 @@ def apply_game_profile(handler, profile, msg_name):
             try:
                 from features.ets2 import monitor as ets2_monitor
                 ets2_monitor.start()
-                print("[GAME_MODE] ETS2 Monitor started.")
+                _log.debug("[GAME_MODE] ETS2 Monitor started.")
             except Exception as e:
-                print(f"[GAME_MODE] Failed to start ETS2 Monitor: {e}")
+                _log.debug(f"[GAME_MODE] Failed to start ETS2 Monitor: {e}")
+        if 'planetbase' in profile.lower():
+            try:
+                from features.planetbase import monitor as pb_monitor
+                pb_monitor.start()
+                _log.debug("[GAME_MODE] Planetbase Monitor started.")
+            except Exception as e:
+                _log.debug(f"[GAME_MODE] Failed to start Planetbase Monitor: {e}")
     else:
         speak(msg)
 def start_game_selection_flow(handler, query=None):
@@ -118,7 +133,7 @@ def start_game_selection_flow(handler, query=None):
             all_games = scan_all_games()
             best = get_most_recently_played(all_games)
             if best:
-                handler.speak(f'Смею предположить, вы хотите сыграть в {normalize_for_tts(best.name)}? Запускаем?', wait=True)
+                handler.speak(spk('game.confirm', game=normalize_for_tts(best.name)), wait=True)
                 handler._set_interactive('game_confirm', {'game_uri': best.launch_uri, 'game_name': best.name, 'install_dir': best.install_dir, 'games': all_games})
             else: speak('У вас пока нет установленных игр.')
         threading.Thread(target=_suggest_delayed, daemon=True).start()
@@ -128,9 +143,11 @@ def start_game_selection_flow(handler, query=None):
         if best:
             handler._set_interactive('game_confirm', {'game_uri': best.launch_uri, 'game_name': best.name, 'install_dir': best.install_dir, 'games': games})
             speak(f'Может быть, {normalize_for_tts(best.name)}?')
-        else: speak('Похоже, на этом компьютере нет игр, сэр.')
+        else:
+            from core.address import get_address as _ga
+            speak(f'Похоже, на этом компьютере нет игр, {_ga()}.')
 def launch_game_engine(handler, game_info):
-    print(f'[launch_game_engine] name={game_info.name!r} uri={game_info.launch_uri!r} dir={game_info.install_dir!r}', flush=True)
+    _log.debug('launch: name=%r uri=%r dir=%r', game_info.name, game_info.launch_uri, game_info.install_dir)
     threading.Thread(target=_do_launch, args=(handler, game_info), daemon=True).start()
 def _do_launch(handler, game_info):
     from features.gaming import find_game_executable
@@ -140,10 +157,10 @@ def _do_launch(handler, game_info):
     try: activate_game_mode()
     except Exception: pass
     exe_path = find_game_executable(game_info.install_dir, game_info.name)
-    print(f'[_do_launch] exe_path={exe_path!r}', flush=True)
+    _log.debug('_do_launch exe_path=%r', exe_path)
     if exe_path: subprocess.Popen([exe_path], cwd=os.path.dirname(exe_path), creationflags=8)
     else:
-        print(f'[_do_launch] falling back to os.startfile uri={game_info.launch_uri!r}', flush=True)
+        _log.debug('_do_launch fallback startfile uri=%r', game_info.launch_uri)
         os.startfile(game_info.launch_uri)
     profile_stem = game_info.name.lower().replace(' ', '_')
     if is_profile_installed(profile_stem):
@@ -156,3 +173,68 @@ def handle_game_extra(handler, cmd, text_lower):
             speak("Ваши текущие заклинания: " + ", ".join(spells))
         else:
             speak("У вас нет активных заклинаний в этом профиле.")
+
+def _timer_set(text_lower):
+    from core.nlp import extract_duration_seconds
+    from actions.game_timer import set_timer
+    import re
+    secs = extract_duration_seconds(text_lower)
+    if secs <= 0:
+        speak('Скажите продолжительность, например: таймер на тридцать минут.')
+        return
+    from core.nlp.commands import normalize_numbers
+    text_norm = normalize_numbers(text_lower)
+    label_raw = re.sub(
+        r'(засеки|дай|поставь|таймер|на|постав|год[иі]ну|час\w*|хвилин\w*|минут\w*|секунд\w*|\d+)',
+        '', text_norm
+    ).strip()
+    label = label_raw if len(label_raw) > 2 else ''
+    hud = getattr(app_state, 'hud', None)
+    duration_str = set_timer(secs, label, speak, hud)
+    speak(f'Таймер запущен на {duration_str}. Предупрежу заблаговременно.')
+
+def _timer_add(text_lower):
+    from core.nlp import extract_duration_seconds, format_duration_russian
+    from actions.game_timer import add_time, get_status
+    secs = extract_duration_seconds(text_lower)
+    if secs <= 0:
+        speak('Скажите сколько добавить, например: добавь пятнадцать минут.')
+        return
+    if add_time(secs):
+        remaining = get_status()
+        if remaining and remaining >= 60:
+            speak(f'Добавлено. Осталось {format_duration_russian(remaining // 60)}.')
+        else:
+            speak('Добавлено.')
+    else:
+        speak('Таймер не запущен.')
+
+def _timer_status(text_lower):
+    from actions.game_timer import get_status
+    from core.nlp import format_duration_russian
+    remaining = get_status()
+    if remaining is None:
+        speak('Таймер не запущен.')
+    elif remaining < 60:
+        speak('Осталось меньше минуты.')
+    else:
+        speak(f'Осталось {format_duration_russian(remaining // 60)}.')
+
+def _timer_cancel(text_lower):
+    from actions.game_timer import cancel_timer
+    if cancel_timer():
+        speak('Таймер отменён.')
+    else:
+        speak('Таймер не был запущен.')
+
+_TIMER_ACTIONS = {
+    'timer_set': _timer_set,
+    'timer_add': _timer_add,
+    'timer_status': _timer_status,
+    'timer_cancel': _timer_cancel,
+}
+
+def handle_timer(handler, cmd, text_lower):
+    action = _TIMER_ACTIONS.get(cmd)
+    if action:
+        action(text_lower)

@@ -82,7 +82,7 @@ def make_hud_btn(hud, parent, text: str, icon: str, color: str, command, **kwarg
         hover = _s['hover']
         col = _s['color']
         bg = _blend(col, 0.14) if hover else _blend(col, 0.06)
-        w = c.winfo_width() or hud._panel_w - 16
+        w = c.winfo_width() or hud._panel_w_left - 16
         c.configure(bg=bg)
         c.create_line(0, 0, w, 0, fill=_blend(col, 0.3), width=1)
         c.create_line(0, _h - 1, w, _h - 1, fill=_blend(col, 0.3), width=1)
@@ -242,8 +242,11 @@ class _HUDDropdown:
         self.menu.attributes('-alpha', 0.98)
         self.menu.configure(bg=_BG, highlightbackground=self.accent, highlightthickness=1)
         
-        # Привязываем слушатель кликов на главное окно с задержкой (защита от пробития первого клика)
+        # Close on click outside (delayed — prevents first-click bleed-through)
         self.master.after(50, lambda: setattr(self, '_click_id', self.master.winfo_toplevel().bind('<Button-1>', self._check_click, add='+')))
+        # Close when another APPLICATION becomes the active window (Alt-Tab, click outside)
+        # <Deactivate> fires only on app-level deactivation — NOT when our own dropdown Toplevel gets focus
+        self._deactivate_id = self.master.winfo_toplevel().bind('<Deactivate>', lambda e: self.close(), add='+')
         
         self.container = tk.Frame(self.menu, bg=_BG)
         self.container.pack(fill='both', expand=True)
@@ -290,9 +293,9 @@ class _HUDDropdown:
                 bw.bind('<Enter>', _hvr)
                 bw.bind('<Leave>', _lve)
             
-            f.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), 'units'))
-            l.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), 'units'))
-            ind.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), 'units'))
+            f.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units'))
+            l.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units'))
+            ind.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units'))
         
         self.list_frame.update_idletasks()
         self.frame.update_idletasks()
@@ -319,11 +322,11 @@ class _HUDDropdown:
                 
         self.menu.geometry(f'{max(100, w)}x{max(100, h)}+{x}+{y}')
         
-        self.menu.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), 'units'))
-        self.canvas.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), 'units'))
+        self.menu.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units'))
+        self.canvas.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units'))
 
     def close(self):
-        if self.menu: 
+        if self.menu:
             try: self.menu.destroy()
             except: pass
         self.menu = None
@@ -332,6 +335,10 @@ class _HUDDropdown:
             try: self.master.winfo_toplevel().unbind('<Button-1>', self._click_id)
             except: pass
             self._click_id = None
+        if hasattr(self, '_deactivate_id') and self._deactivate_id:
+            try: self.master.winfo_toplevel().unbind('<Deactivate>', self._deactivate_id)
+            except: pass
+            self._deactivate_id = None
 
     def configure(self, values=None, width=None, height=40):
         if values is not None: self.values = values
@@ -409,7 +416,7 @@ class _HUDSearchableDropdown(_HUDDropdown):
                     bw.bind('<Button-1>', lambda e, v=val: _sel(v))
                     bw.bind('<Enter>', _hvr)
                     bw.bind('<Leave>', _lve)
-                    bw.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), 'units'))
+                    bw.bind('<MouseWheel>', lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, 'units'))
 
             self.list_frame.update_idletasks()
             if self.canvas.bbox('all'): self.canvas.configure(scrollregion=self.canvas.bbox('all'))
