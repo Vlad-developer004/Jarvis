@@ -176,9 +176,11 @@ def get_my_ip() -> str:
         return f"Ваш внешний IP адрес: {ip}"
     except Exception:
         return "Не удалось получить IP адрес. Проверьте соединение."
-def clean_system() -> tuple[bool, str]:
+def run_basic_cleanup() -> tuple[int, int]:
     """
-    High-level deep PC cleanup:
+    Synchronous core of the basic PC cleanup, shared by the voice command
+    (clean_system, runs it in a background thread) and the deep-cleanup flow
+    (system_cleanup_deep, which runs it before the orphan scan):
     - User & System %TEMP% folders
     - Windows Update cache (SoftwareDistribution\\Download)
     - Browser caches (Chrome, Brave, Firefox, Edge, Yandex)
@@ -188,151 +190,165 @@ def clean_system() -> tuple[bool, str]:
     - DNS cache flush
     - Windows Event Logs clear
     - Memory standby list flush (EmptyStandbyList)
-    Reports total MB freed.
+    Returns (freed_bytes, errors).
     """
     import shutil
-    import threading
+    import ctypes
+    import glob
 
-    def _do_clean(speak_fn=None):
-        import ctypes
-        import glob
+    freed_bytes = 0
+    errors = 0
+    local_app = os.environ.get('LOCALAPPDATA', '')
+    app_data   = os.environ.get('APPDATA', '')
+    sys_root   = os.environ.get('SystemRoot', r'C:\Windows')
+    user_profile = os.environ.get('USERPROFILE', '')
 
-        freed_bytes = 0
-        errors = 0
-        local_app = os.environ.get('LOCALAPPDATA', '')
-        app_data   = os.environ.get('APPDATA', '')
-        sys_root   = os.environ.get('SystemRoot', r'C:\Windows')
-        user_profile = os.environ.get('USERPROFILE', '')
-
-        def _rm(path: str):
-            nonlocal freed_bytes, errors
-            try:
-                if os.path.isfile(path) or os.path.islink(path):
-                    freed_bytes += os.path.getsize(path)
-                    os.unlink(path)
-                elif os.path.isdir(path):
-                    size = sum(
-                        os.path.getsize(os.path.join(dp, f))
-                        for dp, _, fs in os.walk(path)
-                        for f in fs
-                        if os.path.exists(os.path.join(dp, f))
-                    )
-                    freed_bytes += size
-                    shutil.rmtree(path, ignore_errors=True)
-            except Exception:
-                errors += 1
-
-        def _rm_dir_contents(path: str, skip_names: list = None):
-            if not path or not os.path.isdir(path):
-                return
-            for item in os.listdir(path):
-                if skip_names and item in skip_names:
-                    continue
-                if 'jarvis_tts_cache' in item:
-                    continue
-                _rm(os.path.join(path, item))
-
-        # ── 1. TEMP folders ──────────────────────────────────────────────
-        for tmp in [
-            os.environ.get('TEMP'),
-            os.path.join(sys_root, 'Temp'),
-            os.path.join(local_app, 'Temp'),
-        ]:
-            _rm_dir_contents(tmp)
-
-        # ── 2. Windows Update cache ──────────────────────────────────────
-        _rm_dir_contents(os.path.join(sys_root, r'SoftwareDistribution\Download'))
-
-        # ── 3. Browser caches ────────────────────────────────────────────
-        browser_cache_paths = [
-            # Chrome
-            os.path.join(local_app, r'Google\Chrome\User Data\Default\Cache'),
-            os.path.join(local_app, r'Google\Chrome\User Data\Default\Code Cache'),
-            os.path.join(local_app, r'Google\Chrome\User Data\Default\GPUCache'),
-            # Brave
-            os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\Cache'),
-            os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\Code Cache'),
-            os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\GPUCache'),
-            # Edge
-            os.path.join(local_app, r'Microsoft\Edge\User Data\Default\Cache'),
-            os.path.join(local_app, r'Microsoft\Edge\User Data\Default\Code Cache'),
-            # Firefox
-            os.path.join(local_app, r'Mozilla\Firefox\Profiles'),
-            # Opera
-            os.path.join(app_data,  r'Opera Software\Opera Stable\Cache'),
-            # Yandex
-            os.path.join(local_app, r'Yandex\YandexBrowser\User Data\Default\Cache'),
-        ]
-        for bp in browser_cache_paths:
-            if 'Firefox' in bp:
-                # Firefox keeps per-profile cache dirs
-                if os.path.isdir(bp):
-                    for prof in os.listdir(bp):
-                        for sub in ('cache2', 'startupCache', 'OfflineCache'):
-                            _rm_dir_contents(os.path.join(bp, prof, sub))
-            else:
-                _rm_dir_contents(bp)
-
-        # ── 4. Thumbnail cache ───────────────────────────────────────────
-        thumb_dir = os.path.join(local_app, r'Microsoft\Windows\Explorer')
-        if os.path.isdir(thumb_dir):
-            for f in glob.glob(os.path.join(thumb_dir, 'thumbcache_*.db')):
-                _rm(f)
-            for f in glob.glob(os.path.join(thumb_dir, 'iconcache_*.db')):
-                _rm(f)
-
-        # ── 5. Windows Prefetch ──────────────────────────────────────────
-        prefetch = os.path.join(sys_root, r'Prefetch')
-        _rm_dir_contents(prefetch)
-
-        # ── 6. Recent / Jump-list spam ───────────────────────────────────
-        for sub in [
-            r'Microsoft\Windows\Recent\AutomaticDestinations',
-            r'Microsoft\Windows\Recent\CustomDestinations',
-        ]:
-            _rm_dir_contents(os.path.join(app_data, sub))
-
-        # ── 7. Recycle Bin (all drives) ──────────────────────────────────
+    def _rm(path: str):
+        nonlocal freed_bytes, errors
         try:
-            ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 0x0007)
-        except Exception:
-            pass
-
-        # ── 8. DNS cache flush ───────────────────────────────────────────
-        try:
-            subprocess.run(['ipconfig', '/flushdns'], capture_output=True, creationflags=134217728, timeout=5)
-        except Exception:
-            pass
-
-        # ── 9. Memory standby list flush (needs admin, fails gracefully) ──
-        try:
-            elist_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools', 'EmptyStandbyList.exe')
-            if os.path.exists(elist_path):
-                subprocess.run([elist_path, 'standbylist'], capture_output=True, creationflags=134217728, timeout=10)
-            else:
-                # Fallback: use RAMMap CLI if available
-                subprocess.run(['RAMMap.exe', '-Et'], capture_output=True, creationflags=134217728, timeout=5)
-        except Exception:
-            pass
-
-        # ── 10. Windows Event Log clear (non-critical, best-effort) ──────
-        try:
-            logs_to_clear = ['Application', 'System', 'Setup']
-            for log in logs_to_clear:
-                subprocess.run(
-                    ['wevtutil', 'cl', log],
-                    capture_output=True, creationflags=134217728, timeout=5
+            if os.path.isfile(path) or os.path.islink(path):
+                freed_bytes += os.path.getsize(path)
+                os.unlink(path)
+            elif os.path.isdir(path):
+                size = sum(
+                    os.path.getsize(os.path.join(dp, f))
+                    for dp, _, fs in os.walk(path)
+                    for f in fs
+                    if os.path.exists(os.path.join(dp, f))
                 )
+                freed_bytes += size
+                shutil.rmtree(path, ignore_errors=True)
         except Exception:
-            pass
+            errors += 1
 
+    def _rm_dir_contents(path: str, skip_names: list = None):
+        nonlocal errors
+        if not path or not os.path.isdir(path):
+            return
+        try:
+            items = os.listdir(path)
+        except Exception:
+            # System-protected dirs (e.g. C:\Windows\Prefetch) can deny even
+            # listing without admin rights — skip rather than abort the rest
+            # of the cleanup run.
+            errors += 1
+            return
+        for item in items:
+            if skip_names and item in skip_names:
+                continue
+            if 'jarvis_tts_cache' in item:
+                continue
+            _rm(os.path.join(path, item))
+
+    # ── 1. TEMP folders ──────────────────────────────────────────────
+    for tmp in [
+        os.environ.get('TEMP'),
+        os.path.join(sys_root, 'Temp'),
+        os.path.join(local_app, 'Temp'),
+    ]:
+        _rm_dir_contents(tmp)
+
+    # ── 2. Windows Update cache ──────────────────────────────────────
+    _rm_dir_contents(os.path.join(sys_root, r'SoftwareDistribution\Download'))
+
+    # ── 3. Browser caches ────────────────────────────────────────────
+    browser_cache_paths = [
+        # Chrome
+        os.path.join(local_app, r'Google\Chrome\User Data\Default\Cache'),
+        os.path.join(local_app, r'Google\Chrome\User Data\Default\Code Cache'),
+        os.path.join(local_app, r'Google\Chrome\User Data\Default\GPUCache'),
+        # Brave
+        os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\Cache'),
+        os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\Code Cache'),
+        os.path.join(local_app, r'BraveSoftware\Brave-Browser\User Data\Default\GPUCache'),
+        # Edge
+        os.path.join(local_app, r'Microsoft\Edge\User Data\Default\Cache'),
+        os.path.join(local_app, r'Microsoft\Edge\User Data\Default\Code Cache'),
+        # Firefox
+        os.path.join(local_app, r'Mozilla\Firefox\Profiles'),
+        # Opera
+        os.path.join(app_data,  r'Opera Software\Opera Stable\Cache'),
+        # Yandex
+        os.path.join(local_app, r'Yandex\YandexBrowser\User Data\Default\Cache'),
+    ]
+    for bp in browser_cache_paths:
+        if 'Firefox' in bp:
+            # Firefox keeps per-profile cache dirs
+            if os.path.isdir(bp):
+                for prof in os.listdir(bp):
+                    for sub in ('cache2', 'startupCache', 'OfflineCache'):
+                        _rm_dir_contents(os.path.join(bp, prof, sub))
+        else:
+            _rm_dir_contents(bp)
+
+    # ── 4. Thumbnail cache ───────────────────────────────────────────
+    thumb_dir = os.path.join(local_app, r'Microsoft\Windows\Explorer')
+    if os.path.isdir(thumb_dir):
+        for f in glob.glob(os.path.join(thumb_dir, 'thumbcache_*.db')):
+            _rm(f)
+        for f in glob.glob(os.path.join(thumb_dir, 'iconcache_*.db')):
+            _rm(f)
+
+    # ── 5. Windows Prefetch ──────────────────────────────────────────
+    prefetch = os.path.join(sys_root, r'Prefetch')
+    _rm_dir_contents(prefetch)
+
+    # ── 6. Recent / Jump-list spam ───────────────────────────────────
+    for sub in [
+        r'Microsoft\Windows\Recent\AutomaticDestinations',
+        r'Microsoft\Windows\Recent\CustomDestinations',
+    ]:
+        _rm_dir_contents(os.path.join(app_data, sub))
+
+    # ── 7. Recycle Bin (all drives) ──────────────────────────────────
+    try:
+        ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 0x0007)
+    except Exception:
+        pass
+
+    # ── 8. DNS cache flush ───────────────────────────────────────────
+    try:
+        subprocess.run(['ipconfig', '/flushdns'], capture_output=True, creationflags=134217728, timeout=5)
+    except Exception:
+        pass
+
+    # ── 9. Memory standby list flush (needs admin, fails gracefully) ──
+    try:
+        elist_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools', 'EmptyStandbyList.exe')
+        if os.path.exists(elist_path):
+            subprocess.run([elist_path, 'standbylist'], capture_output=True, creationflags=134217728, timeout=10)
+        else:
+            # Fallback: use RAMMap CLI if available
+            subprocess.run(['RAMMap.exe', '-Et'], capture_output=True, creationflags=134217728, timeout=5)
+    except Exception:
+        pass
+
+    # ── 10. Windows Event Log clear (non-critical, best-effort) ──────
+    try:
+        logs_to_clear = ['Application', 'System', 'Setup']
+        for log in logs_to_clear:
+            subprocess.run(
+                ['wevtutil', 'cl', log],
+                capture_output=True, creationflags=134217728, timeout=5
+            )
+    except Exception:
+        pass
+
+    print(f'[CLEANUP] freed={round(freed_bytes / (1024 * 1024))}MB errors={errors}', flush=True)
+    return (freed_bytes, errors)
+
+
+def clean_system() -> tuple[bool, str]:
+    """Voice-command entry point: runs run_basic_cleanup() in the background
+    so Jarvis can speak immediately, then reports the result."""
+    def _do_clean(speak_fn):
+        freed_bytes, errors = run_basic_cleanup()
+        from core.nlp import get_russian_plural
         freed_mb = round(freed_bytes / (1024 * 1024))
-        msg = f'Уборка завершена. Освобождено {freed_mb} МБ. Ошибок (занятые файлы): {errors}.'
-        print(f'[CLEANUP] {msg}', flush=True)
-        if speak_fn:
-            speak_fn(msg)
+        mb_word = get_russian_plural(freed_mb, ['мегабайт', 'мегабайта', 'мегабайт'])
+        msg = f'Уборка завершена. Освобождено {freed_mb} {mb_word}. Ошибок (занятые файлы): {errors}.'
+        speak_fn(msg)
 
-    # Run in background so Jarvis can speak immediately
     import threading
     from core.speech import speak as _speak
     threading.Thread(target=_do_clean, args=(_speak,), daemon=True, name='jarvis-cleanup').start()

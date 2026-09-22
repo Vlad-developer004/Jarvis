@@ -232,8 +232,11 @@ def _background_init():
                     _log.error('games failed: %s', e, exc_info=True)
             if module_enabled('morning_briefing'):
                 try:
-                    from features.morning_briefing import try_morning_briefing
+                    from features.morning_briefing import try_morning_briefing, try_evening_summary
+                    from features.weather_alerts import start_weather_alerts
                     try_morning_briefing(handler)
+                    try_evening_summary(handler)
+                    start_weather_alerts(handler)
                 except Exception as e:
                     _log.error('morning_briefing failed: %s', e, exc_info=True)
             if module_enabled('calendar_ics'):

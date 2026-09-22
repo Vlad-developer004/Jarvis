@@ -31,6 +31,42 @@ def _sys_cleanup(handler, text_lower, amount):
     ok, _ = clean_system()
     if ok: handler.speak(spk('system.cleanup_start'))
 
+def _sys_cleanup_deep(handler, text_lower, amount):
+    def _speak_done(freed_bytes, errors):
+        from core.nlp import get_russian_plural
+        freed_mb = round(freed_bytes / (1024 * 1024))
+        mb_word = get_russian_plural(freed_mb, ['мегабайт', 'мегабайта', 'мегабайт'])
+        handler.speak(spk('system.cleanup_deep_done', freed_mb=freed_mb, mb_word=mb_word, errors=errors))
+
+    def _scan_and_review():
+        from actions.system_control import run_basic_cleanup
+        from actions.orphan_scan import find_orphan_candidates, delete_candidates
+        basic_freed, basic_errors = run_basic_cleanup()
+        candidates = find_orphan_candidates()
+        if not candidates:
+            _speak_done(basic_freed, basic_errors)
+            return
+
+        def _on_confirm(paths):
+            orphan_freed, orphan_errors = delete_candidates(paths)
+            _speak_done(basic_freed + orphan_freed, basic_errors + orphan_errors)
+
+        def _open_dialog():
+            from ui.hud import _hud
+            from ui.dialogs.cleanup_review_dlg import open_cleanup_review
+            if _hud is not None:
+                open_cleanup_review(_hud, candidates, _on_confirm)
+
+        try:
+            from ui.hud import _hud as _h
+            if _h is not None:
+                _h._hud_queue.put(_open_dialog)
+        except Exception:
+            pass
+
+    handler.speak(spk('system.cleanup_deep_scan'))
+    threading.Thread(target=_scan_and_review, daemon=True, name='jarvis-cleanup-deep').start()
+
 def _sys_internet_speed(handler, text_lower, amount):
     from actions.system_control import check_internet_speed
     handler.speak(spk('net.speed_start'))
@@ -196,6 +232,7 @@ _SYSTEM_ACTIONS = {
     'restart': _sys_restart,
     'dictation_on': _sys_dictation_on,
     'system_cleanup': _sys_cleanup,
+    'system_cleanup_deep': _sys_cleanup_deep,
     'internet_speed': _sys_internet_speed,
     'brightness_set': _sys_brightness_set,
     'brightness_up': _sys_brightness_up,

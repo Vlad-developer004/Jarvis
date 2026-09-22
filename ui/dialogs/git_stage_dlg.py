@@ -15,8 +15,10 @@ class _Checkbox(tk.Canvas):
     _SZ = 17
 
     def __init__(self, parent, variable: tk.BooleanVar, bg: str,
-                 on_toggle=None, **kw):
-        sz = self._SZ
+                 on_toggle=None, size: int = None, accent: str = None, **kw):
+        sz = size or self._SZ
+        self._sz = sz
+        self._accent = accent or _CYAN
         super().__init__(parent, width=sz, height=sz,
                          bg=bg, highlightthickness=0, bd=0,
                          cursor="hand2", **kw)
@@ -33,11 +35,11 @@ class _Checkbox(tk.Canvas):
 
     def _draw(self):
         self.delete('all')
-        s, p = self._SZ, 2
+        s, p, col = self._sz, 2, self._accent
         if self._var.get():
-            # filled cyan box
+            # filled accent box
             self.create_rectangle(p, p, s - p, s - p,
-                                  fill=_CYAN, outline=_CYAN, width=0)
+                                  fill=col, outline=col, width=0)
             # checkmark  ✓
             cx, cy = s // 2, s // 2
             self.create_line(p + 3, cy,
@@ -47,10 +49,10 @@ class _Checkbox(tk.Canvas):
                              s - p - 2, p + 2,
                              width=2, fill=_BG, capstyle='round', joinstyle='round')
         else:
-            # dark box with cyan border
+            # dark box with accent border
             self.create_rectangle(p, p, s - p, s - p,
-                                  fill=_blend(_CYAN, 0.07),
-                                  outline=_blend(_CYAN, 0.38), width=1)
+                                  fill=_blend(col, 0.07),
+                                  outline=_blend(col, 0.38), width=1)
 
 _STATUS_LABELS = {
     'A':  ('ADD', _GREEN),

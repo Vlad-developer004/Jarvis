@@ -21,22 +21,35 @@ def _currency_rate(handler, cmd, text_lower):
     threading.Thread(target=_rate_task, daemon=True).start()
 
 def _weather(handler, cmd, text_lower):
-    from actions.weather import get_weather, is_weather_voice_cached, extract_date_offset
+    from actions.weather import get_weather, is_weather_voice_cached
+    from actions.weather_forecast import extract_date_offset, extract_period, get_weather_period
     import re
     offset, q = extract_date_offset(text_lower)
+    period = None
+    if offset == 0:
+        period, q = extract_period(q)
     fillers = ['какая', 'какую', 'будет', 'узнай', 'скажи', 'сейчас', 'погода', 'погоду', 'в', 'городе', 'сегодня', 'на', 'улице', 'там', 'же', 'а']
     for sw in fillers:
         q = re.sub(rf'\b{sw}\b', '', q)
     loc = q.strip()
     loc_arg = loc if loc else None
 
-    cache_key = loc_arg if loc_arg else f"__auto___{offset}"
+    cache_key = loc_arg if loc_arg else f"__auto___{offset}_{period or ''}"
     if not is_weather_voice_cached(cache_key):
         city_display = loc_arg if loc_arg else '(текущее местоположение)'
         handler.speak(spk('weather.fetching', city=city_display), wait=True)
 
     def _w_task():
-        ok, res = get_weather(loc_arg, date_offset=offset)
+        try:
+            if period:
+                ok, res = get_weather_period(loc_arg, period)
+            else:
+                ok, res = get_weather(loc_arg, date_offset=offset)
+        except Exception:
+            _log.error('weather task crashed', exc_info=True)
+            from core.i18n import get_language
+            handler.speak('Не вдалося отримати погоду.' if get_language() == 'uk' else 'Не удалось получить погоду.')
+            return
         handler.speak(res)
     threading.Thread(target=_w_task, daemon=True).start()
 

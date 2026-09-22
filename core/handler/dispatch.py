@@ -300,7 +300,7 @@ _reg_prefix('win_snap_', _w_window)
 
 _reg_prefix('mouse_', _w_mouse)
 
-_reg_exact(['shutdown', 'restart', 'restart_jarvis', 'dictation_on', 'system_cleanup', 'internet_speed', 'wifi_toggle', 'keyboard_lock', 'keyboard_unlock', 'shutdown_timer', 'cancel_timer', 'guard_on', 'guard_off', 'economy_on', 'economy_off', 'listen_off', 'listen_on', 'jarvis_exit', 'bluetooth_toggle', 'reminder'], _w_system)
+_reg_exact(['shutdown', 'restart', 'restart_jarvis', 'dictation_on', 'system_cleanup', 'system_cleanup_deep', 'internet_speed', 'wifi_toggle', 'keyboard_lock', 'keyboard_unlock', 'shutdown_timer', 'cancel_timer', 'guard_on', 'guard_off', 'economy_on', 'economy_off', 'listen_off', 'listen_on', 'jarvis_exit', 'bluetooth_toggle', 'reminder'], _w_system)
 _reg_prefix('brightness_', _w_system)
 
 _reg_prefix('clip_', _w_clip)

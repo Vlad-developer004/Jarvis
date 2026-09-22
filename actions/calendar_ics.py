@@ -101,11 +101,11 @@ def parse_ics_events(raw: str, limit: int = 64) -> list[tuple[datetime, str]]:
             events.append((dt_start, summary or '(без названия)'))
     events.sort(key=lambda x: x[0])
     return events[:limit]
-def next_events_summary(settings: dict | None, max_events: int = 3) -> str:
+def _collect_upcoming(settings: dict | None) -> list[tuple[datetime, str, str]]:
     s = settings if isinstance(settings, dict) else _load_settings()
     sources = s.get('calendar_sources')
     if not isinstance(sources, list) or not sources:
-        return 'Календарь не настроен. Добавьте файл или ссылку на календарь в настройках.'
+        return []
     def _is_upcoming(dt: datetime) -> bool:
         margin = timedelta(hours=1)
         if dt.tzinfo:
@@ -128,9 +128,23 @@ def next_events_summary(settings: dict | None, max_events: int = 3) -> str:
             if not _is_upcoming(dt):
                 continue
             collected.append((dt, title, label))
+    collected.sort(key=lambda x: x[0])
+    return collected
+def next_event_dt(settings: dict | None = None) -> tuple[datetime, str] | None:
+    """Soonest upcoming event as (start, title), for cross-checking against weather."""
+    collected = _collect_upcoming(settings)
+    if not collected:
+        return None
+    dt, title, _label = collected[0]
+    return (dt, title)
+def next_events_summary(settings: dict | None, max_events: int = 3) -> str:
+    s = settings if isinstance(settings, dict) else _load_settings()
+    sources = s.get('calendar_sources')
+    if not isinstance(sources, list) or not sources:
+        return 'Календарь не настроен. Добавьте файл или ссылку на календарь в настройках.'
+    collected = _collect_upcoming(s)
     if not collected:
         return 'Нет ближайших событий в указанных ICS или источники недоступны.'
-    collected.sort(key=lambda x: x[0])
     out: list[str] = []
     for dt, title, label in collected[:max_events]:
         if dt.tzinfo:

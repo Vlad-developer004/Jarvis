@@ -375,19 +375,163 @@ def _weather_advice(desc: str, temp: int, wind: float, lang: str) -> str:
         if wind >= 10:
             tips.append('Сильный ветер, держите шапку.')
     return ' '.join(tips)
-def _format_current_weather_text(city_name: str, desc: str, temp: int, feels: int, lang: str, wind: float = 0.0) -> str:
+def _load_yesterday_temp() -> tuple[str, int] | None:
+    try:
+        import json, os
+        p = get_settings_path()
+        if not os.path.exists(p):
+            return None
+        with open(p, 'r', encoding='utf-8') as f:
+            s = json.load(f)
+        snap = s.get('weather_yesterday')
+        if not isinstance(snap, dict) or 'date' not in snap or 'temp' not in snap:
+            return None
+        return (str(snap['date']), int(snap['temp']))
+    except Exception:
+        return None
+def _save_today_temp(temp: int) -> None:
+    try:
+        import json, os
+        from datetime import date
+        p = get_settings_path()
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        s = {}
+        if os.path.exists(p):
+            try:
+                with open(p, 'r', encoding='utf-8') as f:
+                    s = json.load(f)
+            except Exception:
+                s = {}
+        if not isinstance(s, dict):
+            s = {}
+        today = date.today().isoformat()
+        existing = s.get('weather_yesterday')
+        # Only overwrite once per day so "yesterday" stays yesterday's temp
+        # for the whole current day instead of drifting with every re-check.
+        if not (isinstance(existing, dict) and existing.get('date') == today):
+            s['weather_yesterday'] = {'date': today, 'temp': int(temp)}
+            with open(p, 'w', encoding='utf-8') as f:
+                json.dump(s, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+def _yesterday_compare_text(temp: int, lang: str) -> str:
+    from datetime import date, timedelta
+    snap = _load_yesterday_temp()
+    _save_today_temp(temp)
+    if not snap:
+        return ''
+    snap_date, snap_temp = snap
+    if snap_date != (date.today() - timedelta(days=1)).isoformat():
+        return ''
+    delta = temp - snap_temp
+    if abs(delta) < 2:
+        return ''
     if lang == 'uk':
-        text = f'У місті {city_name} зараз {desc.lower()}. Температура {_inflect_degree(temp, lang)}, відчувається як {_inflect_degree(feels, lang)}.'
+        return f'Це на {abs(delta)} градусів {"тепліше" if delta > 0 else "холодніше"}, ніж учора.'
+    return f'Это на {abs(delta)} градусов {"теплее" if delta > 0 else "холоднее"}, чем вчера.'
+def _format_current_weather_text(city_name: str, desc: str, temp: int, feels: int, lang: str, wind: float = 0.0) -> str:
+    import random
+    # Feels-like only adds something when it actually differs — repeating the
+    # same number twice ("20 градусов, ощущается как 20") reads as robotic.
+    feels_diff = abs(feels - temp) >= 2
+    # City name comes from the geocoder in nominative form and isn't declined
+    # elsewhere in this codebase, so every variant keeps the safe "в городе X"
+    # wrapper instead of guessing a case ending ("в Киеве" vs "в Москве" etc.)
+    if lang == 'uk':
+        openers = [
+            f'У місті {city_name} зараз {desc.lower()}.',
+            f'Наразі у місті {city_name} {desc.lower()}.',
+            f'У місті {city_name} на цей момент {desc.lower()}.',
+        ]
+        temp_part = f'{_inflect_degree(temp, lang)}'
+        if feels_diff:
+            temp_part += f', відчувається як {_inflect_degree(feels, lang)}'
+        text = f'{random.choice(openers)} {temp_part.capitalize()}.'
     else:
-        text = f'В городе {city_name} сейчас {desc.lower()}. Температура {_inflect_degree(temp, lang)}, ощущается как {_inflect_degree(feels, lang)}.'
+        openers = [
+            f'В городе {city_name} сейчас {desc.lower()}.',
+            f'Сейчас в городе {city_name} {desc.lower()}.',
+            f'В городе {city_name} на данный момент {desc.lower()}.',
+        ]
+        temp_part = f'{_inflect_degree(temp, lang)}'
+        if feels_diff:
+            temp_part += f', ощущается как {_inflect_degree(feels, lang)}'
+        text = f'{random.choice(openers)} {temp_part.capitalize()}.'
+    compare = _yesterday_compare_text(temp, lang)
+    if compare:
+        text = f'{text} {compare}'
     advice = _weather_advice(desc, temp, wind, lang)
     return f'{text} {advice}'.strip() if advice else text
+def get_current_conditions() -> dict | None:
+    """Latest cached HUD weather snapshot (desc/temp/wind), no network call.
+    Returns None if nothing fresh is cached — callers should treat that as
+    'skip', not fall back to a blocking fetch."""
+    lang = get_language()
+    d = _hud_cache.get(f'data_{lang}')
+    if d and d.get('ok') and time.time() - d.get('updated_ts', 0) < _HUD_TTL_SEC:
+        return d
+    return None
 def is_weather_voice_cached(city: str | None) -> bool:
     key = city.strip().lower() if city else '__auto__'
     c = _weather_cache.get(key)
     return bool(c and time.time() - c['ts'] < _CACHE_TTL_SEC)
+def resolve_location(city: str | None, lang: str) -> tuple[float | None, float | None, str | None]:
+    """Resolve a city name (or auto-detect via manual-city setting / last known
+    location / IP geolocation) into (lat, lon, city_name).
+    On failure returns (None, None, X) where X is the city name that failed
+    geocoding, or None if it was auto-location that failed — callers use that
+    to choose the right localized error message without this function owning
+    any user-facing text itself (shared by get_weather and weather_forecast)."""
+    import json, os, requests
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    lat, lon, city_name = None, None, None
+
+    if not city:
+        settings_path = get_settings_path()
+        manual_city = None
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                manual_city = json.load(f).get('manual_city')
+
+        if manual_city:
+            city = manual_city
+        else:
+            last = _load_last_location()
+            if last:
+                lat, lon, city_name = last
+            else:
+                geo = _ip_geolocation(headers, timeout=2.0)
+                if not geo:
+                    return (None, None, None)
+                lat, lon, city_name = geo
+                _save_last_location(lat, lon, city_name)
+
+    if city and (lat is None):
+        city_clean = city.strip()
+        query_name = city_clean
+        if len(query_name) > 4 and query_name.lower() not in ('kyiv', 'київ'):
+            if query_name.lower().endswith(('е', 'и', 'а', 'у')): query_name = query_name[:-1]
+
+        geo_url = 'https://geocoding-api.open-meteo.com/v1/search'
+        params = {'name': query_name, 'count': 1, 'language': lang, 'format': 'json'}
+        try:
+            geo_resp = requests.get(geo_url, params=params, headers=headers, timeout=2)
+            geo_data = geo_resp.json()
+            if geo_data.get('results'):
+                result = geo_data['results'][0]
+                lat, lon, city_name = result['latitude'], result['longitude'], result.get('name', city)
+        except Exception:
+            pass
+
+        if lat is None:
+            return (None, None, city)
+
+    return (lat, lon, city_name)
+def _location_error_text(city_name: str | None, lang: str) -> str:
+    if city_name:
+        return f'Місто {city_name} не знайдено.' if lang == 'uk' else f'Город {city_name} не найден.'
+    return 'Помилка при визначенні місця розташування.' if lang == 'uk' else 'Ошибка при определении местоположения.'
 def get_weather(city: str | None, date_offset: int = 0) -> tuple[bool, str]:
-    import requests
     cache_key = f"{city.strip().lower() if city else '__auto__'}_{date_offset}"
     cached = _weather_cache.get(cache_key)
     if cached and time.time() - cached['ts'] < _CACHE_TTL_SEC:
@@ -404,103 +548,31 @@ def get_weather(city: str | None, date_offset: int = 0) -> tuple[bool, str]:
             text = _format_current_weather_text(hud_cached['city'], hud_cached['desc'], hud_cached['temp'], hud_cached['feels'], lang, hud_cached.get('wind', 0.0))
             _weather_cache[cache_key] = {'ok': True, 'text': text, 'ts': time.time()}
             return (True, text)
+
+    if date_offset != 0:
+        from actions.weather_forecast import get_forecast
+        try:
+            ok, text = get_forecast(city, date_offset)
+        except Exception as e:
+            return (False, f'Ошибка при получении прогноза: {str(e)}')
+        if ok:
+            _weather_cache[cache_key] = {'ok': True, 'text': text, 'ts': time.time()}
+        return (ok, text)
+
     try:
-        import requests, json, os
+        import requests
+        lat, lon, city_name = resolve_location(city, lang)
+        if lat is None:
+            return (False, _location_error_text(city_name, lang))
+
         headers = {'User-Agent': 'Mozilla/5.0'}
-        lat, lon, city_name = None, None, None
-
-        if not city:
-            settings_path = get_settings_path()
-            manual_city = None
-            if os.path.exists(settings_path):
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    manual_city = json.load(f).get('manual_city')
-
-            if manual_city:
-                city = manual_city
-            else:
-                last = _load_last_location()
-                if last:
-                    lat, lon, city_name = last
-                else:
-                    geo = _ip_geolocation(headers, timeout=2.0)
-                    if not geo:
-                        err_loc = 'Помилка при визначенні місця розташування.' if lang == 'uk' else 'Ошибка при определении местоположения.'
-                        return (False, err_loc)
-                    lat, lon, city_name = geo
-                    _save_last_location(lat, lon, city_name)
-
-        if city and (lat is None):
-            city_clean = city.strip()
-            query_name = city_clean
-            if len(query_name) > 4 and query_name.lower() not in ('kyiv', 'київ'):
-                if query_name.lower().endswith(('е', 'и', 'а', 'у')): query_name = query_name[:-1]
-
-            geo_url = 'https://geocoding-api.open-meteo.com/v1/search'
-            params = {'name': query_name, 'count': 1, 'language': lang, 'format': 'json'}
-            try:
-                geo_resp = requests.get(geo_url, params=params, headers=headers, timeout=2)
-                geo_data = geo_resp.json()
-                if geo_data.get('results'):
-                    result = geo_data['results'][0]
-                    lat, lon, city_name = result['latitude'], result['longitude'], result.get('name', city)
-            except Exception:
-                pass
-
-            if lat is None:
-                err_not_found = f'Місто {city} не знайдено.' if lang == 'uk' else f'Город {city} не найден.'
-                return (False, err_not_found)
-
-        if date_offset == 0:
-            weather_url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&wind_speed_unit=ms'
-            w_data = requests.get(weather_url, headers=headers, timeout=2.5).json()
-            current = w_data['current']
-            temp, feels, code = int(round(current['temperature_2m'])), int(round(current['apparent_temperature'])), current['weather_code']
-            wind = current.get('wind_speed_10m', 0.0)
-            desc = _get_wmo_desc(code, lang)
-            result_text = _format_current_weather_text(city_name, desc, temp, feels, lang, wind)
-        else:
-            weather_url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,rain_sum,snowfall_sum,wind_speed_10m_max&timezone=auto&wind_speed_unit=ms'
-            w_data = requests.get(weather_url, headers=headers, timeout=2.5).json()
-            daily = w_data['daily']
-            if date_offset >= len(daily['time']):
-                err_long = "Прогноз на такий тривалий термін недоступний. Я можу зазирнути максимум на тиждень вперед." if lang == 'uk' else "Прогноз на такой долгий срок недоступен. Я могу заглянуть максимум на неделю вперед."
-                return (False, err_long)
-
-            t_max = int(round(daily['temperature_2m_max'][date_offset]))
-            t_min = int(round(daily['temperature_2m_min'][date_offset]))
-            code = daily['weather_code'][date_offset]
-            desc = _get_wmo_desc(code, lang)
-
-            if lang == 'uk':
-                day_str = "завтра" if date_offset == 1 else ("післязавтра" if date_offset == 2 else f"через {date_offset} дні")
-                if date_offset >= 5: day_str = f"через {date_offset} днів"
-                result_text = f'У місті {city_name} {day_str} очікується {desc.lower()}. '
-                result_text += f'Вночі буде близько {_inflect_degree(t_min, lang)}, а вдень температура підніметься до {_inflect_degree(t_max, lang)}. '
-            else:
-                day_str = "завтра" if date_offset == 1 else ("послезавтра" if date_offset == 2 else f"через {date_offset} дня")
-                if date_offset >= 5: day_str = f"через {date_offset} дней"
-                result_text = f'В городе {city_name} {day_str} ожидается {desc.lower()}. '
-                result_text += f'Ночью будет около {_inflect_degree(t_min, lang)}, а днём температура поднимется до {_inflect_degree(t_max, lang)}. '
-
-            rain = daily.get('rain_sum', [0]*10)[date_offset]
-            snow = daily.get('snowfall_sum', [0]*10)[date_offset]
-            wind = daily.get('wind_speed_10m_max', [0]*10)[date_offset]
-
-            if lang == 'uk':
-                if rain > 1.0: result_text += f'Можливий дощ до {int(rain)} міліметрів. '
-                if snow > 1.0: result_text += f'Очікується сніг. '
-                if wind > 8.0: result_text += f'Буде вітряно, пориви до {int(wind)} метрів на секунду. '
-                if 'гроза' in desc.lower(): result_text += 'Можлива гроза, краще побути вдома. '
-                if t_min <= -5: result_text += 'Вночі буде дуже холодно, одягніться тепліше. '
-                if t_max >= 28: result_text += 'Вдень буде дуже спекотно, не забудьте воду.'
-            else:
-                if rain > 1.0: result_text += f'Возможен дождь до {int(rain)} миллиметров. '
-                if snow > 1.0: result_text += f'Ожидается снег. '
-                if wind > 8.0: result_text += f'Будет ветрено, порывы до {int(wind)} метров в секунду. '
-                if 'гроза' in desc.lower(): result_text += 'Возможна гроза, лучше остаться дома. '
-                if t_min <= -5: result_text += 'Ночью будет очень холодно, оденьтесь теплее. '
-                if t_max >= 28: result_text += 'Днём будет очень жарко, не забудьте воду.'
+        weather_url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&wind_speed_unit=ms'
+        w_data = requests.get(weather_url, headers=headers, timeout=2.5).json()
+        current = w_data['current']
+        temp, feels, code = int(round(current['temperature_2m'])), int(round(current['apparent_temperature'])), current['weather_code']
+        wind = current.get('wind_speed_10m', 0.0)
+        desc = _get_wmo_desc(code, lang)
+        result_text = _format_current_weather_text(city_name, desc, temp, feels, lang, wind)
 
         _weather_cache[cache_key] = {'ok': True, 'text': result_text, 'ts': time.time()}
         return (True, result_text)
@@ -517,27 +589,3 @@ def _inflect_degree(n: int, lang: str = 'ru') -> str:
     if 2 <= last_digit <= 4:
         return f"{n} градуси" if lang == 'uk' else f"{n} градуса"
     return f"{n} градусів" if lang == 'uk' else f"{n} градусов"
-
-def extract_date_offset(text: str) -> tuple[int, str]:
-    """Extracts date offset and removes temporal keywords from text."""
-    text = text.lower()
-    offset = 0
-    if 'послезавтра' in text:
-        offset = 2
-        text = text.replace('послезавтра', '')
-    elif 'завтра' in text:
-        offset = 1
-        text = text.replace('завтра', '')
-    
-    # Handle "через X дня/дней"
-    import re
-    match = re.search(r'через\s+(один|два|три|четыре|пять|шесть|семь|\d+)\s+(?:день|дня|дней)?', text)
-    if match:
-        val = match.group(1)
-        num_map = {'один': 1, 'два': 2, 'три': 3, 'четыре': 4, 'пять': 5, 'шесть': 6, 'семь': 7}
-        val_int = num_map.get(val) or (int(val) if val.isdigit() else 0)
-        if val_int > 0:
-            offset = val_int
-            text = text.replace(match.group(0), '')
-    
-    return offset, text.strip()

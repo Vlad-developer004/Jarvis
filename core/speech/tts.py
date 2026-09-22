@@ -1177,7 +1177,9 @@ def normalize_for_tts(text: str) -> str:
     text = re.sub(r'\b([A-Za-z]):\\', lambda m: f'диск {_PHONETIC_DRIVES.get(m.group(1).upper(), m.group(1).upper())} ', text)
     nw_lang = 'uk' if lang == 'uk' else 'ru'
     _km_word = 'кілометрів' if lang == 'uk' else 'километров'
-    _all_units = {**_UNIT_EXPANSIONS, 'км': _km_word}
+    _gb_word = 'гігабайт' if lang == 'uk' else 'гигабайт'
+    _kb_word = 'кілобайт' if lang == 'uk' else 'килобайт'
+    _all_units = {**_UNIT_EXPANSIONS, 'км': _km_word, 'гб': _gb_word, 'мб': 'мегабайт', 'кб': _kb_word}
     text = re.sub(r'\b(ГБ|МБ|КБ|км/ч|км/час|кг|см|мм|км)\b', lambda m: _all_units.get(m.group(0).lower(), m.group(0)), text, flags=re.IGNORECASE)
     text = text.replace('€', 'євро' if lang == 'uk' else 'евро')
 
