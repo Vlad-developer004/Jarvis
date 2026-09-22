@@ -2,7 +2,11 @@ from __future__ import annotations
 import json
 import webbrowser
 from pathlib import Path
-_SETTINGS_PATH = Path('data') / 'jarvis_settings.json'
+from config_pack.config import get_settings_path
+# Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) — a
+# project-relative path here would never see this setting (and gets wiped
+# by a rebuild).
+_SETTINGS_PATH = Path(get_settings_path())
 def _load() -> dict:
     try:
         if _SETTINGS_PATH.exists():

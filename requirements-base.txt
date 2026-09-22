@@ -32,3 +32,7 @@ sentence-transformers>=3.0.0
 pymorphy3>=2.0.6
 pymorphy3-dicts-ru>=2.4
 pymorphy3-dicts-uk>=2.4
+# CPU wheel — plain `pip install llama-cpp-python` tries to build from source
+# and fails without MSVC Build Tools on Windows. Use the prebuilt index:
+# pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python>=0.3.0

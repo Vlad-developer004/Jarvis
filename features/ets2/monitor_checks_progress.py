@@ -10,6 +10,7 @@ from .phrases import (
     event_engine_off, _fuel_phrase, event_fuel_shortage, event_post_rest, event_rest_warning,
     event_deadline_warning, event_almost_there, event_destination, event_idle, event_eta,
 )
+from .phrases_warnings import event_real_break_reminder
 
 def _check_engine_transition(state: _MonitorState, data: dict) -> bool:
     from .monitor import _speak
@@ -90,6 +91,17 @@ def _check_rest(state: _MonitorState, data: dict, engine_on: bool) -> None:
                 break
     else:
         state.last_rest_val = rest_val
+
+
+def _check_real_break(state: _MonitorState, data: dict, engine_on: bool) -> None:
+    """IRL continuous-driving nudge — tracks real elapsed time since the
+    engine was last started, independent of ETS2's own fatigue meter
+    (_check_rest), which many players ignore or the game auto-resets on any
+    in-game rest stop regardless of whether a real break happened."""
+    from .monitor import _speak
+    threshold = state.real_break.check(engine_on)
+    if threshold is not None:
+        _speak(event_real_break_reminder(threshold))
 
 
 def _check_deadline(state: _MonitorState, data: dict) -> None:

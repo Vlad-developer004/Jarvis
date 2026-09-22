@@ -4,6 +4,8 @@ no behavior change.
 """
 from dataclasses import dataclass, field as _field
 from typing import Optional
+from features.gaming_common.real_break import RealBreakTracker
+from .config import REAL_BREAK_THRESHOLDS_MIN
 
 @dataclass
 class _MonitorState:
@@ -57,6 +59,7 @@ class _MonitorState:
     last_trailer_attached: Optional[bool] = None
     last_live_comment_ts: float = 0.0
     last_speed_for_brake: float = 0.0
+    real_break: RealBreakTracker = _field(default_factory=lambda: RealBreakTracker(REAL_BREAK_THRESHOLDS_MIN))
 
     def reset_on_telemetry_loss(self) -> None:
         """Reset detectors tied to a live telemetry feed. Wear tracking,

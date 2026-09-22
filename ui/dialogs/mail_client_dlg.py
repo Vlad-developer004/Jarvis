@@ -3,18 +3,35 @@ purely for file size; no behavior change. See mail_compose_dlg.py for the
 compose window this opens when the user hits "new message".
 """
 from __future__ import annotations
+import re
 from core import i18n
 from ui.hud_style import JStyle
 import threading
 import tkinter as tk
-from pathlib import Path
-from tkinter import filedialog
 import customtkinter as ctk
 from ..hud_constants import _BG, _PANEL, _BRD, _SEP, _CYAN, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM
-from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon, _place_dialog
-from .extensions_common import _bind_ctk_entry_clipboard
-from .mail_shared import _sf, _bind_text_clipboard, _show_confirm_hud
+from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon, _get_work_area
+from .mail_shared import _sf, _show_confirm_hud
 from .mail_compose_dlg import open_compose_dialog
+from .mail_reply_panel import build_reply_panel
+
+def _clean_email_body(raw_body: str) -> str:
+    """Clean up and format raw email body, shortening massive tracking URLs."""
+    if not raw_body:
+        return ''
+    def _url_repl(match):
+        url = match.group(0)
+        if len(url) > 75:
+            from urllib.parse import urlparse
+            try:
+                parsed = urlparse(url)
+                netloc = parsed.netloc or 'link'
+                return f'{url[:55]}… [{netloc}]'
+            except Exception:
+                return f'{url[:65]}…'
+        return url
+    cleaned = re.sub(r'https?://[^\s<">]+', _url_repl, raw_body)
+    return cleaned.strip()
 
 def open_mail_client(hud, reopen: bool = False) -> None:
     if not reopen and hasattr(hud, '_mail_win') and hud._mail_win and hud._mail_win.winfo_exists():
@@ -31,8 +48,9 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     win.configure(bg=_BG)  # type: ignore[call-arg]
     win.overrideredirect(True)
     _apply_window_icon(win, hud)
-    sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-    win.geometry(f'{sw}x{sh}+0+0')
+    l, t, r, b = _get_work_area(hud)
+    sw, sh = r - l, b - t
+    win.geometry(f'{sw}x{sh}+{l}+{t}')
     W = int(sw / hud.zoom_factor)
     from actions.mail_client import (
         delete_message_by_uid,
@@ -62,17 +80,19 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         fg_color="transparent", hover_color=_blend(_RED, 0.2), text_color=_RED,
         command=win.destroy,
     ).pack(side='right', padx=(10, 0))
+    status_bg = tk.Frame(top, bg=_blend(_CYAN, 0.08), highlightbackground=_blend(_CYAN, 0.2), highlightthickness=1)
+    status_bg.pack(side='right', padx=(20, 10))
     status = tk.Label(
-        top,
+        status_bg,
         text='',
-        bg=_BG,
+        bg=_blend(_CYAN, 0.08),
         fg=_DIM,
         font=(hud._F, _sf(9, hud.zoom_factor), 'bold'),
-        wraplength=int(max(400, sw/hud.zoom_factor - 550) * hud.zoom_factor),
-        justify='right', # Change to right to keep it away from buttons
+        padx=10,
+        pady=4,
         anchor='e'
     )
-    status.pack(side='right', fill='x', expand=True, padx=(20, 10))
+    status.pack(fill='both', expand=True)
     if not cfg:
         tk.Label(
             win,
@@ -95,14 +115,14 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         return
     pan = tk.PanedWindow(win, bg=_BG, sashwidth=5, sashrelief='flat', sashpad=2)
     pan.pack(fill='both', expand=True, padx=20, pady=(0, 20))
-    # Logical width of the sidebar, PanedWindow scales the frame but width=360 is starting point
-    left = tk.Frame(pan, bg=_BG, width=320)
+    # Logical width of the sidebar
+    left = tk.Frame(pan, bg=_BG, width=hud._px(340))
+    left.pack_propagate(False)
     right = tk.Frame(pan, bg=_BG)
-    pan.add(left, minsize=int(260 * hud.zoom_factor))
+    pan.add(left, width=hud._px(340), minsize=int(280 * hud.zoom_factor))
     pan.add(right, minsize=int(400 * hud.zoom_factor))
-    _LB = _BG
-    _CARD_IDLE = _blend(_CYAN, 0.08)
-    _CARD_HOVER = _blend(_CYAN, 0.16)
+    _CARD_IDLE = _blend(_CYAN, 0.05)
+    _CARD_HOVER = _blend(_CYAN, 0.14)
     _CARD_SEL = _blend(_CYAN, 0.22)
     _BR = hud._px(14)
     left_outer = tk.Frame(left, bg=_BRD)
@@ -180,8 +200,12 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             elif isinstance(ch, tk.Frame):
                 ch.configure(bg=bg_c)  # type: ignore[call-arg]
                 for sub in ch.winfo_children():
-                    if isinstance(sub, tk.Label):
+                    if isinstance(sub, tk.Label) or isinstance(sub, tk.Frame):
                         sub.configure(bg=bg_c)  # type: ignore[call-arg]
+                        if isinstance(sub, tk.Frame):
+                            for ssub in sub.winfo_children():
+                                if isinstance(ssub, tk.Label):
+                                    ssub.configure(bg=bg_c)  # type: ignore[call-arg]
     def _select_card(idx):
         prev = selected_idx[0]
         selected_idx[0] = idx
@@ -197,9 +221,7 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         current_uid[0] = uid
         set_status('Загрузка письма…', _AMBER)
         body_txt.delete('1.0', 'end')
-        reply_txt.delete('1.0', 'end')
-        attach_paths.clear()
-        _refresh_attach_ui()
+        reply_panel.clear()
         current_mail[0] = None
         def work():
             ok, payload = fetch_message_body(uid or '')
@@ -207,66 +229,80 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         threading.Thread(target=work, daemon=True).start()
     def _build_card(idx: int, row: dict):
         subj = row.get('subject') or '(без темы)'
-        sender = row.get('from') or ''
+        sender_raw = row.get('from') or ''
         date_s = row.get('date') or ''
         date_short = date_s[:16] if len(date_s) > 16 else date_s
+
+        # Clean up sender display name & extract avatar initial
+        clean_sender = sender_raw.split('<')[0].strip(' "\'') or sender_raw
+        if len(clean_sender) > 36:
+            clean_sender = clean_sender[:34] + '…'
+        initial = (clean_sender[0].upper() if clean_sender and clean_sender[0].isalnum() else '✉')
+
         card = tk.Frame(
             list_inner, bg=_CARD_IDLE,
             highlightthickness=1, highlightbackground=_blend(_CYAN, 0.12),
             cursor='hand2',
         )
         card.pack(fill='x', padx=(8, hud._px(10)), pady=(0, 6))
-        strip = tk.Frame(card, bg=_SEP, width=hud._px(6))
-        strip.pack(side='left', fill='y')
-        strip.pack_propagate(False)
+
+        # Avatar initial badge (centered using place anchor)
+        av_fr = tk.Frame(card, bg=_blend(_CYAN, 0.15), width=hud._px(30), height=hud._px(30))
+        av_fr.pack(side='left', padx=(8, 4), pady=8)
+        av_fr.pack_propagate(False)
+        av_lbl = tk.Label(
+            av_fr, text=initial, bg=_blend(_CYAN, 0.15), fg=_CYAN,
+            font=(hud._F, _sf(11, hud.zoom_factor), 'bold')
+        )
+        av_lbl.place(relx=0.5, rely=0.5, anchor='center')
+
         body = tk.Frame(card, bg=_CARD_IDLE)
-        body.pack(side='left', fill='both', expand=True, padx=(8, 6), pady=6)
+        body.pack(side='left', fill='both', expand=True, padx=(6, 6), pady=6)
         subj_l = tk.Label(
             body, text=subj, bg=_CARD_IDLE, fg=_WHITE,
             font=(hud._F, _sf(10, hud.zoom_factor), 'bold'), anchor='w', justify='left',
-            wraplength=hud._px(280)
+            wraplength=hud._px(240)
         )
         subj_l.pack(fill='x', pady=(0, 2))
         sender_l = tk.Label(
-            body, text=sender, bg=_CARD_IDLE, fg=_DIM,
+            body, text=clean_sender, bg=_CARD_IDLE, fg=_DIM,
             font=(hud._F, _sf(9, hud.zoom_factor)), anchor='w', justify='left',
-            wraplength=hud._px(280)
+            wraplength=hud._px(240)
         )
         sender_l.pack(fill='x')
         if date_short:
             date_l = tk.Label(
-                body, text=date_short, bg=_CARD_IDLE, fg=_blend(_CYAN, 0.35),
+                body, text=date_short, bg=_CARD_IDLE, fg=_blend(_CYAN, 0.4),
                 font=(hud._F, _sf(8, hud.zoom_factor)), anchor='w',
             )
             date_l.pack(fill='x')
             date_l.bind('<Button-1>', lambda e, i=idx: _select_card(i))
             date_l.bind('<MouseWheel>', _on_mousewheel)
-        def _enter(e, c=card, s=strip, i=idx):
+        def _enter(e, c=card, i=idx):
             if selected_idx[0] != i:
-                c.configure(bg=_CARD_HOVER, highlightbackground=_blend(_CYAN, 0.4))  # type: ignore[call-arg]
-                s.configure(bg=_blend(_CYAN, 0.5))  # type: ignore[call-arg]
+                c.configure(bg=_CARD_HOVER, highlightbackground=_blend(_CYAN, 0.35))  # type: ignore[call-arg]
                 for w in c.winfo_children():
-                    if isinstance(w, tk.Frame) and w != s:
+                    if isinstance(w, tk.Frame) and w != av_fr:
                         w.configure(bg=_CARD_HOVER)  # type: ignore[call-arg]
                         for ch in w.winfo_children():
                             if isinstance(ch, tk.Label):
                                 ch.configure(bg=_CARD_HOVER)  # type: ignore[call-arg]
-        def _leave(e, c=card, s=strip, i=idx):
+        def _leave(e, c=card, i=idx):
             if selected_idx[0] != i:
                 c.configure(bg=_CARD_IDLE, highlightbackground=_blend(_CYAN, 0.12))  # type: ignore[call-arg]
-                s.configure(bg=_SEP)  # type: ignore[call-arg]
                 for w in c.winfo_children():
-                    if isinstance(w, tk.Frame) and w != s:
+                    if isinstance(w, tk.Frame) and w != av_fr:
                         w.configure(bg=_CARD_IDLE)  # type: ignore[call-arg]
                         for ch in w.winfo_children():
                             if isinstance(ch, tk.Label):
                                 ch.configure(bg=_CARD_IDLE)  # type: ignore[call-arg]
-        for widget in (card, body, subj_l, sender_l, strip):
+        for widget in (card, body, subj_l, sender_l, av_fr, av_lbl):
             widget.bind('<Button-1>', lambda e, i=idx: _select_card(i))
             widget.bind('<Enter>', _enter)
             widget.bind('<Leave>', _leave)
             widget.bind('<MouseWheel>', _on_mousewheel)
         return card
+
     corner_bot_cv = tk.Canvas(left_inner, bg=_PANEL, highlightthickness=0, height=hud._px(10))
     corner_bot_cv.pack(fill='x', side='bottom')
     def _draw_bot_corners(_e=None):
@@ -283,9 +319,37 @@ def open_mail_client(hud, reopen: bool = False) -> None:
     right_inner = tk.Frame(right, bg=_BG)
     right_inner.pack(fill='both', expand=True, padx=4, pady=(0, 4))
     right_inner.grid_columnconfigure(0, weight=1)
-    right_inner.grid_rowconfigure(0, weight=4, minsize=hud._px(260))
-    right_inner.grid_rowconfigure(1, weight=1, minsize=hud._px(140))
-    right_inner.grid_rowconfigure(2, weight=0)
+    right_inner.grid_rowconfigure(0, weight=0)  # Header card
+    right_inner.grid_rowconfigure(1, weight=2, minsize=hud._px(160))  # Body text
+    right_inner.grid_rowconfigure(2, weight=3, minsize=hud._px(220))  # Reply card
+    right_inner.grid_rowconfigure(3, weight=0)  # Bottom button row
+
+    # --- Structured Header Card for Selected Message ---
+    hdr_card = tk.Frame(right_inner, bg=_PANEL, highlightbackground=_blend(_CYAN, 0.22), highlightthickness=1)
+    hdr_card.grid(row=0, column=0, sticky='ew', pady=(0, 8))
+    
+    hdr_top = tk.Frame(hdr_card, bg=_PANEL)
+    hdr_top.pack(fill='x', padx=14, pady=(10, 4))
+    hdr_subj_lbl = tk.Label(
+        hdr_top, text='◈  Выберите письмо из списка слева', bg=_PANEL, fg=_CYAN,
+        font=(hud._F, _sf(11, hud.zoom_factor), 'bold'), anchor='w', justify='left',
+        wraplength=hud._px(550)
+    )
+    hdr_subj_lbl.pack(side='left', fill='x', expand=True)
+
+    hdr_meta_fr = tk.Frame(hdr_card, bg=_PANEL)
+    hdr_meta_fr.pack(fill='x', padx=14, pady=(0, 8))
+    hdr_from_lbl = tk.Label(
+        hdr_meta_fr, text='', bg=_PANEL, fg=_CYAN,
+        font=(hud._F, _sf(9, hud.zoom_factor), 'bold'), anchor='w'
+    )
+    hdr_from_lbl.pack(side='left')
+    hdr_date_lbl = tk.Label(
+        hdr_meta_fr, text='', bg=_PANEL, fg=_DIM,
+        font=(hud._F, _sf(8, hud.zoom_factor)), anchor='e'
+    )
+    hdr_date_lbl.pack(side='right')
+
     _card_bg = _BG
     _txt_common = {
         'bg': _card_bg,
@@ -304,195 +368,24 @@ def open_mail_client(hud, reopen: bool = False) -> None:
         'pady': 12,
     }
     body_card = tk.Frame(right_inner, bg=_BG)
-    body_card.grid(row=0, column=0, sticky='nsew', pady=(0, 8))
-    tk.Label(body_card, text='Текст письма', bg=_BG, fg=_CYAN, font=(hud._F, _sf(11, hud.zoom_factor), 'bold')).pack(anchor='w', pady=(0, 6))
+    body_card.grid(row=1, column=0, sticky='nsew', pady=(0, 8))
+    tk.Label(body_card, text='Текст письма', bg=_BG, fg=_CYAN, font=(hud._F, _sf(10, hud.zoom_factor), 'bold')).pack(anchor='w', pady=(0, 4))
     body_wrap = tk.Frame(body_card, bg=_card_bg, highlightbackground=_blend(_CYAN, 0.3), highlightthickness=1)
     body_wrap.pack(fill='both', expand=True)
-    body_txt = tk.Text(body_wrap, height=18, **_txt_common)
+    body_txt = tk.Text(body_wrap, height=14, **_txt_common)
     body_txt.pack(fill='both', expand=True)
+
     reply_card = tk.Frame(right_inner, bg=_BG)
-    reply_card.grid(row=1, column=0, sticky='nsew', pady=(0, 8))
-    attach_paths: list[Path] = []
-    attach_wrap = tk.Frame(reply_card, bg=_card_bg, highlightbackground=_blend(_GREEN, 0.22), highlightthickness=1)
-    attach_inner = tk.Frame(attach_wrap, bg=_card_bg)
-    def _refresh_attach_ui():
-        for w in attach_inner.winfo_children():
-            w.destroy()
-        if not attach_paths:
-            tk.Label(
-                attach_inner,
-                text='Нет вложений — кнопки «Файл», «Фото», «Видео»',
-                bg=_card_bg,
-                fg=_DIM,
-                font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
-            ).pack(anchor='w')
-            return
-        for p in attach_paths:
-            row = tk.Frame(attach_inner, bg=_card_bg)
-            row.pack(fill='x', pady=2)
-            tk.Label(
-                row,
-                text=p.name,
-                bg=_card_bg,
-                fg=_TEXT,
-                font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
-                anchor='w',
-            ).pack(side='left', fill='x', expand=True)
-            ctk.CTkButton(
-                row,
-                text='✕',
-                width=28,
-                height=24,
-                font=(hud._F, _sf(11), 'bold'),
-                fg_color=_blend(_RED, 0.12),
-                hover_color=_blend(_RED, 0.3),
-                text_color=_RED,
-                command=lambda path=p: _remove_attachment(path),
-            ).pack(side='right')
-    def _remove_attachment(p: Path):
-        try:
-            attach_paths.remove(p)
-        except ValueError:
-            pass
-        _refresh_attach_ui()
-    def _add_paths(paths: tuple[str, ...]):
-        for s in paths:
-            if not s:
-                continue
-            p = Path(s)
-            if p.is_file() and p not in attach_paths:
-                attach_paths.append(p)
-        _refresh_attach_ui()
-    def _pick_files():
-        paths = filedialog.askopenfilenames(
-            parent=win,
-            title='Файлы для вложения',
-            filetypes=[('Все файлы', '*.*')],
-        )
-        _add_paths(paths)
-    def _pick_images():
-        paths = filedialog.askopenfilenames(
-            parent=win,
-            title='Фото',
-            filetypes=[
-                ('Изображения', '*.png *.jpg *.jpeg *.gif *.webp *.bmp'),
-                ('Все файлы', '*.*'),
-            ],
-        )
-        _add_paths(paths)
-    def _pick_videos():
-        paths = filedialog.askopenfilenames(
-            parent=win,
-            title='Видео',
-            filetypes=[
-                ('Видео', '*.mp4 *.mov *.avi *.mkv *.webm *.m4v'),
-                ('Все файлы', '*.*'),
-            ],
-        )
-        _add_paths(paths)
-    hdr = tk.Frame(reply_card, bg=_BG)
-    hdr.pack(fill='x', pady=(0, 6))
-    tk.Label(hdr, text='Ваш ответ', bg=_BG, fg=_CYAN, font=(hud._F, _sf(11, hud.zoom_factor), 'bold')).pack(side='left')
-    tk.Label(
-        hdr,
-        text='Текст, вложения и ссылки',
-        bg=_BG,
-        fg=_DIM,
-        font=(hud._F, _sf(8, hud.zoom_factor)),
-    ).pack(side='left', padx=(10, 0))
-    tool = tk.Frame(reply_card, bg=_BG)
-    tool.pack(fill='x', pady=(0, 6))
-    bt_kw = {
-        'font': (hud._F, _sf(10), 'bold'),
-        'height': 44,
-        'fg_color': _blend(_CYAN, 0.12),
-        'hover_color': _blend(_CYAN, 0.24),
-        'text_color': _TEXT,
-    }
-    ctk.CTkButton(tool, text='Файл…', width=92, command=_pick_files, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Фото…', width=92, command=_pick_images, **bt_kw).pack(side='left', padx=(0, 6))
-    ctk.CTkButton(tool, text='Видео…', width=92, command=_pick_videos, **bt_kw).pack(side='left', padx=(0, 6))
-    attach_wrap.pack(fill='x', pady=(0, 8))
-    tk.Label(attach_wrap, text='Вложения', bg=_card_bg, fg=_DIM, font=(hud._F, _sf(10, hud.zoom_factor), 'bold')).pack(anchor='w', padx=8, pady=(6, 2))
-    attach_inner.pack(fill='both', padx=8, pady=(0, 8))
-    reply_wrap = tk.Frame(reply_card, bg=_BG)
-    reply_wrap.pack(fill='both', expand=True)
-    reply_txt = ctk.CTkTextbox(
-        reply_wrap,
-        width=max(400, W - 340),
-        height=160,
-        font=(hud._F, _sf(11)),
-        fg_color=_card_bg,
-        text_color=_TEXT,
-        border_color=_blend(_GREEN, 0.5),
-        border_width=1,
-        corner_radius=JStyle.RAD_BTN,
-        scrollbar_button_color=_blend(_CYAN, 0.25),
-        scrollbar_button_hover_color=_blend(_CYAN, 0.42),
+    reply_card.grid(row=2, column=0, sticky='nsew', pady=(0, 8))
+    btn_row = tk.Frame(right_inner, bg=_BG)
+    btn_row.grid(row=3, column=0, sticky='ew', pady=(8, 12))
+    _btn_reply_center = tk.Frame(btn_row, bg=_BG)
+    _btn_reply_center.pack(anchor='center')
+    reply_panel = build_reply_panel(
+        hud, win, reply_card, _btn_reply_center,
+        send_reply=send_reply, current_mail=current_mail, set_status=lambda t, c=_DIM: set_status(t, c), W=W,
     )
-    reply_txt.pack(fill='both', expand=True)
-    try:
-        reply_txt._textbox.configure(
-            insertbackground=_CYAN,
-            selectbackground=_blend(_CYAN, 0.35),
-            selectforeground=_WHITE,
-        )
-    except Exception:
-        pass
-    def _add_link_dialog():
-        dlg = tk.Toplevel(win)
-        dlg.title('Ссылка в ответ')
-        dlg.configure(bg=_BG)  # type: ignore[call-arg]
-        dlg.transient(win)
-        dlg.grab_set()
-        _set_dark_title_bar(dlg)
-        _apply_window_icon(dlg, hud)
-        _place_dialog(dlg, hud, 460, 132, grab=False)
-        dlg.minsize(380, 110)
-        tk.Label(
-            dlg,
-            text='Вставьте URL — он будет добавлен в текст ответа (как в обычном письме).',
-            bg=_BG,
-            fg=_DIM,
-            font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
-            wraplength=460 - 24,
-            justify='left',
-        ).pack(anchor='w', padx=12, pady=(12, 6))
-        ent = ctk.CTkEntry(
-            dlg,
-            width=460 - 24,
-            height=34,
-            font=(hud._F, _sf(11), 'bold'),
-            fg_color=_blend(_CYAN, 0.08),
-            border_color=_blend(_CYAN, 0.35),
-        )
-        ent.pack(padx=12, pady=(0, 10))
-        _bind_ctk_entry_clipboard(dlg, ent, hud)
-        def _ok():
-            u = (ent.get() or '').strip()
-            dlg.destroy()
-            if u:
-                reply_txt.focus_set()
-                reply_txt.insert('insert', f'\n{u}\n')
-        def _cancel():
-            dlg.destroy()
-        row = tk.Frame(dlg, bg=_BG)
-        row.pack(fill='x', padx=12, pady=(0, 12))
-        ctk.CTkButton(
-            row,
-            text='ВСТАВИТЬ',
-            width=160,
-            height=JStyle.H_LARGE,
-            font=(hud._F, _sf(11), 'bold'),
-            fg_color=_blend(_GREEN, 0.25),
-            command=_ok,
-        ).pack(side='left', padx=(0, 8))
-        ctk.CTkButton(row, text=i18n.tr('buttons.cancel'), width=hud._px(120), height=hud._px(44), font=(hud._F, _sf(10, hud.zoom_factor)), fg_color=_blend(_CYAN, 0.1), command=_cancel).pack(side='left')
-        ent.bind('<Return>', lambda e: _ok())
-        ent.focus_set()
-    ctk.CTkButton(tool, text='Ссылка…', width=92, command=_add_link_dialog, **bt_kw).pack(side='left', padx=(0, 6))
-    _refresh_attach_ui()
-    _bind_text_clipboard(win, reply_txt)
+    reply_txt = reply_panel.reply_txt
     def _body_readonly_key(e):
         if e.state & 0x4 and e.keysym.lower() in ('c', 'a', 'insert'):
             return
@@ -503,8 +396,6 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             return 'break'
         return 'break'
     body_txt.bind('<Key>', _body_readonly_key)
-    btn_row = tk.Frame(right_inner, bg=_BG)
-    btn_row.grid(row=2, column=0, sticky='ew', pady=(4, 0))
     def set_status(t: str, color=_DIM):
         status.config(text=t, fg=color)
     def load_list():
@@ -537,52 +428,23 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             set_status('Пусто', _RED)
             return
         current_mail[0] = payload
-        hdr = f'От: {payload.get("from", "")}\nТема: {payload.get("subject", "")}\n\n'
-        body_txt.insert('1.0', hdr + (payload.get('body') or ''))
-        subj = payload.get('subject') or ''
-        if not subj.lower().startswith('re:'):
-            subj = f'Re: {subj}'
-        reply_txt.insert('1.0', '')
+
+        # Update dedicated Header Card
+        subj = payload.get("subject") or '(без темы)'
+        sender = payload.get("from") or ''
+        date_s = payload.get("date") or ''
+
+        hdr_subj_lbl.configure(text=subj, fg=_WHITE)
+        hdr_from_lbl.configure(text=f'От: {sender}')
+        hdr_date_lbl.configure(text=date_s[:24] if date_s else '')
+
+        # Clean body text (shorten long tracking URLs)
+        clean_text = _clean_email_body(payload.get('body') or '')
+        body_txt.delete('1.0', 'end')
+        body_txt.insert('1.0', clean_text)
+
+        reply_panel.set_quote(payload)
         set_status('Письмо загружено', _GREEN)
-    def do_send():
-        m = current_mail[0]
-        if not m:
-            set_status('Выберите письмо', _AMBER)
-            return
-        text = reply_txt.get('1.0', 'end-1c').strip()
-        if not text and not attach_paths:
-            set_status('Введите текст ответа или добавьте вложения', _AMBER)
-            return
-        total_b = sum(p.stat().st_size for p in attach_paths if p.is_file())
-        if total_b > 26 * 1024 * 1024:
-            set_status('Вложения слишком большие (> ~25 МБ). Уменьшите размер или вставьте ссылку в текст.', _RED)
-            return
-        subj = m.get('subject') or ''
-        if not subj.lower().startswith('re:'):
-            subj = f'Re: {subj}'
-        to_addr = m.get('reply_to') or ''
-        if not to_addr:
-            set_status('Некому отвечать', _RED)
-            return
-        set_status('Отправка…', _AMBER)
-        paths_copy = [Path(x) for x in attach_paths]
-        def work():
-            ok, msg = send_reply(
-                to_addr,
-                subj,
-                text,
-                in_reply_to=m.get('message_id') or '',
-                references=m.get('references') or '',
-                attachments=paths_copy,
-            )
-            def _done():
-                set_status(msg, _GREEN if ok else _RED)
-                if ok:
-                    attach_paths.clear()
-                    _refresh_attach_ui()
-                    reply_txt.delete('1.0', 'end')
-            win.after(0, _done)
-        threading.Thread(target=work, daemon=True).start()
     def do_delete():
         uid = (current_uid[0] or '').strip()
         if not uid:
@@ -595,10 +457,11 @@ def open_mail_client(hud, reopen: bool = False) -> None:
                 def _done():
                     set_status(msg, _GREEN if ok else _RED)
                     if ok:
+                        hdr_subj_lbl.configure(text='◈  Выберите письмо из списка слева', fg=_CYAN)
+                        hdr_from_lbl.configure(text='')
+                        hdr_date_lbl.configure(text='')
                         body_txt.delete('1.0', 'end')
-                        reply_txt.delete('1.0', 'end')
-                        attach_paths.clear()
-                        _refresh_attach_ui()
+                        reply_panel.clear()
                         current_mail[0] = None
                         current_uid[0] = None
                         load_list()
@@ -609,45 +472,31 @@ def open_mail_client(hud, reopen: bool = False) -> None:
             'Письмо будет удалено с сервера (IMAP) безвозвратно. Продолжить?',
             _confirmed, danger=True
         )
-    btn_row = tk.Frame(right_inner, bg=_BG)
-    btn_row.grid(row=2, column=0, sticky='ew', pady=(12, 16))
-    _btn_reply_center = tk.Frame(btn_row, bg=_BG)
-    _btn_reply_center.pack(anchor='center')
     ctk.CTkButton(
         _btn_reply_center,
-        text='ОТПРАВИТЬ ОТВЕТ',
-        width=220,
-        height=JStyle.H_LARGE,
-        font=(hud._F, _sf(11, hud.zoom_factor), 'bold'),
-        fg_color=_blend(_GREEN, 0.25),
-        hover_color=_blend(_GREEN, 0.45),
-        text_color=_GREEN,
-        command=do_send,
-    ).pack(side='left', padx=8)
-    ctk.CTkButton(
-        _btn_reply_center,
-        text='УДАЛИТЬ ПИСЬМО',
-        width=200,
+        text='🗑  УДАЛИТЬ ПИСЬМО',
+        width=190,
         height=JStyle.H_LARGE,
         font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
         fg_color=_blend(_RED, 0.15),
         hover_color=_blend(_RED, 0.3),
         text_color=_RED,
         command=do_delete,
-    ).pack(side='left', padx=8)
+    ).pack(side='left', padx=6)
     ctk.CTkButton(
         _btn_reply_center,
-        text='ОБНОВИТЬ СПИСОК',
-        width=200,
+        text='🔄  ОБНОВИТЬ СПИСОК',
+        width=190,
         height=JStyle.H_LARGE,
         font=(hud._F, _sf(10, hud.zoom_factor), 'bold'),
         fg_color=_blend(_CYAN, 0.12),
         hover_color=_blend(_CYAN, 0.22),
         text_color=_CYAN,
         command=load_list,
-    ).pack(side='left', padx=8)
+    ).pack(side='left', padx=6)
     body_txt.insert('1.0', 'Выберите письмо в списке слева — текст отобразится здесь.')
     body_txt.tag_add('hint', '1.0', 'end')
     body_txt.tag_configure('hint', foreground=_DIM)
     win.after(80, lambda: reply_txt.focus_set())
     load_list()
+

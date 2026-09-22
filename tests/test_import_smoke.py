@@ -22,7 +22,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 EXCLUDE_DIRS = {
-    '.git', 'venv', 'env', 'node_modules', '__pycache__',
+    '.git', '.venv', 'venv', 'env', 'node_modules', '__pycache__',
     'build', 'dist', 'models', 'logs', 'installer_output',
     'tests', 'scratch',
 }

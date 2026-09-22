@@ -27,8 +27,13 @@ def _calendar_next(handler, text_lower):
     handler.speak(next_events_summary(None))
 
 def _inbox_unread(handler, text_lower):
-    from actions.inbox_imap import unread_count_voice
-    handler.speak(unread_count_voice())
+    import threading
+    handler.speak("Проверяю почту...")
+    def work():
+        from actions.inbox_imap import unread_count_voice
+        msg = unread_count_voice()
+        handler.speak(msg)
+    threading.Thread(target=work, daemon=True).start()
 
 def _mail_compose(handler, text_lower):
     handler.speak(spk('mail.opening'))

@@ -147,6 +147,11 @@ def deactivate_game_mode() -> tuple[bool, str]:
         except Exception:
             pass
         try:
+            from features.fs22 import monitor as fs22_monitor
+            fs22_monitor.stop()
+        except Exception:
+            pass
+        try:
             from core.system import set_process_priority
             set_process_priority('normal')
         except Exception:

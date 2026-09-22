@@ -52,94 +52,10 @@ _log = _get_logger('semantic')
 
 
 from .semantic_encoder import _OnnxEncoder
-
-
-# ─── Default configuration ────────────────────────────────────────────────────
-
-_DEFAULT_CONFIG: dict = {
-    # ── Paths ────────────────────────────────────────────────────────────────
-    # Directory produced by prepare_model.py (contains model.onnx + tokenizer)
-    'onnx_model_dir': 'data/intent_model_onnx_quant',
-    'onnx_fp32_dir':  'data/intent_model_onnx',
-    'ft_model_dir':   'data/intent_model',
-    'model_name':     'intfloat/multilingual-e5-small',
-    # Prefix prepended to user queries at inference time.
-    # E5 models need "query: " to activate retrieval-tuned representations.
-    # Set to '' for non-E5 models.
-    'query_prefix':   'query: ',
-    # Centroid matrix + labels produced by prepare_model.py
-    'cache_path':     'data/semantic_cache.npz',
-
-    # ── OOD thresholds (classify_intent) ─────────────────────────────────────
-    # Minimum cosine similarity for the winning centroid.
-    'min_score':  0.45,
-    # Minimum gap between top-1 and top-2 (different intent) cosine scores.
-    'min_margin': 0.15,
-
-    # ── Stricter thresholds for is_command() context filter ───────────────────
-    'is_command_min_score':  0.55,
-    'is_command_min_margin': 0.20,
-
-    # ── Layer 0: short-word blocking ─────────────────────────────────────────
-    # Texts with fewer tokens than this (when NOT waiting for an answer) are
-    # silently dropped in IDLE state to prevent single-word hallucinations.
-    'idle_min_tokens': 2,
-
-    # ── Layer 0: confirmation vocabulary ─────────────────────────────────────
-    # When is_waiting_answer=True, these tokens are matched literally and
-    # returned as special intents without touching the neural path.
-    # Format: { surface_form: intent_name }
-    'confirm_map': {
-        'да':   'confirm_yes',
-        'ага':  'confirm_yes',
-        'ок':   'confirm_yes',
-        'окей': 'confirm_yes',
-        'yes':  'confirm_yes',
-        'нет':  'confirm_no',
-        'не':   'confirm_no',
-        'нє':   'confirm_no',
-        'no':   'confirm_no',
-        'стоп': 'confirm_cancel',
-    },
-
-    # ── Layer 1: sparse keyword roots (optional confidence boost) ─────────────
-    # Maps a keyword root (lowercased, no diacritics needed) to an intent.
-    # If the dense score is in the uncertain zone [sparse_min_score, min_score)
-    # AND one of these roots is a substring of the query, the match is accepted.
-    'sparse_roots': {
-        'выключ':   'shutdown',
-        'вимкни':   'shutdown',
-        'перезагруз': 'restart',
-        'перезавант': 'restart',
-        'заблокуй клав': 'keyboard_lock',
-        'заблокир клав': 'keyboard_lock',
-    },
-    # Score range in which sparse roots can override the OOD filter.
-    'sparse_min_score': 0.35,
-
-    # ── Module-availability guard ─────────────────────────────────────────────
-    # Intent prefix → module name that must be enabled for the intent to be
-    # included in the centroid matrix.  Intents not matched here are always on.
-    'module_map': {
-        'ps_':              'photoshop_voice',
-        'figma_':           'figma_voice',
-        'cinema_':          'cinema',
-        'qa_search':        'qa',
-        'net_profile_':     'network_profiles',
-        'vpn_reminder':     'network_profiles',
-        'health_disks':     'system_health',
-        'calendar_next':    'calendar_ics',
-        'inbox_unread':     'inbox_digest',
-        'mail_compose':     'inbox_digest',
-        'git_commit':       'git_integration',
-        'translate_speech': 'translator',
-    },
-}
+from .semantic_layers import _CYR_VOWELS, layer0_prefilter, layer1_sparse, margin_check
+from .semantic_config import DEFAULT_CONFIG as _DEFAULT_CONFIG
 
 # Cyrillic vowels used by the Layer 0 hallucination filter.
-_CYR_VOWELS = re.compile(r'[аеёиоуыэюяіїєаеіоуАЕЁИОУЫЭЮЯІЇЄ]')
-
-
 
 # ─── Classifier ───────────────────────────────────────────────────────────────
 
@@ -350,7 +266,17 @@ class SemanticIntentClassifier:
         return (raw / norm).astype(np.float32)
 
     def _encode_batch(self, texts: list[str]) -> np.ndarray:
-        """Encode a list of texts; returns (N, D) normalised matrix."""
+        """Encode a list of texts; returns (N, D) normalised matrix.
+
+        Uses true batched ONNX inference (_OnnxEncoder.encode_batch) when
+        available — only rebuild_cache() calls this with more than one text,
+        so this is where batching actually pays off.
+        """
+        pfx = self._cfg.get('query_prefix', '')
+        prefixed = [pfx + t if pfx else t for t in texts]
+        if hasattr(self._session, 'encode_batch'):
+            raw = self._session.encode_batch(prefixed)  # (N, D) already normalised
+            return raw.astype(np.float32)
         rows = [self._encode(t) for t in texts]
         return np.vstack(rows).astype(np.float32)
 
@@ -366,139 +292,6 @@ class SemanticIntentClassifier:
             if intent.startswith(prefix) or intent == prefix:
                 return module_enabled(mod)
         return True
-
-    # ── Layer 0 — Pre-filter / State Machine ─────────────────────────────────
-
-    def _layer0(
-        self,
-        text: str,
-        is_waiting_answer: bool,
-    ) -> tuple[bool, Optional[str]]:
-        """
-        Fast, zero-neural pre-filter.
-
-        Returns
-        ───────
-        (should_continue, intent_override)
-
-        • (False, None)            — text rejected; caller returns None
-        • (False, 'confirm_yes')   — text intercepted; caller returns that intent
-        • (True,  None)            — text passes to neural pipeline
-        """
-        t = text.strip().lower()
-
-        # ── Guard 1: hallucination filter ────────────────────────────────────
-        # Vosk sometimes emits single consonants or non-speech artefacts.
-        # A real Russian/Ukrainian phrase always contains at least one vowel.
-        if not _CYR_VOWELS.search(t):
-            return False, None  # pure consonant soup → drop
-
-        tokens = t.split()
-
-        # ── Guard 2: conversation state intercept ─────────────────────────────
-        # When the system asked the user a yes/no question, short replies like
-        # "да", "нет", "ок" must be matched without going through the encoder
-        # (the encoder would try to map them to a full command intent).
-        if is_waiting_answer and len(tokens) == 1:
-            confirm_map: dict[str, str] = self._cfg['confirm_map']
-            intent = confirm_map.get(tokens[0])
-            if intent:
-                return False, intent  # intercepted
-            # Single word not in confirm_map while waiting → still pass through
-            # (the user might have said a short command instead of answering)
-
-        # ── Guard 3: IDLE short-word block ────────────────────────────────────
-        # In IDLE state a single ambiguous word like "да" or "нет" that slips
-        # through the microphone is too short to classify reliably.
-        if not is_waiting_answer and len(tokens) < self._cfg['idle_min_tokens']:
-            # Allow explicit 1-word commands from the confirm_map only if
-            # they unambiguously mean something (they don't in IDLE).
-            return False, None
-
-        return True, None  # pass to neural pipeline
-
-    # ── Layer 1 — Sparse keyword gate ────────────────────────────────────────
-
-    def _layer1_sparse(self, text: str, top_intent: str, top_score: float) -> bool:
-        """
-        Optional confidence booster for high-stakes intents.
-
-        If `top_score` is in the "uncertain" zone [sparse_min_score, min_score)
-        AND a known keyword root is a substring of the query, we accept the
-        match even though it didn't clear the normal OOD thresholds.
-
-        This handles cases like "выключи" (very short, low cosine) where the
-        encoder is uncertain but the intent is unambiguous.
-
-        Returns True if the sparse gate confidently confirms `top_intent`.
-        """
-        sparse_min  = self._cfg['sparse_min_score']
-        normal_min  = self._cfg['min_score']
-
-        # Only activate in the uncertain zone — don't override a confident hit
-        if top_score >= normal_min or top_score < sparse_min:
-            return False
-
-        t = text.lower()
-        sparse_roots: dict[str, str] = self._cfg['sparse_roots']
-        for root, intent in sparse_roots.items():
-            if root in t and intent == top_intent:
-                return True
-        return False
-
-    # ── Layer 3 — Margin-of-Confidence OOD filter ────────────────────────────
-
-    def _margin_check(
-        self,
-        scores: np.ndarray,
-        min_score: float,
-        min_margin: float,
-    ) -> tuple[bool, str, float]:
-        """
-        Decide whether the closest centroid represents a genuine command.
-
-        Method — "Margin of Confidence"
-        ────────────────────────────────
-        Real commands have ONE clearly dominant centroid.  Random speech or
-        ambient noise projects roughly equidistant to all centroids, producing:
-          (a) a low absolute top score, OR
-          (b) a small gap between top-1 and top-2.
-
-        We require BOTH gates to pass:
-
-        Gate 1 — Absolute floor
-            top_score ≥ min_score
-            Rejects vectors globally far from the intent space.
-
-        Gate 2 — Relative margin
-            top_score − second_score ≥ min_margin
-            `second_score` is the highest score among all centroids EXCEPT the
-            winner.  Using the nearest *different* intent (not nearest phrase)
-            means the gap always reflects true inter-class separation, not noise
-            from multiple anchors of the same intent.
-
-        Returns (passed: bool, top_intent: str, top_score: float).
-        """
-        top_idx   = int(np.argmax(scores))
-        top_score = float(scores[top_idx])
-        top_label = self._labels[top_idx]
-
-        # Gate 1
-        if top_score < min_score:
-            return False, top_label, top_score
-
-        # Gate 2 — second-best from a DIFFERENT intent
-        # Since scores is 1-D (one score per centroid), every index is a
-        # different intent already (by construction in prepare_model.py).
-        other_mask  = np.ones(len(scores), dtype=bool)
-        other_mask[top_idx] = False
-        second_score = float(scores[other_mask].max()) if other_mask.any() else 0.0
-
-        margin = top_score - second_score
-        if margin < min_margin:
-            return False, top_label, top_score
-
-        return True, top_label, top_score
 
     # ── Scoring helper ────────────────────────────────────────────────────────
 
@@ -564,7 +357,9 @@ class SemanticIntentClassifier:
         self._ensure_loaded()
 
         # ── Layer 0: pre-filter / state machine ──────────────────────────────
-        should_continue, override = self._layer0(text, is_waiting_answer)
+        should_continue, override = layer0_prefilter(
+            text, is_waiting_answer, self._cfg['confirm_map'], self._cfg['idle_min_tokens'],
+        )
         if not should_continue:
             self._reset_unload_timer()
             return override  # None (rejected) or a confirm_* intent
@@ -577,14 +372,15 @@ class SemanticIntentClassifier:
         top_label = self._labels[top_idx]
 
         # ── Layer 1: sparse keyword boost (uncertain zone) ────────────────────
-        if self._layer1_sparse(text, top_label, top_score):
+        if layer1_sparse(text, top_label, top_score, self._cfg['sparse_min_score'],
+                          self._cfg['min_score'], self._cfg['sparse_roots']):
             # Sparse gate is confident — skip OOD filter
             self._reset_unload_timer()
             return top_label if self._intent_allowed(top_label) else None
 
         # ── Layer 3: margin-of-confidence OOD filter ──────────────────────────
-        passed, intent, _ = self._margin_check(
-            scores,
+        passed, intent, _ = margin_check(
+            scores, self._labels,
             min_score=self._cfg['min_score'],
             min_margin=self._cfg['min_margin'],
         )
@@ -594,6 +390,28 @@ class SemanticIntentClassifier:
         result = intent if self._intent_allowed(intent) else None
         self._reset_unload_timer()
         return result
+
+    def top_k_candidates(self, text: str, k: int = 6) -> list[str]:
+        """Return up to k intent names ranked by cosine similarity, ignoring
+        the OOD margin gates — used by core/speech/llm_chat.py to narrow the
+        ~270-intent action space down to a short list the LLM can arbitrate
+        over, instead of pasting every intent name into one prompt (too big
+        for a small model's context, and too many close options to pick
+        from reliably). 'reported_speech' is never a real action, so it's
+        excluded even if it scores highest.
+        """
+        self._ensure_loaded()
+        scores = self._cosine_scores(text)
+        order = np.argsort(scores)[::-1]
+        out: list[str] = []
+        for idx in order:
+            label = self._labels[int(idx)]
+            if label == 'reported_speech' or not self._intent_allowed(label):
+                continue
+            out.append(label)
+            if len(out) >= k:
+                break
+        return out
 
     def is_command(self, text: str) -> bool:
         """
@@ -622,8 +440,8 @@ class SemanticIntentClassifier:
             return False
 
         # Also require basic confidence (OOD rejection)
-        passed, _, _ = self._margin_check(
-            scores,
+        passed, _, _ = margin_check(
+            scores, self._labels,
             min_score=self._cfg['is_command_min_score'],
             min_margin=self._cfg['is_command_min_margin'],
         )
@@ -694,6 +512,10 @@ def is_command(text: str) -> bool:
 def classify_intent(text: str, threshold: float = 0.48) -> Optional[str]:
     # `threshold` retained for call-site compatibility; actual value from config.
     return _get_classifier().classify_intent(text)
+
+
+def top_k_candidates(text: str, k: int = 6) -> list[str]:
+    return _get_classifier().top_k_candidates(text, k)
 
 
 def rebuild_cache() -> None:

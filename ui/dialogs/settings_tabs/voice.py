@@ -6,6 +6,7 @@ import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ui.hud_widgets import _HudScrollbar, _HUDDropdown
+from ui.dialogs.extensions_common import _hud_popup_menu
 
 def build_voice_tab(inner, win, hud, _save_hud_settings):
     _sf  = lambda n: hud._fs(n + 6)   # для tk.Label / tk.Canvas (отрицательные пиксели)
@@ -29,8 +30,7 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
     inner.bind('<Button-5>', _on_scroll, add='+')
 
     def _add_context_menu(entry):
-        menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, _sf(9)))
-        def _paste():
+        def _paste() -> bool:
             try:
                 import pyperclip
                 txt = pyperclip.paste()
@@ -38,27 +38,41 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
                     if entry.selection_present():
                         entry.delete('sel.first', 'sel.last')
                     entry.insert(tk.INSERT, txt)
-            except Exception: pass
-        def _copy():
+                    return True
+            except Exception:
+                pass
+            return False
+        def _copy() -> bool:
             try:
                 if entry.selection_present():
                     win.clipboard_clear()
                     win.clipboard_append(entry.selection_get())
-            except Exception: pass
-        def _select_all():
-            entry.select_range(0, 'end')
-            entry.icursor('end')
-        menu.add_command(label=i18n.tr('context_menu.paste'), command=_paste)
-        menu.add_command(label=i18n.tr('context_menu.copy'), command=_copy)
-        menu.add_separator()
-        menu.add_command(label=i18n.tr('context_menu.select_all'), command=_select_all)
+                    return True
+            except Exception:
+                pass
+            return False
+        def _select_all() -> bool:
+            try:
+                entry.select_range(0, 'end')
+                entry.icursor('end')
+                return True
+            except Exception:
+                return False
         def _show_menu(e):
-            menu.tk_popup(e.x_root, e.y_root)
+            _hud_popup_menu(win, e.x_root, e.y_root, hud, [
+                (i18n.tr('context_menu.paste'), _paste),
+                (i18n.tr('context_menu.copy'), _copy),
+                None,
+                (i18n.tr('context_menu.select_all'), _select_all),
+            ])
+        # Only 'break' when we actually handled it — otherwise Tk's native
+        # <<Paste>>/<<SelectAll>> class bindings get a chance to run instead
+        # of being silently swallowed by our own failed attempt.
         entry.bind('<Button-3>', _show_menu)
-        entry.bind('<Control-v>', lambda e: (_paste(), 'break'))
-        entry.bind('<Control-V>', lambda e: (_paste(), 'break'))
-        entry.bind('<Control-a>', lambda e: (_select_all(), 'break'))
-        entry.bind('<Control-A>', lambda e: (_select_all(), 'break'))
+        entry.bind('<Control-v>', lambda e: 'break' if _paste() else None)
+        entry.bind('<Control-V>', lambda e: 'break' if _paste() else None)
+        entry.bind('<Control-a>', lambda e: 'break' if _select_all() else None)
+        entry.bind('<Control-A>', lambda e: 'break' if _select_all() else None)
         
     def _card(icon: str, title: str, accent: str):
         outer = tk.Frame(inner, bg=_PANEL, highlightbackground=_blend(accent, 0.2), highlightthickness=1)
@@ -868,6 +882,51 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
         pass
         
     _slider(c_tts, 0, len(_tout_vals)-1, len(_tout_vals)-1, _CYAN, _init_idx, _on_tts_slider)
+
+    # --- Local LLM fallback unload timeout ---
+    c_llm = _card('🤖', i18n.tr('voice.llm_title'), _CYAN)
+    _llm_lbl = _label_row(c_llm, i18n.tr('voice.llm_retention'), _CYAN)
+
+    def _fmt_llm_tout(v):
+        v = int(v)
+        if v == 0: return i18n.tr('voice.llm_permanent')
+        if v < 60: return i18n.tr('voice.tts_sec').format(v=v)
+        if v < 3600: return i18n.tr('voice.tts_min').format(v=v//60)
+        return i18n.tr('voice.tts_hour').format(v=v//3600)
+
+    _llm_tout_vals = [60, 180, 300, 600, 900, 1800, 3600, 7200, 0]
+    _cur_llm_tout = float(_s_json.get('llm_chat_unload_timeout', 600.0))
+    _llm_lbl.configure(text=_fmt_llm_tout(_cur_llm_tout))
+
+    _hint(c_llm, i18n.tr('voice.llm_hint1'))
+
+    _llm_save_after = [None]
+    def _on_llm_slider(v):
+        idx = int(round(float(v)))
+        tout = _llm_tout_vals[idx] if idx < len(_llm_tout_vals) else _llm_tout_vals[-1]
+        _llm_lbl.configure(text=_fmt_llm_tout(tout))
+
+        if _llm_save_after[0]:
+            win.after_cancel(_llm_save_after[0])
+
+        def _save():
+            sj = _load_settings_json()
+            sj['llm_chat_unload_timeout'] = float(tout)
+            _save_settings_json(sj)
+
+        _llm_save_after[0] = win.after(600, _save)
+
+    _llm_init_idx = 3  # default: 600s (10 min), matches llm_chat._DEFAULT_UNLOAD_TIMEOUT
+    try:
+        target = int(_cur_llm_tout)
+        if target in _llm_tout_vals:
+            _llm_init_idx = _llm_tout_vals.index(target)
+        else:
+            _llm_init_idx = min(range(len(_llm_tout_vals)), key=lambda i: abs(_llm_tout_vals[i] - target) if _llm_tout_vals[i] > 0 else 999999)
+    except Exception:
+        pass
+
+    _slider(c_llm, 0, len(_llm_tout_vals)-1, len(_llm_tout_vals)-1, _CYAN, _llm_init_idx, _on_llm_slider)
 
     # --- TTS Speed ---
     tk.Frame(c_tts, bg=_BRD, height=1).pack(fill='x', pady=(10, 0))

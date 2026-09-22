@@ -248,3 +248,57 @@ def test_build_job_delivered_prompt_accepts_driving_stats_without_crashing():
         driving_stats={'harsh_brakes': 1, 'speeding_events': 2, 'gear_warnings': 0},
     )
     assert 'резких торможений — 1' in prompt
+
+
+def test_real_break_reminder_fires_after_threshold_and_resets_on_engine_off(monkeypatch):
+    import time as _time
+    state = _MonitorState()
+    spoken = []
+    monkeypatch.setattr(monitor, '_speak', lambda text: spoken.append(text))
+
+    progress_checks._check_real_break(state, {}, engine_on=True)
+    assert state.real_break.start_ts is not None
+    assert spoken == []
+
+    # Fast-forward: pretend driving started 91 real-world minutes ago.
+    state.real_break.start_ts = _time.time() - 91 * 60
+    progress_checks._check_real_break(state, {}, engine_on=True)
+    assert len(spoken) == 1
+    assert 90 in state.real_break.fired
+
+    # Same threshold must not fire twice in the same driving stretch.
+    progress_checks._check_real_break(state, {}, engine_on=True)
+    assert len(spoken) == 1
+
+    # Turning the engine off is a real break — timer and fired set reset.
+    progress_checks._check_real_break(state, {}, engine_on=False)
+    assert state.real_break.start_ts is None
+    assert state.real_break.fired == set()
+
+
+def test_session_history_round_trip(tmp_path, monkeypatch):
+    from features.ets2 import session_history
+    from features.gaming_common import session_history as shared_history
+
+    settings_path = str(tmp_path / 'jarvis_settings.json')
+    monkeypatch.setattr(shared_history, 'get_settings_path', lambda: settings_path)
+
+    assert session_history.load_last_session() is None
+
+    session_history.save_session(jobs=3, revenue=15000, dist_km=245.5)
+    loaded = session_history.load_last_session()
+    assert loaded['jobs'] == 3
+    assert loaded['revenue'] == 15000
+    assert loaded['dist_km'] == 245.5
+
+
+def test_session_report_compares_to_previous_session(monkeypatch):
+    monkeypatch.setattr(monitor, '_session_start', __import__('time').monotonic())
+    monkeypatch.setattr(monitor, '_session_jobs', 2)
+    monkeypatch.setattr(monitor, '_session_revenue', 1500)
+    monkeypatch.setattr(monitor, '_session_dist_km', 300.0)
+    monkeypatch.setattr(monitor, '_prev_session', {'revenue': 1000})
+
+    text = monitor.get_session_report()
+    assert 'на 50%' in text
+    assert 'больше' in text

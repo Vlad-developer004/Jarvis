@@ -328,17 +328,79 @@ def _draw_hex_grid(c: tk.Canvas, w: int, h: int, col: str, size: int = 32, tags=
                 _pts.extend([x + _off + size * math.cos(ang), y + size * math.sin(ang)])
             c.create_polygon(_pts, outline=_col, fill='', width=1, tags=tags)
 
-def _get_work_area() -> tuple[int, int, int, int]:
-    """Returns (left, top, right, bottom) of the Windows work area in LOGICAL pixels."""
+import ctypes as _ctypes
+from ctypes import wintypes as _wintypes
+
+class _MONITORINFO(_ctypes.Structure):
+    _fields_ = [
+        ('cbSize', _wintypes.DWORD),
+        ('rcMonitor', _wintypes.RECT),
+        ('rcWork', _wintypes.RECT),
+        ('dwFlags', _wintypes.DWORD),
+    ]
+
+_MONITOR_DEFAULTTONEAREST = 2
+
+def _monitor_work_area_physical(hwnd=None, point=None) -> 'tuple[int, int, int, int] | None':
+    """Work area (left, top, right, bottom) in PHYSICAL pixels of the monitor
+    nearest `hwnd`, or nearest `point` (x, y) if hwnd is not given. None on
+    any failure (missing win32 API, no matching monitor, etc.)."""
     try:
         import ctypes
         from ctypes import wintypes
-        rect = wintypes.RECT()
-        if ctypes.windll.user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):
-            pl, pt, pr, pb = rect.left, rect.top, rect.right, rect.bottom
-            
-            # Get DPI scale factor (Logical / Physical)
-            import tkinter as tk
+        user32 = ctypes.windll.user32
+        if point is not None:
+            pt = wintypes.POINT(int(point[0]), int(point[1]))
+            hmon = user32.MonitorFromPoint(pt, _MONITOR_DEFAULTTONEAREST)
+        elif hwnd:
+            hmon = user32.MonitorFromWindow(hwnd, _MONITOR_DEFAULTTONEAREST)
+        else:
+            return None
+        if not hmon:
+            return None
+        mi = _MONITORINFO()
+        mi.cbSize = ctypes.sizeof(_MONITORINFO)
+        if not user32.GetMonitorInfoW(hmon, ctypes.pointer(mi)):
+            return None
+        r = mi.rcWork
+        return (r.left, r.top, r.right, r.bottom)
+    except Exception:
+        return None
+
+def _get_work_area(ref=None) -> tuple[int, int, int, int]:
+    """Returns (left, top, right, bottom) of the Windows work area in LOGICAL
+    pixels, for the monitor nearest `ref`.
+
+    `ref` may be a Tk window/widget (its current on-screen position is used)
+    or an (x, y) point tuple (used directly — e.g. while dragging a window
+    across monitors). Omitted or unresolvable -> falls back to the primary
+    monitor, same as the old single-monitor-only behavior.
+
+    Note: the logical/physical DPI scale is still computed from the primary
+    monitor only (matching the previous implementation) — this fixes which
+    monitor's work area is used, not true per-monitor DPI awareness.
+    """
+    try:
+        import ctypes
+        import tkinter as tk
+
+        phys = None
+        if isinstance(ref, tuple):
+            phys = _monitor_work_area_physical(point=ref)
+        elif ref is not None:
+            try:
+                phys = _monitor_work_area_physical(hwnd=ref.winfo_id())
+            except Exception:
+                phys = None
+
+        if phys is None:
+            from ctypes import wintypes
+            rect = wintypes.RECT()
+            if ctypes.windll.user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):
+                phys = (rect.left, rect.top, rect.right, rect.bottom)
+
+        if phys is not None:
+            pl, pt, pr, pb = phys
             root = tk._default_root
             if root:
                 sw_log = root.winfo_screenwidth()
@@ -347,7 +409,7 @@ def _get_work_area() -> tuple[int, int, int, int]:
                 return (int(pl*scale), int(pt*scale), int(pr*scale), int(pb*scale))
             return (pl, pt, pr, pb)
     except Exception: pass
-    
+
     # Fallback to logical screen size if API fails
     import tkinter as tk
     try:
@@ -357,9 +419,12 @@ def _get_work_area() -> tuple[int, int, int, int]:
         return (0, 0, sw, sh - 40)
     except: return (0, 0, 1920, 1040)
 
-def _screen_safe_size(width: int, height: int, margin: float = 0.92) -> tuple[int, int]:
-    """Return (w, h) capped to margin of the work area.  Use for logical-pixel sizes passed to CTK."""
-    l, t, r, b = _get_work_area()
+def _screen_safe_size(width: int, height: int, margin: float = 0.92, ref=None) -> tuple[int, int]:
+    """Return (w, h) capped to margin of the work area.  Use for logical-pixel sizes passed to CTK.
+
+    `ref` (a Tk window or (x, y) point) picks which monitor's work area to
+    use — see _get_work_area()."""
+    l, t, r, b = _get_work_area(ref)
     max_w = int((r - l) * margin)
     max_h = int((b - t) * margin)
     return min(width, max_w), min(height, max_h)
@@ -367,13 +432,14 @@ def _screen_safe_size(width: int, height: int, margin: float = 0.92) -> tuple[in
 def _place_dialog(dlg, hud, base_w: int, base_h: int, grab: bool = True) -> tuple[int, int]:
     """Size + center a tk.Toplevel (not CTkToplevel).
     Scales base_w/base_h by hud.zoom_factor then caps to 92% of work area.
+    Centers on whichever monitor `hud` currently sits on.
     Returns the final (w, h) used.
     """
     zoom = hud.zoom_factor if hud is not None else 1.0
     w = int(base_w * zoom)
     h = int(base_h * zoom)
-    w, h = _screen_safe_size(w, h)
-    l, t, r, b = _get_work_area()
+    w, h = _screen_safe_size(w, h, ref=hud)
+    l, t, r, b = _get_work_area(hud)
     aw, ah = r - l, b - t
     x = l + aw // 2 - w // 2
     y = t + ah // 2 - h // 2
@@ -393,9 +459,15 @@ def _center_window(window: tk.Toplevel | tk.Tk, width: int, height: int, zoom: f
       zoom>1.0           → values are CTK logical units; multiplied by zoom here
 
     Uses tk.Toplevel.geometry directly to bypass CTK double-scaling.
+    Centers on the monitor of `window`'s parent (falls back to `window`
+    itself), since a freshly-created Toplevel has no reliable position yet.
     """
     window.update_idletasks()
-    l, t, r, b = _get_work_area()
+    try:
+        ref = window.master if getattr(window, 'master', None) is not None else window
+    except Exception:
+        ref = window
+    l, t, r, b = _get_work_area(ref)
     aw, ah = (r - l), (b - t)
 
     w = min(int(width * zoom),  int(aw * 0.92))
@@ -407,8 +479,10 @@ def _center_window(window: tk.Toplevel | tk.Tk, width: int, height: int, zoom: f
     tk.Toplevel.geometry(window, f'{w}x{h}+{x}+{y}')
 
 def _constrain_window(win: tk.Toplevel | tk.Tk, x: int, y: int) -> tuple[int, int]:
-    """Constrains coordinates with jitter protection and DPI awareness."""
-    l, t, r, b = _get_work_area() 
+    """Constrains coordinates with jitter protection and DPI awareness.
+    Uses the monitor under the target (x, y) point so dragging a window
+    across monitors constrains it to whichever screen it's being moved to."""
+    l, t, r, b = _get_work_area((x, y))
     
     try:
         title_h = win.winfo_rooty() - win.winfo_y()

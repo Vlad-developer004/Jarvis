@@ -13,7 +13,7 @@ from ..hud_state import HudState, STATE, set_mode
 from ..hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon, _center_window, _place_dialog
 from ..hud_widgets import _HudScrollbar
 from core.extensions import ExtensionManager
-from .extensions_common import _load_settings, _save_settings, _bind_ctk_entry_clipboard
+from .extensions_common import _load_settings, _save_settings, _bind_ctk_entry_clipboard, _set_feature_module_flag
 
 def _ask_chat_id(parent, hud, on_confirm):
     dlg = tk.Toplevel(parent); dlg.title(i18n.tr('camera.title')); dlg.configure(bg=_BG)  # type: ignore[call-arg]
@@ -87,6 +87,13 @@ def _ask_calendar_setup(parent, hud, on_done=None):
     entry_row = tk.Frame(add_frame, bg=_BG); entry_row.pack(fill='x')
     add_ent = ctk.CTkEntry(entry_row, height=34, font=(hud._F, JStyle.TEXT_BODY), fg_color=_blend(_CYAN, 0.08), border_color=_blend(_CYAN, 0.35), border_width=1, text_color=_WHITE, placeholder_text=i18n.tr('calendar.placeholder'))
     add_ent.pack(side='left', fill='x', expand=True, padx=(0, 8)); _bind_ctk_entry_clipboard(dlg, add_ent, hud)
+    add_ent.focus_set()
+    def _browse_ics():
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(parent=dlg, title=i18n.tr('calendar.setup'), filetypes=[('ICS', '*.ics'), (i18n.tr('calendar.all_files'), '*.*')])
+        if path:
+            add_ent.delete(0, 'end'); add_ent.insert(0, path)
+    ctk.CTkButton(entry_row, text=i18n.tr('calendar.browse'), width=44, height=34, font=(hud._F, JStyle.TEXT_SMALL, 'bold'), fg_color=_PANEL, hover_color=_BRD_I, text_color=_CYAN, border_color=_blend(_CYAN, 0.35), border_width=1, command=_browse_ics).pack(side='left', padx=(0, 8))
     def _add_from_entry():
         val = (add_ent.get() or '').strip()
         if not val: return
@@ -128,27 +135,74 @@ def _ask_mail_setup(parent, hud, on_done):
     tk.Label(inner, text=i18n.tr('mail.header'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_H2, 'bold')).pack(pady=(14, 4))
     tk.Label(inner, text=i18n.tr('mail.note'), bg=_BG, fg=_TEXT, font=(hud._F, JStyle.TEXT_SMALL), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 12))
     s0 = _load_settings(); ma0 = s0.get('mail_account') if isinstance(s0.get('mail_account'), dict) else {}
-    email_var, pwd_var = tk.StringVar(value=str(ma0.get('email') or '')), tk.StringVar(value=str(ma0.get('password') or ''))
+    try:
+        from actions.mail_client import get_resolved_mail_config
+        _existing_cfg = get_resolved_mail_config()
+    except Exception:
+        _existing_cfg = None
+    _has_saved_pwd = bool(_existing_cfg and _existing_cfg.get('password'))
+    email_var, pwd_var = tk.StringVar(value=str(ma0.get('email') or '')), tk.StringVar(value='')
     imap_var, smtp_var = tk.StringVar(value=str(ma0.get('imap_host') or '')), tk.StringVar(value=str(ma0.get('smtp_host') or ''))
     tk.Label(inner, text=i18n.tr('mail.address'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
     ent_email = ctk.CTkEntry(inner, textvariable=email_var, placeholder_text='name@gmail.com', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
     ent_email.pack(fill='x', padx=24, pady=(5, 12)); _bind_ctk_entry_clipboard(dlg, ent_email, hud)
-    tk.Label(inner, text=i18n.tr('mail.pwd'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
-    ent_pwd = ctk.CTkEntry(inner, textvariable=pwd_var, placeholder_text=i18n.tr('mail.pwd'), show='*', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
-    ent_pwd.pack(fill='x', padx=24, pady=(5, 12)); _bind_ctk_entry_clipboard(dlg, ent_pwd, hud)
+    pwd_label_row = tk.Frame(inner, bg=_BG); pwd_label_row.pack(fill='x', padx=24)
+    tk.Label(pwd_label_row, text=i18n.tr('mail.pwd'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(side='left')
+    if _has_saved_pwd:
+        tk.Label(pwd_label_row, text=i18n.tr('mail.pwd_saved_hint'), bg=_BG, fg=_GREEN, font=(hud._F, JStyle.TEXT_SMALL)).pack(side='left', padx=(8, 0))
+    pwd_row = tk.Frame(inner, bg=_BG); pwd_row.pack(fill='x', padx=24, pady=(5, 4))
+    _pwd_placeholder = i18n.tr('mail.pwd_keep_placeholder') if _has_saved_pwd else i18n.tr('mail.pwd')
+    ent_pwd = ctk.CTkEntry(pwd_row, textvariable=pwd_var, placeholder_text=_pwd_placeholder, show='*', font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, text_color=_WHITE, border_color=_CYAN, border_width=1, corner_radius=2, height=JStyle.H_NORM)
+    ent_pwd.pack(side='left', fill='x', expand=True); _bind_ctk_entry_clipboard(dlg, ent_pwd, hud)
+    _pwd_shown = {'v': False}
+    def _toggle_pwd_visible():
+        _pwd_shown['v'] = not _pwd_shown['v']
+        ent_pwd.configure(show='' if _pwd_shown['v'] else '*')
+        eye_btn.configure(text='🙈' if _pwd_shown['v'] else '👁')
+    eye_btn = ctk.CTkButton(pwd_row, text='👁', width=34, height=JStyle.H_NORM, font=(hud._F, JStyle.TEXT_BODY), fg_color=_PANEL, hover_color=_BRD_I, text_color=_CYAN, border_color=_CYAN, border_width=1, corner_radius=2, command=_toggle_pwd_visible)
+    eye_btn.pack(side='left', padx=(6, 0))
+    tk.Label(inner, text=i18n.tr('mail.app_password_hint'), bg=_BG, fg=_DIM, font=(hud._F, JStyle.TEXT_SMALL), wraplength=480, justify='left').pack(anchor='w', padx=24, pady=(0, 4))
+    def _open_app_pwd_page():
+        import webbrowser
+        from actions.mail_client import app_password_url_for_email
+        webbrowser.open(app_password_url_for_email(email_var.get()))
+    app_pwd_btn = ctk.CTkButton(inner, text=i18n.tr('mail.app_password_link'), font=(hud._F, JStyle.TEXT_SMALL, 'underline'), height=22, fg_color=_BG, hover_color=_BG, text_color=_CYAN, corner_radius=0, command=_open_app_pwd_page, anchor='w')
+    app_pwd_btn.pack(anchor='w', padx=22, pady=(0, 10))
     tk.Label(inner, text=i18n.tr('mail.servers'), bg=_BG, fg=_CYAN, font=(hud._F, JStyle.TEXT_BODY, 'bold')).pack(anchor='w', padx=24)
     ent_imap = ctk.CTkEntry(inner, textvariable=imap_var, placeholder_text='IMAP (imap.yandex.ru)', font=(hud._F, JStyle.TEXT_SMALL), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=JStyle.H_TOOL)
     ent_imap.pack(fill='x', padx=24, pady=(4, 6)); _bind_ctk_entry_clipboard(dlg, ent_imap, hud)
     ent_smtp = ctk.CTkEntry(inner, textvariable=smtp_var, placeholder_text='SMTP (smtp.yandex.ru)', font=(hud._F, JStyle.TEXT_SMALL), fg_color=_PANEL, text_color=_WHITE, border_color=_SEP, border_width=1, corner_radius=2, height=JStyle.H_TOOL)
     ent_smtp.pack(fill='x', padx=24, pady=(4, 8)); _bind_ctk_entry_clipboard(dlg, ent_smtp, hud)
+    status_var = tk.StringVar(value='')
+    status_lbl = tk.Label(inner, textvariable=status_var, bg=_BG, fg=_RED, font=(hud._F, JStyle.TEXT_SMALL), wraplength=480, justify='left')
+    status_lbl.pack(anchor='w', padx=24, pady=(0, 4))
     def _confirm():
         em, pw, ih, sh = email_var.get().strip(), pwd_var.get().strip(), imap_var.get().strip(), smtp_var.get().strip()
-        if not em or '@' not in em: return
-        if not pw: return
+        if not em or '@' not in em:
+            status_var.set(i18n.tr('mail.err_bad_email')); return
+        if not pw and not _has_saved_pwd:
+            status_var.set(i18n.tr('mail.err_no_pwd')); return
+        if not pw:
+            # Keeping the previously saved app password — only email/servers changed.
+            pw = _existing_cfg.get('password') if _existing_cfg else ''
         try:
             from actions.mail_client import save_mail_account
-            save_mail_account(em, pw, ih, sh, 993, 587); on_done(); dlg.destroy()
-        except Exception: pass
+            save_mail_account(em, pw, ih, sh, 993, 587)
+            # Guaranteed here regardless of which caller opened this dialog
+            # (fresh-install vs. the "Настройки"/reconfigure button) — saving
+            # valid credentials must always turn the module on. Previously
+            # only the fresh-install call site did this, so reconfiguring an
+            # already-installed mail module left the "inbox_digest" feature
+            # flag untouched, and voice commands kept reporting the module
+            # as disabled even though the password had just been saved.
+            try:
+                ext_mgr.install('feature_mail_client')
+            except Exception:
+                pass
+            _set_feature_module_flag('inbox_digest', True)
+            on_done(); dlg.destroy()
+        except Exception as e:
+            status_var.set(f'{i18n.tr("mail.err_save_failed")} {e}')
     ctk.CTkButton(inner, text=i18n.tr('buttons.save'), font=(hud._F, JStyle.TEXT_BODY, 'bold'), height=34, fg_color=_CYAN, hover_color=_blend(_CYAN, 0.7), text_color=_BG, corner_radius=2, command=_confirm).pack(fill='x', padx=24, pady=(10, 6))
     ctk.CTkButton(inner, text=i18n.tr('buttons.cancel'), font=(hud._F, JStyle.TEXT_SMALL), height=JStyle.H_TOOL, fg_color=_PANEL, hover_color=_BRD_I, text_color=_DIM, border_color=_SEP, border_width=1, corner_radius=2, command=dlg.destroy).pack(fill='x', padx=24, pady=(0, 12))
 

@@ -58,6 +58,13 @@ def apply_game_profile(handler, profile, msg_name):
                 _log.debug("[GAME_MODE] Planetbase Monitor started.")
             except Exception as e:
                 _log.debug(f"[GAME_MODE] Failed to start Planetbase Monitor: {e}")
+        if 'farming_simulator_22' in profile.lower():
+            try:
+                from features.fs22 import monitor as fs22_monitor
+                fs22_monitor.start()
+                _log.debug("[GAME_MODE] FS22 Monitor started.")
+            except Exception as e:
+                _log.debug(f"[GAME_MODE] Failed to start FS22 Monitor: {e}")
     else:
         speak(msg)
 def start_game_selection_flow(handler, query=None):

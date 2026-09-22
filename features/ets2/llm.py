@@ -1,7 +1,3 @@
-from core.logging_setup import get_logger
-
-_log = get_logger('ets2.llm')
-
 _SYS_RU = (
     "Ты — бортовой компьютер J.A.R.V.I.S. в ETS2. Умный, харизматичный, чуть саркастичный штурман.\n"
     "Формат: без Markdown; без вводных слов (Конечно/Отлично/Понял/Принято); 3-5 коротких предложений; только русский.\n"
@@ -26,23 +22,11 @@ def _sys_prompt() -> str:
         return _SYS_RU
 
 
-def _load_ets2_settings() -> dict:
-    try:
-        import json, os
-        from config_pack.config import get_settings_path
-        sp = get_settings_path()
-        if os.path.exists(sp):
-            with open(sp, encoding='utf-8') as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
-
-
 def has_api_key() -> bool:
     """True if any LLM API key is configured (regardless of ets2_llm_enabled)."""
+    from features.gaming_common.llm_narration import _load_settings
     try:
-        settings = _load_ets2_settings()
+        settings = _load_settings()
         provider = settings.get('ai_provider', 'groq')
         from features.qa.llm_processor import _load_api_key
         return bool(_load_api_key(provider))
@@ -52,15 +36,8 @@ def has_api_key() -> bool:
 
 def has_llm_configured() -> bool:
     """True if API key exists and ETS2 AI is not explicitly disabled."""
-    try:
-        settings = _load_ets2_settings()
-        if not settings.get('ets2_llm_enabled', True):
-            return False
-        provider = settings.get('ai_provider', 'groq')
-        from features.qa.llm_processor import _load_api_key
-        return bool(_load_api_key(provider))
-    except Exception:
-        return False
+    from features.gaming_common.llm_narration import has_llm_configured as _shared
+    return _shared('ets2_llm_enabled')
 
 
 def build_job_start_prompt(data: dict) -> str:
@@ -548,17 +525,5 @@ def build_live_commentary_prompt(data: dict) -> str:
 
 def ask_ets2(prompt: str, timeout: int = 12) -> str:
     """Call the configured LLM with ETS2 context. Returns '' on any failure."""
-    try:
-        from features.qa.llm_processor import ask_llm, _clean
-        result = ask_llm(
-            topic='',
-            question=prompt,
-            timeout=timeout,
-            sys_prompt=_sys_prompt(),
-            max_tokens=450,
-        )
-        if isinstance(result, str) and result.strip():
-            return _clean(result)
-    except Exception as e:
-        _log.warning('ETS2 LLM error: %s', e)
-    return ''
+    from features.gaming_common.llm_narration import ask_llm_narration
+    return ask_llm_narration(_sys_prompt(), prompt, max_tokens=450, timeout=timeout)

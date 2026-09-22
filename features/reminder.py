@@ -93,7 +93,7 @@ def _show_reminder_window(message: str, speak_fn, hud=None, master=None):
     _theme = get_current_theme_name()
     ctk.set_appearance_mode('Light' if _theme == 'light' else 'Dark')
 
-    from ui.hud_utils import _center_window, _apply_window_icon, _set_dark_title_bar, _make_resizable
+    from ui.hud_utils import _center_window, _apply_window_icon, _set_dark_title_bar
 
     px = lambda v: v
     if master and hasattr(master, '_px'):
@@ -107,7 +107,6 @@ def _show_reminder_window(message: str, speak_fn, hud=None, master=None):
     W, H = px(900), px(520)
     root.withdraw()
     _center_window(root, W, H)
-    _make_resizable(root)
     root.configure(bg=_BG)
     _set_dark_title_bar(root)
     root.after(150, lambda: _set_dark_title_bar(root))

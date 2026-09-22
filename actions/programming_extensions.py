@@ -2,7 +2,11 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-_SETTINGS_PATH = Path("data") / "jarvis_settings.json"
+from config_pack.config import get_settings_path
+# Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) — a
+# project-relative path here would never see this setting (and gets wiped
+# by a rebuild).
+_SETTINGS_PATH = Path(get_settings_path())
 SETTINGS_JSON_KEY = "programming_file_extensions"
 _KEY = SETTINGS_JSON_KEY
 _BAD = re.compile(r'[<>:"/\\|?*\s\x00-\x1F]')

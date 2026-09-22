@@ -6,13 +6,13 @@ import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ui.hud_widgets import _HudScrollbar
+from ui.dialogs.extensions_common import _hud_popup_menu
 
 def build_appearance_tab(inner, win, hud, _save_hud_settings):
     _sf = lambda n: hud._fs(n + 6)
     _sfc = lambda n: n + 6
     def _add_context_menu(entry):
-        menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, _sf(9)))
-        def _paste():
+        def _paste() -> bool:
             try:
                 import pyperclip
                 txt = pyperclip.paste()
@@ -20,27 +20,42 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
                     if entry.selection_present():
                         entry.delete('sel.first', 'sel.last')
                     entry.insert(tk.INSERT, txt)
-            except Exception: pass
-        def _copy():
+                    return True
+            except Exception:
+                pass
+            return False
+        def _copy() -> bool:
             try:
                 if entry.selection_present():
                     win.clipboard_clear()
                     win.clipboard_append(entry.selection_get())
-            except Exception: pass
-        def _select_all():
-            entry.select_range(0, 'end')
-            entry.icursor('end')
-        menu.add_command(label=i18n.tr('context_menu.paste'), command=_paste)
-        menu.add_command(label=i18n.tr('context_menu.copy'), command=_copy)
-        menu.add_separator()
-        menu.add_command(label=i18n.tr('context_menu.select_all'), command=_select_all)
+                    return True
+            except Exception:
+                pass
+            return False
+        def _select_all() -> bool:
+            try:
+                entry.select_range(0, 'end')
+                entry.icursor('end')
+                return True
+            except Exception:
+                return False
         def _show_menu(e):
-            menu.tk_popup(e.x_root, e.y_root)
+            _hud_popup_menu(win, e.x_root, e.y_root, hud, [
+                (i18n.tr('context_menu.paste'), _paste),
+                (i18n.tr('context_menu.copy'), _copy),
+                None,
+                (i18n.tr('context_menu.select_all'), _select_all),
+            ])
+        # Only 'break' when we actually handled it — otherwise Tk's native
+        # <<Paste>>/<<SelectAll>> class bindings (Ctrl+V/Ctrl+A already work
+        # by default on a plain Entry) get a chance to run instead of being
+        # silently swallowed by our own failed attempt.
         entry.bind('<Button-3>', _show_menu)
-        entry.bind('<Control-v>', lambda e: (_paste(), 'break'))
-        entry.bind('<Control-V>', lambda e: (_paste(), 'break'))
-        entry.bind('<Control-a>', lambda e: (_select_all(), 'break'))
-        entry.bind('<Control-A>', lambda e: (_select_all(), 'break'))
+        entry.bind('<Control-v>', lambda e: 'break' if _paste() else None)
+        entry.bind('<Control-V>', lambda e: 'break' if _paste() else None)
+        entry.bind('<Control-a>', lambda e: 'break' if _select_all() else None)
+        entry.bind('<Control-A>', lambda e: 'break' if _select_all() else None)
     def _card(icon: str, title: str, accent: str):
         outer = tk.Frame(inner, bg=_PANEL, highlightbackground=_blend(accent, 0.2), highlightthickness=1)
         outer.pack(fill='x', padx=20, pady=(14, 0))

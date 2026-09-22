@@ -69,7 +69,12 @@ def _download_video(handler, text_lower):
     else: handler.speak(spk('video.download_error_v2', res=res))
 
 def _open_last_video(handler, text_lower):
-    app = 'clipchamp' if 'clip' in text_lower else ('vlc' if 'vlc' in text_lower else 'default')
+    # 'clip' alone only matches a Latin transliteration — RU/UK ASR
+    # transcribes the app name as Cyrillic ("клипчамп"/"кліпчамп"), which
+    # that substring never matches, so the clipchamp branch was practically
+    # unreachable by voice. Check both spellings.
+    is_clipchamp = 'clip' in text_lower or 'клипчамп' in text_lower or 'кліпчамп' in text_lower
+    app = 'clipchamp' if is_clipchamp else ('vlc' if 'vlc' in text_lower else 'default')
     ok, res = open_last_video_file(app)
     if ok: handler.play_response()
     else: handler.speak(res)

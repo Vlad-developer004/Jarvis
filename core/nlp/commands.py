@@ -538,7 +538,17 @@ def _match_command_inner(text: str, threshold: int) -> str:
         dist = Levenshtein.distance(_stripped_lower, key)
         if dist / max_len <= 0.2 and dist < best_lev_dist:
             best_lev_dist, best_lev_match = dist, key
-    if best_lev_match: return canon[best_lev_match]
+    if best_lev_match:
+        _lev_cmd = canon[best_lev_match]
+        # 'мне' is a stripped filler (see _FILLERS_STRICT above), so "напомни
+        # мне" collapses to "напомни" — which is Levenshtein-distance 1 from
+        # 'запомни' (note_save's canon key), well inside this 20% typo
+        # threshold, even though these are two different real words, not an
+        # ASR misspelling of the same one. Same guard already exists for the
+        # exact-CANON lookup path above; needed here too since this fallback
+        # runs independently of it.
+        if not (_lev_cmd == 'note_save' and 'напомн' in _stripped_lower and 'запомн' not in _stripped_lower):
+            return _lev_cmd
 
     # --- Final fuzzy token_set_ratio on CANON ---
     best_match, best_score, best_len = None, 0, 0
@@ -557,6 +567,18 @@ def _match_command_inner(text: str, threshold: int) -> str:
                 text_words_set2 = set(_stripped_lower.split())
                 key_words_set = set(key.split())
                 if not text_words_set2.issubset(key_words_set) and score < 92:
+                    continue
+            # Mirror of the guard above: a longer phrase matching a SHORTER
+            # key is likely a false positive too — token_set_ratio can hit
+            # the threshold purely off one shared generic verb (e.g. both
+            # "открой обс" and "открой автор эффектс" share "открой"), even
+            # though the key's actual content word ("обс") never appears in
+            # the phrase at all. Require the key's own words to genuinely be
+            # present as tokens unless the score is near-perfect.
+            if klen < tlen:
+                key_words_set2 = set(key.split())
+                text_words_set3 = set(_stripped_lower.split())
+                if not key_words_set2.issubset(text_words_set3) and score < 92:
                     continue
             if score > best_score or (score == best_score and klen > best_len):
                 best_score, best_len, best_match = score, klen, key

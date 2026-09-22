@@ -6,7 +6,7 @@ from core.logging_setup import get_logger as _get_logger
 from core.address import get_address as _ga
 _log = _get_logger('interactive')
 # States that expect an explicit yes/no answer — semantic Layer 0 confirm intercept must be active.
-_YES_NO_STATES = frozenset({'game_watcher_suggest', 'game_confirm', 'work_confirm'})
+_YES_NO_STATES = frozenset({'game_watcher_suggest', 'game_confirm', 'work_confirm', 'llm_action_confirm'})
 
 _CANCEL_WORDS = ['отмена', 'стоп', 'не надо', 'отбой']
 _CANCEL_WORDS_EXT = _CANCEL_WORDS + ['забудь']
@@ -74,6 +74,23 @@ def _state_work_confirm(handler, text_lower, words, data, global_cmd):
     else:
         handler.play_response('work_cancel')
     handler._set_interactive(None)
+    return {'clear_state': True}
+
+def _state_llm_action_confirm(handler, text_lower, words, data, global_cmd):
+    """Yes/no gate for actions the local LLM resolved via classify_or_chat()
+    that are irreversible/disruptive (see ACTION_CONFIRM_REQUIRED) — that
+    classification is fuzzier than CANON_SIMPLE/semantic, so we don't act on
+    a guess without the user explicitly confirming."""
+    yes_words = ['да', 'ага', 'давай', 'конечно', 'точно', 'угу']
+    no_words = ['нет', 'не', 'отмена', 'не надо', 'забудь', 'отбой', 'стоп']
+    action = data.get('action') if isinstance(data, dict) else None
+    _is_yes = global_cmd == 'confirm_yes' or any(w in words for w in yes_words)
+    _is_no = global_cmd in ('confirm_no', 'confirm_cancel') or any(w in words for w in no_words)
+    handler._set_interactive(None)
+    if _is_yes and action:
+        handler.handle(action, text_lower)
+    else:
+        speak(f'Хорошо, отменяю, {_ga()}.')
     return {'clear_state': True}
 
 def _state_video_monitor_select(handler, text_lower, words, data, global_cmd):
@@ -561,6 +578,7 @@ _STATE_HANDLERS = {
     'reminder_ask': _state_reminder_ask,
     'qa_clarify': _state_qa_clarify,
     'rest_hours_ask': _state_rest_hours_ask,
+    'llm_action_confirm': _state_llm_action_confirm,
 }
 
 def handle_interactive(handler, text: str) -> dict:

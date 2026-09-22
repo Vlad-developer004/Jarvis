@@ -60,7 +60,14 @@ def _load_theme_colors() -> dict:
         },
     }
     try:
-        p = os.path.join('data', 'jarvis_settings.json')
+        # Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) —
+        # a project-relative 'data/jarvis_settings.json' here would silently
+        # never see a theme saved elsewhere (and gets wiped by a rebuild).
+        try:
+            from config_pack.config import get_settings_path
+            p = get_settings_path()
+        except Exception:
+            p = os.path.join('data', 'jarvis_settings.json')
         if os.path.exists(p):
             with open(p, 'r', encoding='utf-8') as f:
                 settings = json.load(f)

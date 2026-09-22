@@ -127,6 +127,17 @@ def _read_tts_warmup() -> bool:
         pass
     return True
 TTS_WARMUP = _read_tts_warmup()
+def _read_auto_update_enabled() -> bool:
+    try:
+        p_str = get_settings_path()
+        if os.path.exists(p_str):
+            with open(p_str, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return bool(data.get('auto_update_enabled', True))
+    except Exception:
+        pass
+    return True
+AUTO_UPDATE_ENABLED = _read_auto_update_enabled()
 def _read_max_saved_videos() -> int:
     try:
         p_str = get_settings_path()

@@ -7,25 +7,29 @@ import re
 import smtplib
 import ssl
 from email.header import decode_header
+from html import unescape
 from email.message import EmailMessage
 from core.logging_setup import get_logger as _get_logger
 _log = _get_logger('mail')
 from email.parser import BytesParser
 from email.policy import default as email_policy
 from pathlib import Path
-from pathlib import Path
+from config_pack.config import get_settings_path, get_secrets_path
 
-_SETTINGS_PATH = Path('data') / 'jarvis_settings.json'
+# Same file the rest of the app reads/writes (%APPDATA%\Jarvis\jarvis_settings.json)
+# — this used to be a project-relative 'data/jarvis_settings.json' instead, a
+# different file that other settings readers never saw and that a rebuild/
+# reinstall silently wipes (the bundled data/ folder gets overwritten).
+_SETTINGS_PATH = Path(get_settings_path())
 
 def _update_env_var(key: str, value: str):
-    """Safely update or add a variable in the .env file."""
+    """Safely update or add a variable in the secrets file. Uses
+    get_secrets_path() — the same file llm_processor._load_api_key() and the
+    startup loader read from (see config_pack.config.get_secrets_path's
+    docstring) — instead of an ad-hoc '.env' path, so a saved mail password
+    is actually found again on the next run."""
     try:
-        import sys
-        # Find .env near the executable or in the current directory
-        env_path = Path('.env')
-        if hasattr(sys, 'frozen'):
-            env_path = Path(sys.executable).parent / '.env'
-            
+        env_path = Path(get_secrets_path())
         lines = []
         if env_path.exists():
             lines = env_path.read_text(encoding='utf-8').splitlines()
@@ -69,6 +73,36 @@ def _apply_gmail_defaults(cfg: dict) -> dict:
     out['imap_port'] = int(out.get('imap_port') or 993)
     out['smtp_port'] = int(out.get('smtp_port') or 587)
     return out
+
+# Where each major provider lets a user generate an app-specific password
+# (needed once 2FA/two-step verification is on — a normal account password
+# won't authenticate over IMAP/SMTP for any of them). Matched by domain
+# suffix against the typed email address so the UI can point at the right
+# page instead of only ever linking to Google's.
+APP_PASSWORD_PAGES: dict[str, str] = {
+    'gmail.com': 'https://myaccount.google.com/apppasswords',
+    'googlemail.com': 'https://myaccount.google.com/apppasswords',
+    'yandex.ru': 'https://id.yandex.ru/security/app-passwords',
+    'yandex.com': 'https://id.yandex.ru/security/app-passwords',
+    'ya.ru': 'https://id.yandex.ru/security/app-passwords',
+    'mail.ru': 'https://account.mail.ru/user/2-step-auth/passwords/',
+    'bk.ru': 'https://account.mail.ru/user/2-step-auth/passwords/',
+    'inbox.ru': 'https://account.mail.ru/user/2-step-auth/passwords/',
+    'list.ru': 'https://account.mail.ru/user/2-step-auth/passwords/',
+    'outlook.com': 'https://account.live.com/proofs/AppPassword',
+    'hotmail.com': 'https://account.live.com/proofs/AppPassword',
+    'live.com': 'https://account.live.com/proofs/AppPassword',
+    'icloud.com': 'https://appleid.apple.com/account/manage',
+}
+_DEFAULT_APP_PASSWORD_PAGE = 'https://support.google.com/accounts/answer/185833'
+
+def app_password_url_for_email(email: str) -> str:
+    """The app-password creation page for `email`'s provider, or a generic
+    explainer link if the domain isn't recognized."""
+    e = (email or '').strip().lower()
+    domain = e.rsplit('@', 1)[-1] if '@' in e else ''
+    return APP_PASSWORD_PAGES.get(domain, _DEFAULT_APP_PASSWORD_PAGE)
+
 def get_resolved_mail_config() -> dict | None:
     s = _load_settings()
     acct = s.get('mail_account')
@@ -89,14 +123,17 @@ def get_resolved_mail_config() -> dict | None:
         s['mail_account'] = acct
         try:
             _SETTINGS_PATH.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding='utf-8')
-        except: pass
+        except Exception as e:
+            # Password stays in the JSON on disk in plaintext if this fails — must be visible.
+            _log.error('failed to scrub migrated password from %s: %s', _SETTINGS_PATH, e, exc_info=True)
     elif json_pass and env_pass:
         # Already migrated, just scrub from JSON
         acct['password'] = ""
         s['mail_account'] = acct
         try:
             _SETTINGS_PATH.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding='utf-8')
-        except: pass
+        except Exception as e:
+            _log.error('failed to scrub leftover password from %s: %s', _SETTINGS_PATH, e, exc_info=True)
 
     email = (acct.get('email') or os.environ.get('JARVIS_IMAP_USER', '')).strip()
     imap_host = (acct.get('imap_host') or os.environ.get('JARVIS_IMAP_HOST', '')).strip()
@@ -191,6 +228,7 @@ def format_mail_error(exc: BaseException) -> str:
     if 'lookup failed' in low or 'getaddrinfo' in low:
         return f'Не удалось найти сервер почты (проверьте интернет и имя IMAP/SMTP). {t}'
     return t
+
 def _decode_hdr(s: str | None) -> str:
     if not s:
         return ''
@@ -202,22 +240,30 @@ def _decode_hdr(s: str | None) -> str:
         else:
             out.append(text)
     return ''.join(out)
-def _connect_imap(cfg: dict) -> imaplib.IMAP4_SSL:
+
+def _connect_imap(cfg: dict, select_mailbox: bool = True) -> imaplib.IMAP4_SSL:
     ctx = ssl.create_default_context()
-    conn = imaplib.IMAP4_SSL(cfg['imap_host'], cfg['imap_port'], ssl_context=ctx)
+    conn = imaplib.IMAP4_SSL(cfg['imap_host'], cfg['imap_port'], ssl_context=ctx, timeout=25.0)
     conn.login(cfg['email'], cfg['password'])
-    conn.select(cfg['mailbox'])
+    if select_mailbox:
+        conn.select(cfg['mailbox'])
     return conn
+
 def unread_count() -> tuple[bool, str]:
     cfg = get_resolved_mail_config()
     if not cfg:
         return False, 'Почта не настроена. Откройте «Центр расширений» и настройте модуль «Почта».'
     try:
-        conn = _connect_imap(cfg)
-        typ, data = conn.search(None, 'UNSEEN')
+        # Fast IMAP status query without selecting/parsing the entire mailbox
+        conn = _connect_imap(cfg, select_mailbox=False)
+        mb = cfg.get('mailbox') or 'INBOX'
+        typ, data = conn.status(mb, '(UNSEEN)')
         n = 0
         if typ == 'OK' and data and data[0]:
-            n = len(data[0].split())
+            raw_res = data[0].decode('utf-8', errors='replace') if isinstance(data[0], bytes) else str(data[0])
+            m = re.search(r'UNSEEN\s+(\d+)', raw_res, re.IGNORECASE)
+            if m:
+                n = int(m.group(1))
         try:
             conn.logout()
         except Exception:
@@ -225,6 +271,7 @@ def unread_count() -> tuple[bool, str]:
         return True, f'Непрочитанных писем: {n}.'
     except Exception as ex:
         return False, f'Не удалось подключиться к почте. {format_mail_error(ex)}'
+
 def list_recent_messages(limit: int = 40) -> tuple[bool, str | list[dict]]:
     cfg = get_resolved_mail_config()
     if not cfg:
@@ -233,40 +280,49 @@ def list_recent_messages(limit: int = 40) -> tuple[bool, str | list[dict]]:
         conn = _connect_imap(cfg)
         typ, data = conn.uid('search', None, 'ALL')
         if typ != 'OK' or not data or not data[0]:
-            conn.logout()
+            try:
+                conn.logout()
+            except Exception:
+                pass
             return True, []
         uids = data[0].split()
         if len(uids) > limit:
             uids = uids[-limit:]
+        
+        # Batch fetch all headers in 1 single IMAP command instead of 50 individual roundtrips
+        uid_set = b','.join(uids)
+        typ_f, msgdata = conn.uid(
+            'fetch',
+            uid_set,
+            '(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE MESSAGE-ID)])',
+        )
         rows: list[dict] = []
-        for uid in reversed(uids):
-            typ, msgdata = conn.uid(
-                'fetch',
-                uid,
-                '(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE MESSAGE-ID)])',
-            )
-            if typ != 'OK' or not msgdata or not isinstance(msgdata[0], tuple):
-                continue
-            raw = msgdata[0][1]
-            if not isinstance(raw, (bytes, bytearray)):
-                continue
-            p = BytesParser(policy=email_policy).parsebytes(raw)
-            subj = _decode_hdr(p.get('Subject'))
-            from_ = _decode_hdr(p.get('From'))
-            date_ = (p.get('Date') or '').strip()
-            mid = (p.get('Message-ID') or '').strip()
-            uid_s = uid.decode('ascii', errors='ignore') if isinstance(uid, bytes) else str(uid)
-            line = f'{subj or "(без темы)"} — {from_[:60]}'
-            rows.append(
-                {
-                    'uid': uid_s,
-                    'subject': subj,
-                    'from': from_,
-                    'date': date_,
-                    'message_id': mid,
-                    'list_line': line,
-                }
-            )
+        if typ_f == 'OK' and msgdata:
+            for item in msgdata:
+                if isinstance(item, tuple) and len(item) >= 2:
+                    raw = item[1]
+                    if not isinstance(raw, (bytes, bytearray)):
+                        continue
+                    p = BytesParser(policy=email_policy).parsebytes(raw)
+                    subj = _decode_hdr(p.get('Subject'))
+                    from_ = _decode_hdr(p.get('From'))
+                    date_ = (p.get('Date') or '').strip()
+                    mid = (p.get('Message-ID') or '').strip()
+                    hdr_str = item[0].decode('ascii', errors='ignore') if isinstance(item[0], bytes) else str(item[0])
+                    m_uid = re.search(r'UID\s+(\d+)', hdr_str, re.IGNORECASE)
+                    uid_s = m_uid.group(1) if m_uid else ''
+                    line = f'{subj or "(без темы)"} — {from_[:60]}'
+                    rows.append(
+                        {
+                            'uid': uid_s,
+                            'subject': subj,
+                            'from': from_,
+                            'date': date_,
+                            'message_id': mid,
+                            'list_line': line,
+                        }
+                    )
+        rows.reverse()
         try:
             conn.logout()
         except Exception:
@@ -274,31 +330,72 @@ def list_recent_messages(limit: int = 40) -> tuple[bool, str | list[dict]]:
         return True, rows
     except Exception as ex:
         return False, format_mail_error(ex)
+def _part_text(part) -> str:
+    try:
+        return part.get_content()
+    except Exception:
+        pl = part.get_payload(decode=True)
+        if isinstance(pl, bytes):
+            return pl.decode(part.get_content_charset() or 'utf-8', errors='replace')
+    return ''
+
+_ZERO_WIDTH_RE = re.compile(r'[­​-‏⁠﻿ ]')
+# Marketing emails often hide a preheader/spacer block via inline
+# display:none|visibility:hidden|font-size:0 — never a <script>/<style> tag,
+# so it survives naive tag-stripping and leaks its zero-width padding chars.
+_HIDDEN_EL_RE = re.compile(
+    r'(?is)<(span|div|td|p)\b[^>]*style="[^"]*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0)[^"]*"[^>]*>.*?</\1>'
+)
+
+def _html_to_text(html: str) -> str:
+    html = re.sub(r'(?s)<!--.*?-->', '', html)
+    html = re.sub(r'(?is)<(script|style)[^>]*>.*?</\1>', ' ', html)
+    for _ in range(3):
+        html, n = _HIDDEN_EL_RE.subn(' ', html)
+        if not n:
+            break
+    html = re.sub(r'(?i)<(br\s*/?|/p|/div|/tr|/li|/h[1-6])>', '\n', html)
+    html = re.sub(r'<[^>]+>', '', html)
+    html = unescape(html)
+    html = _ZERO_WIDTH_RE.sub('', html)
+    lines = [re.sub(r'[ \t]+', ' ', ln).strip() for ln in html.splitlines()]
+    text = '\n'.join(ln for ln in lines if ln)
+    return re.sub(r'\n{3,}', '\n\n', text).strip()
+
+def _is_boilerplate(text: str) -> bool:
+    """True if a text/plain part is empty or mostly tracking-link noise to
+    be the actual message — common in newsletters that only fill in the
+    HTML alternative and leave a link-only text/plain fallback. Does not
+    flag on length alone — a short reply like "Ok, спасибо" is a real,
+    legitimate plain-text message, not boilerplate."""
+    stripped = text.strip()
+    if not stripped:
+        return True
+    url_chars = sum(len(u) for u in re.findall(r'https?://\S+', stripped))
+    return url_chars > len(stripped) * 0.5
+
 def _extract_plain_body(msg) -> str:
+    plain_text = ''
+    html_text = ''
     if msg.is_multipart():
         for part in msg.walk():
             ctype = part.get_content_type()
-            if ctype == 'text/plain':
-                try:
-                    return part.get_content()
-                except Exception:
-                    pl = part.get_payload(decode=True)
-                    if isinstance(pl, bytes):
-                        return pl.decode(part.get_content_charset() or 'utf-8', errors='replace')
-    else:
-        if msg.get_content_type() == 'text/plain':
-            try:
-                return msg.get_content()
-            except Exception:
-                pl = msg.get_payload(decode=True)
-                if isinstance(pl, bytes):
-                    return pl.decode(msg.get_content_charset() or 'utf-8', errors='replace')
-        if msg.get_content_type() == 'text/html':
-            pl = msg.get_payload(decode=True)
-            if isinstance(pl, bytes):
-                t = pl.decode(msg.get_content_charset() or 'utf-8', errors='replace')
-                t = re.sub(r'<[^>]+>', ' ', t)
-                return re.sub(r'\s+', ' ', t).strip()
+            if ctype == 'text/plain' and not plain_text:
+                plain_text = _part_text(part)
+            elif ctype == 'text/html' and not html_text:
+                html_text = _part_text(part)
+    elif msg.get_content_type() == 'text/plain':
+        plain_text = _part_text(msg)
+    elif msg.get_content_type() == 'text/html':
+        html_text = _part_text(msg)
+    if html_text and (not plain_text or _is_boilerplate(plain_text)):
+        converted = _html_to_text(html_text)
+        if converted:
+            return converted
+    if plain_text:
+        return plain_text
+    if html_text:
+        return _html_to_text(html_text)
     return '(текст письма в неподдерживаемом формате)'
 def fetch_message_body(uid: str) -> tuple[bool, str | dict]:
     cfg = get_resolved_mail_config()

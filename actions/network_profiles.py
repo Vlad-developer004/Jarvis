@@ -2,7 +2,11 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-_SETTINGS_PATH = Path('data') / 'jarvis_settings.json'
+from config_pack.config import get_settings_path
+# Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) — a
+# project-relative path here would never see this setting (and gets wiped
+# by a rebuild).
+_SETTINGS_PATH = Path(get_settings_path())
 _DEFAULT = {
     'active': 'home',
     'profiles': {

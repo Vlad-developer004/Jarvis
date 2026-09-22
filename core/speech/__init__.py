@@ -12,4 +12,5 @@ from .tts import (
     wait_for_pygame_mixer_idle,
 )
 from .sound import play_alert_sound
+from .safe_task import run_speaking_task
 

@@ -8,7 +8,14 @@ def rms_int16(data_bytes: bytes) -> float:
 def _load_audio_settings() -> dict:
     try:
         import json, os
-        p = os.path.join('data', 'jarvis_settings.json')
+        # Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) —
+        # a project-relative path here would never see the mic device chosen
+        # in settings (and gets wiped by a rebuild).
+        try:
+            from config_pack.config import get_settings_path
+            p = get_settings_path()
+        except Exception:
+            p = os.path.join('data', 'jarvis_settings.json')
         if os.path.exists(p):
             with open(p, 'r', encoding='utf-8') as f:
                 d = json.load(f)

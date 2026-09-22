@@ -38,9 +38,9 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         _feature_desc_lbl.pack(fill='x', pady=(4, 0))
         
         _feature_presets = {
-            'full': {'games': True, 'qa': True, 'cinema': True, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': True, 'morning_briefing': True, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False},
-            'assistant': {'games': False, 'qa': False, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False},
-            'minimal': {'games': False, 'qa': False, 'cinema': False, 'system_monitoring': False, 'battery_monitor': False, 'lag_hunter': False, 'morning_briefing': False, 'updater': False, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False}
+            'full': {'games': True, 'qa': True, 'llm_chat_fallback': True, 'cinema': True, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': True, 'morning_briefing': True, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True},
+            'assistant': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True},
+            'minimal': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': False, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True}
         }
         _feature_desc_map = {
             'full': i18n.tr('premium.profile_full_desc'),
@@ -87,6 +87,7 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         
         _module_meta = {
             'qa': {'title': i18n.tr('premium.module_qa_title'), 'icon': '◉', 'what': i18n.tr('premium.module_qa_desc'), 'weight': 3},
+            'llm_chat_fallback': {'title': i18n.tr('premium.module_llm_chat_title'), 'icon': '◈', 'what': i18n.tr('premium.module_llm_chat_desc'), 'weight': 2},
             'games': {'title': i18n.tr('premium.module_games_title'), 'icon': '✦', 'what': i18n.tr('premium.module_games_desc'), 'weight': 4},
             'cinema': {'title': i18n.tr('premium.module_cinema_title'), 'icon': '▶', 'what': i18n.tr('premium.module_cinema_desc'), 'weight': 1},
             'system_monitoring': {'title': i18n.tr('premium.module_monitoring_title'), 'icon': '▦', 'what': i18n.tr('premium.module_monitoring_desc'), 'weight': 3},
@@ -98,6 +99,8 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             'system_health': {'title': i18n.tr('premium.module_health_title'), 'icon': '▤', 'what': i18n.tr('premium.module_health_desc'), 'weight': 1},
             'calendar_ics': {'title': i18n.tr('premium.module_calendar_title'), 'icon': '🗓', 'what': i18n.tr('premium.module_calendar_desc'), 'weight': 1},
             'inbox_digest': {'title': i18n.tr('premium.module_mail_title'), 'icon': '✉', 'what': i18n.tr('premium.module_mail_desc'), 'weight': 1},
+            'git_integration': {'title': i18n.tr('premium.module_git_title'), 'icon': '⎇', 'what': i18n.tr('premium.module_git_desc'), 'weight': 1},
+            'translator': {'title': i18n.tr('premium.module_translator_title'), 'icon': '⇄', 'what': i18n.tr('premium.module_translator_desc'), 'weight': 1},
         }
         _module_order = list(_module_meta.keys()); _module_switch_vars = {}
         _module_load_lbl = tk.Label(c_modules, text='', bg=_PANEL, fg=_CYAN, font=(hud._F, _sf(9), 'bold'), anchor='w'); _module_load_lbl.pack(fill='x', pady=(4, 2))
@@ -339,6 +342,11 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         tk.Label(ai_container, textvariable=_refresh_status_var, bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8)), anchor='center').pack(fill='x', pady=(0, 6))
 
         _ai_ent = ctk.CTkEntry(ai_container, placeholder_text=i18n.tr('premium.ai_api_key_placeholder'), font=(hud._F, 11), show='•', height=40, fg_color=_BG, border_color=_blend(_CYAN, 0.3), corner_radius=10); _ai_ent.pack(fill='x', pady=(0, 8), padx=2)
+        try:
+            from ui.dialogs.extensions_common import _bind_ctk_entry_clipboard
+            _bind_ctk_entry_clipboard(win, _ai_ent, hud)
+        except Exception:
+            pass
 
         def _fill_key_entry(provider):
             try:
@@ -352,12 +360,22 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         btn_g = tk.Frame(ai_container, bg=_PANEL); btn_g.pack(fill='x')
         def _mini_btn(parent, text, col, cmd, c): ctk.CTkButton(parent, text=text, command=cmd, height=32, font=(hud._F, 11, 'bold'), fg_color=_blend(col, 0.08), hover_color=_blend(col, 0.18), text_color=col, border_color=_blend(col, 0.3), border_width=1, corner_radius=6).grid(row=0, column=c, sticky='ew', padx=3); parent.columnconfigure(c, weight=1)
         def _do_paste():
+            text = ''
             try:
-                text = win.clipboard_get().strip()
-                _ai_ent.delete(0, 'end')
-                _ai_ent.insert(0, text)
+                import pyperclip
+                text = (pyperclip.paste() or '').strip()
             except Exception:
                 pass
+            if not text:
+                try:
+                    text = win.clipboard_get().strip()
+                except Exception:
+                    text = ''
+            if not text:
+                _refresh_status_var.set(i18n.tr('premium.ai_clipboard_empty'))
+                return
+            _ai_ent.delete(0, 'end')
+            _ai_ent.insert(0, text)
 
         def _do_save():
             key = _ai_ent.get().strip()

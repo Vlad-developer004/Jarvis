@@ -11,8 +11,13 @@ from ..hud_constants import (
     _TEXT, _DIM, _WHITE,
 )
 from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
+from config_pack.config import get_settings_path
 
-_SETTINGS_PATH = os.path.join('data', 'jarvis_settings.json')
+# Same file the rest of the app reads/writes (%APPDATA%\Jarvis\jarvis_settings.json).
+# This used to be a project-relative 'data/jarvis_settings.json' — a rebuild/
+# reinstall wipes that copy (bundled data/ gets overwritten), so the welcome
+# wizard would silently reappear every launch even after being dismissed.
+_SETTINGS_PATH = get_settings_path()
 
 def is_first_run() -> bool:
     try:

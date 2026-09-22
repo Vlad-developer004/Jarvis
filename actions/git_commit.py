@@ -117,7 +117,11 @@ def _get_status(repo: str) -> list[dict]:
         capture_output=True, text=True, encoding='utf-8'
     )
     files = []
-    for line in r.stdout.strip().splitlines():
+    # NOTE: do not .strip() the whole blob before splitlines() — porcelain
+    # status codes for the first entry are often space-prefixed (e.g. ' M'),
+    # and stripping the blob eats that leading space, shifting the fixed
+    # line[3:] slice by one character and truncating the filename.
+    for line in r.stdout.splitlines():
         if not line.strip():
             continue
         status = line[:2].strip()

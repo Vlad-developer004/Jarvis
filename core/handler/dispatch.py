@@ -308,7 +308,7 @@ _reg_exact(['undo', 'redo', 'select_all'], _w_clip)
 
 _reg_exact(['browser_tab', 'close_tab', 'close_tab_n', 'close_all_tabs', 'open_browser_history', 'context_close'], _w_browser)
 
-_reg_exact(['qa_search'], _w_ai)
+_reg_exact(['qa_search', 'llm_chat'], _w_ai)
 
 _reg_exact(['currency_rate', 'weather', 'set_weather_city', 'google_search', 'translate', 'translate_speech', 'my_ip', 'system_specs', 'nasa_apod'], _w_info)
 

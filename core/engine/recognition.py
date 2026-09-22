@@ -7,7 +7,7 @@ from core.logging_setup import get_logger as _get_logger
 from core.speech import stop_speaking, is_speaking
 from core.nlp import _normalize_stt, extract_all_commands
 from core.nlp.commands import CANON_SIMPLE, normalize_numbers
-from core.nlp.semantic import classify_intent
+from core.nlp.semantic import classify_intent, _CYR_VOWELS
 from ui.voice_prompt_bridge import try_consume_voice_prompt
 from core.engine.ets2_commands import _handle_telemetry_action
 
@@ -244,9 +244,29 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
     try:
         cmds = extract_all_commands(text)
         # Never surface reported_speech as an executable command
-        return [(c, s) for c, s in cmds if c != 'reported_speech']
+        cmds = [(c, s) for c, s in cmds if c != 'reported_speech']
+        if cmds:
+            return cmds
     except Exception:
-        return []
+        pass
+    # Last resort: neither CANON_SIMPLE nor the classifier nor the rule-based
+    # matcher recognised anything. Instead of staying silent, hand the raw
+    # text to the local LLM as free-form chat — same 2-word/vowel guard as
+    # semantic.py's Layer 0, so ASR noise never reaches the model.
+    # Checked here (not as a dispatch._MODULE_GATES entry) because this path
+    # fires on EVERY unrecognized utterance — gating it the normal way would
+    # announce "AI disabled" out loud every single time instead of just
+    # staying silent like it did before this fallback existed.
+    words = text.split()
+    if len(words) >= 2 and _CYR_VOWELS.search(text.lower()):
+        try:
+            from core.system import module_enabled
+            if not module_enabled('llm_chat_fallback'):
+                return []
+        except Exception:
+            pass
+        return [('llm_chat', text)]
+    return []
 
 
 def handle_recognized_text(text: str, handler):

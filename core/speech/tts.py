@@ -1389,8 +1389,25 @@ def normalize_for_tts(text: str) -> str:
     text = re.sub(r'(?<![А-ЯЁа-яёa-zA-Z])[А-ЯЁ]{2,6}(?![А-ЯЁа-яёa-zA-Z])', lambda m: _CYR_ABBREV.get(m.group(0), ' '.join((_CYR_LETTERS.get(c, c) for c in m.group(0)))), text)
     text = re.sub(r"[a-zA-Z]+(?:['-][a-zA-Z]+)*", _transliterate_word, text)
 
-    # --- Remaining standalone numbers ---
-    text = re.sub(r'(?<!\w)(\d+)(?!\w)', lambda m: num2words(int(m.group(1)), lang=nw_lang), text)
+    # --- Remaining standalone numbers, with genitive agreement after
+    # case-governing prepositions ("до 19 градусов" → "до девятнадцати
+    # градусов", not the bare nominative "до девятнадцать") ---
+    _GEN_GOV_PREPS = {
+        'ru': ('до', 'от', 'с', 'около', 'свыше', 'выше', 'ниже'),
+        'uk': ('до', 'від', 'з', 'близько', 'понад', 'вище', 'нижче'),
+    }
+    def _standalone_number(m: re.Match) -> str:
+        word = num2words(int(m.group('num')), lang=nw_lang)
+        prep = (m.group('prep') or '').lower()
+        if morph is not None and prep in _GEN_GOV_PREPS.get(nw_lang, ()):
+            infl = _inflect_last(word, {'gent'})
+            if infl != word:
+                word = infl
+        return (m.group('prep') + ' ' if m.group('prep') else '') + word
+    _preps_alt = '|'.join(_GEN_GOV_PREPS.get(nw_lang, ()))
+    text = re.sub(
+        rf'(?:\b(?P<prep>{_preps_alt})\s+)?(?<!\w)(?P<num>\d+)(?!\w)',
+        _standalone_number, text, flags=re.IGNORECASE)
 
     # --- Replace hardcoded "сэр"/"сер" with the user-configured address form ---
     try:

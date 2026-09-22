@@ -74,6 +74,7 @@ _log = _get_logger('init')
 
 # 2. Now safe to import other internal modules
 from config_pack.config import (
+    AUTO_UPDATE_ENABLED,
     CHUNK_MS,
     JARVIS_VOLUME,
     MODEL_PATH,
@@ -169,6 +170,15 @@ def _background_init():
             app_state.nlp_loading = False
             _log.error('Semantic warmup async error: %s', e, exc_info=True)
 
+        # Local LLM chat fallback — lazy anyway (loads on first llm_chat
+        # dispatch if this warmup hasn't finished), so failure here is never
+        # fatal to startup.
+        try:
+            from core.speech.llm_chat import warmup_async as _llm_warmup_async
+            _llm_warmup_async()
+        except Exception as e:
+            _log.error('LLM chat warmup async error: %s', e, exc_info=True)
+
         # Start TTS warmup after engine is ready to avoid hardware contention.
         if TTS_WARMUP:
             def _delayed_warmup():
@@ -251,6 +261,12 @@ def _background_init():
                     _threading.Thread(target=start_updater, daemon=True).start()
                 except Exception as e:
                     _log.error('updater failed: %s', e, exc_info=True)
+            if AUTO_UPDATE_ENABLED and getattr(sys, 'frozen', False):
+                try:
+                    from core.system import app_updater
+                    _threading.Thread(target=app_updater.start, daemon=True).start()
+                except Exception as e:
+                    _log.error('app_updater failed: %s', e, exc_info=True)
             if module_enabled('remote_control'):
                 try:
                     from features.remote_control import start_remote_control

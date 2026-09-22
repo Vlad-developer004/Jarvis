@@ -4,6 +4,41 @@ from core.responses import spk
 from core.logging_setup import get_logger as _get_logger
 _log = _get_logger('ai')
 def handle_ai(handler, cmd, text_lower, amount):
+    if cmd == 'llm_chat':
+        # Reached only when CANON_SIMPLE, the semantic classifier, and the
+        # rule-based matcher all missed. classify_or_chat() picks between a
+        # genuine action (re-dispatched through handler.handle() — the same
+        # queue/gates/table pipeline as any other recognized intent, so it
+        # actually executes) and a plain chat reply. This matters: the model
+        # was trained on command-confirmation phrasing ("Открываю браузер"),
+        # so left unconstrained it would happily claim to do things this
+        # fallback path never actually performs.
+        def _task():
+            from core.speech.llm_chat import (
+                classify_or_chat, ACTION_CONFIRM_REQUIRED, confirm_prompt_for,
+            )
+            try:
+                # Streams CHAT replies sentence-by-sentence via handler.speak()
+                # as they're generated (same pattern as the qa_search path
+                # below), instead of waiting for the whole reply before
+                # playback starts. Action names are never streamed — see
+                # classify_or_chat's docstring — so this callback only ever
+                # fires for genuine conversational replies.
+                kind, value = classify_or_chat(text_lower, on_chat_chunk=handler.speak)
+            except Exception as e:
+                _log.error(f"[LLM_CHAT] Error: {e}")
+                return
+            if kind == 'action' and value:
+                _log.info('[LLM_CHAT] resolved action: %s', value)
+                if value in ACTION_CONFIRM_REQUIRED:
+                    handler.speak(confirm_prompt_for(value))
+                    handler._set_interactive('llm_action_confirm', {'action': value}, timeout=15.0)
+                else:
+                    handler.handle(value, text_lower)
+            # kind == 'chat': already spoken sentence-by-sentence via
+            # on_chat_chunk above — speaking `value` again here would repeat it.
+        threading.Thread(target=_task, daemon=True, name='LlmChatReply').start()
+        return
     if cmd == 'qa_search':
         q = text_lower.replace('джарвис', '').replace('скажи', '').replace('мне', '').strip()
         if not q:

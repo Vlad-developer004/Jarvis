@@ -17,10 +17,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from config_pack.config import get_settings_path
 
 # Absolute path regardless of CWD
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-_SETTINGS_PATH = os.path.join(_DATA_DIR, 'jarvis_settings.json')
+# Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) — the
+# project/exe-relative 'data' dir above gets wiped by a rebuild/reinstall.
+_SETTINGS_PATH = get_settings_path()
 _EXE_CACHE_PATH = os.path.join(_DATA_DIR, 'exe_cache.json')
 
 # All known editors: cmd → (display name, common exe names, common install paths)

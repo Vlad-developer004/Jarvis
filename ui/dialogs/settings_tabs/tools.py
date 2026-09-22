@@ -6,12 +6,12 @@ import customtkinter as ctk
 from ui.hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ui.hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon
 from ui.hud_widgets import _HudScrollbar
+from ui.dialogs.extensions_common import _hud_popup_menu
 
 def build_tools_tab(inner, win, hud, _save_hud_settings):
     _sf = lambda n: hud._fs(n + 6)
     def _add_context_menu(entry):
-        menu = tk.Menu(win, tearoff=0, bg=_PANEL, fg=_WHITE, activebackground=_CYAN, activeforeground=_BG, font=(hud._F, _sf(9)))
-        def _paste():
+        def _paste() -> bool:
             try:
                 import pyperclip
                 txt = pyperclip.paste()
@@ -19,27 +19,41 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
                     if entry.selection_present():
                         entry.delete('sel.first', 'sel.last')
                     entry.insert(tk.INSERT, txt)
-            except Exception: pass
-        def _copy():
+                    return True
+            except Exception:
+                pass
+            return False
+        def _copy() -> bool:
             try:
                 if entry.selection_present():
                     win.clipboard_clear()
                     win.clipboard_append(entry.selection_get())
-            except Exception: pass
-        def _select_all():
-            entry.select_range(0, 'end')
-            entry.icursor('end')
-        menu.add_command(label=i18n.tr('context_menu.paste'), command=_paste)
-        menu.add_command(label=i18n.tr('context_menu.copy'), command=_copy)
-        menu.add_separator()
-        menu.add_command(label=i18n.tr('context_menu.select_all'), command=_select_all)
+                    return True
+            except Exception:
+                pass
+            return False
+        def _select_all() -> bool:
+            try:
+                entry.select_range(0, 'end')
+                entry.icursor('end')
+                return True
+            except Exception:
+                return False
         def _show_menu(e):
-            menu.tk_popup(e.x_root, e.y_root)
+            _hud_popup_menu(win, e.x_root, e.y_root, hud, [
+                (i18n.tr('context_menu.paste'), _paste),
+                (i18n.tr('context_menu.copy'), _copy),
+                None,
+                (i18n.tr('context_menu.select_all'), _select_all),
+            ])
+        # Only 'break' when we actually handled it — otherwise Tk's native
+        # <<Paste>>/<<SelectAll>> class bindings get a chance to run instead
+        # of being silently swallowed by our own failed attempt.
         entry.bind('<Button-3>', _show_menu)
-        entry.bind('<Control-v>', lambda e: (_paste(), 'break'))
-        entry.bind('<Control-V>', lambda e: (_paste(), 'break'))
-        entry.bind('<Control-a>', lambda e: (_select_all(), 'break'))
-        entry.bind('<Control-A>', lambda e: (_select_all(), 'break'))
+        entry.bind('<Control-v>', lambda e: 'break' if _paste() else None)
+        entry.bind('<Control-V>', lambda e: 'break' if _paste() else None)
+        entry.bind('<Control-a>', lambda e: 'break' if _select_all() else None)
+        entry.bind('<Control-A>', lambda e: 'break' if _select_all() else None)
     def _card(icon: str, title: str, accent: str):
         outer = tk.Frame(inner, bg=_PANEL, highlightbackground=_blend(accent, 0.2), highlightthickness=1)
         outer.pack(fill='x', padx=20, pady=(14, 0))
@@ -493,5 +507,84 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
     _hint(c_remote, i18n.tr('tools.remote_hint'))
     from ui.dialogs.settings_tabs.tools_remote import build_remote_card
     build_remote_card(c_remote, hud, _add_context_menu)
+
+    c_update = _card('⟳', i18n.tr('tools.update_title'), _GREEN)
+    _hint(c_update, i18n.tr('tools.update_hint'))
+
+    def _load_settings_json_u() -> dict:
+        try:
+            from config_pack.config import get_settings_path
+            p = get_settings_path()
+            if os.path.exists(p):
+                with open(p, 'r', encoding='utf-8') as f:
+                    d = json.load(f)
+                return d if isinstance(d, dict) else {}
+        except Exception:
+            pass
+        return {}
+
+    def _save_settings_json_u(d: dict) -> None:
+        try:
+            from config_pack.config import get_settings_path
+            p = get_settings_path()
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, 'w', encoding='utf-8') as f:
+                json.dump(d, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    _upd_row = tk.Frame(c_update, bg=_PANEL)
+    _upd_row.pack(fill='x')
+    tk.Label(_upd_row, text=i18n.tr('tools.update_toggle_label'), bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10)), anchor='w').pack(side='left')
+    _upd_var = tk.BooleanVar(value=bool(_load_settings_json_u().get('auto_update_enabled', True)))
+
+    def _on_upd_toggle():
+        sj = _load_settings_json_u()
+        sj['auto_update_enabled'] = _upd_var.get()
+        _save_settings_json_u(sj)
+
+    ctk.CTkSwitch(
+        _upd_row, text='', variable=_upd_var, command=_on_upd_toggle,
+        progress_color=_GREEN, fg_color=_BRD_I, button_color=_WHITE,
+        switch_width=46, switch_height=24,
+    ).pack(side='right')
+
+    _upd_status = tk.Label(c_update, text='', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)), anchor='w', justify='left')
+    _upd_status.pack(fill='x', pady=(8, 0))
+    _upd_btn_row = tk.Frame(c_update, bg=_PANEL)
+
+    def _do_install_now():
+        try:
+            from core.system import app_updater
+            if app_updater.apply_and_restart():
+                win.destroy()
+                os._exit(0)
+        except Exception:
+            pass
+
+    def _refresh_update_status():
+        try:
+            from core.system.version import APP_VERSION
+            from core.system import app_updater
+            avail = app_updater.get_available_version()
+            if app_updater.is_update_staged() and avail:
+                _upd_status.configure(text=i18n.tr('tools.update_status_ready').format(v=avail), fg=_GREEN)
+                _upd_btn_row.pack(fill='x', pady=(6, 0))
+            elif avail:
+                _upd_status.configure(text=i18n.tr('tools.update_status_available').format(v=avail), fg=_AMBER)
+                _upd_btn_row.pack_forget()
+            else:
+                _upd_status.configure(text=i18n.tr('tools.update_status_current').format(v=APP_VERSION), fg=_DIM)
+                _upd_btn_row.pack_forget()
+        except Exception:
+            pass
+
+    ctk.CTkButton(
+        _upd_btn_row, text=i18n.tr('tools.update_install_btn'), command=_do_install_now,
+        fg_color='transparent', hover_color=_blend(_GREEN, 0.2), text_color=_WHITE,
+        border_color=_blend(_GREEN, 0.8), corner_radius=JStyle.RAD_BTN, height=hud._px(30),
+    ).pack(fill='x')
+
+    _refresh_update_status()
 
     _refresh_launch_lb()

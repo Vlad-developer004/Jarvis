@@ -40,18 +40,16 @@ def _weather(handler, cmd, text_lower):
         handler.speak(spk('weather.fetching', city=city_display), wait=True)
 
     def _w_task():
-        try:
-            if period:
-                ok, res = get_weather_period(loc_arg, period)
-            else:
-                ok, res = get_weather(loc_arg, date_offset=offset)
-        except Exception:
-            _log.error('weather task crashed', exc_info=True)
-            from core.i18n import get_language
-            handler.speak('Не вдалося отримати погоду.' if get_language() == 'uk' else 'Не удалось получить погоду.')
-            return
+        if period:
+            ok, res = get_weather_period(loc_arg, period)
+        else:
+            ok, res = get_weather(loc_arg, date_offset=offset)
         handler.speak(res)
-    threading.Thread(target=_w_task, daemon=True).start()
+
+    from core.speech import run_speaking_task
+    from core.i18n import get_language
+    fallback = 'Не вдалося отримати погоду.' if get_language() == 'uk' else 'Не удалось получить погоду.'
+    run_speaking_task(_w_task, error_message=fallback, thread_name='weather-task', speak_fn=handler.speak)
 
 def _set_weather_city(handler, cmd, text_lower):
     import re, json, os

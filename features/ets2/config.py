@@ -31,3 +31,7 @@ LIVE_COMMENT_MIN_ROUTE_DIST_M = 5000.0
 # stop-and-go queueing at low speed would count as "harsh braking".
 HARSH_BRAKE_DROP_KMH = 18.0
 HARSH_BRAKE_MIN_SPEED_KMH = 30.0
+# Real-world (not in-game) continuous-driving reminder — separate from
+# REST_THRESHOLDS, which tracks ETS2's own fatigue meter and resets on any
+# in-game rest stop regardless of whether the player actually took a break.
+REAL_BREAK_THRESHOLDS_MIN = [90, 150]

@@ -16,6 +16,21 @@ from core.nlp.commands import (
 from core.i18n import set_language
 
 
+def test_reminder_matches_with_text_between_napomni_and_cherez():
+    # Regression: 'reminder' only had a multi-word extra ('напомни через'),
+    # so real phrasing like "напомни ВЫПИТЬ ТАБЛЕТКИ через 5 минут" broke the
+    # keyword/extras match (extras require the literal phrase as a substring)
+    # and fell through to fuzzy matching, which also missed the min_score.
+    assert match_command('напомни выпить таблетки через пять минут') == 'reminder'
+    assert match_command('напомни через 10 минут') == 'reminder'
+
+
+def test_reminder_fix_does_not_hijack_shutdown_timer():
+    # 'через' alone as an extra must not make unrelated 'X через N минут'
+    # phrases resolve to reminder just because they share that one word.
+    assert match_command('выключи через 10 минут') == 'shutdown_timer'
+
+
 def test_insult_detection_returns_system_insult():
     # 'тормоз' is not a CANON_SIMPLE exact key, so this only resolves
     # correctly if the insult-detection branch's `_INSULT` name is bound.
@@ -188,3 +203,39 @@ def test_yt_pick_ordinals_cover_ru_and_uk_first_five():
     for word, idx in [('первое', 0), ('второе', 1), ('третье', 2), ('четвертое', 3), ('пятое', 4),
                        ('перше', 0), ('друге', 1), ('третє', 2)]:
         assert _YT_PICK_ORDINALS[word] == idx
+
+
+def test_long_unrelated_phrase_not_fuzzy_matched_to_short_app_command():
+    """Regression (found 2026-09-22 during manual testing): "открой автор
+    эффектс" (After Effects — not a registered app) was misrecognized as
+    'open_obs' because the final token_set_ratio fallback scored purely off
+    the shared verb 'открой', even though 'обс' never appears in the phrase
+    at all. An unregistered app must not silently launch something else.
+    """
+    assert match_command('открой автор эффектс') == ''
+    assert match_command('открой афтер эффектс') == ''
+    # Real short-key app commands must still resolve correctly
+    assert match_command('открой обс') == 'open_obs'
+    assert match_command('запусти обс') == 'open_obs'
+    assert match_command('открой ворд') == 'open_word'
+    assert match_command('открой дискорд') == 'open_discord'
+
+
+def test_reminder_not_confused_with_note_save():
+    """Regression (found 2026-09-22): 'напомни мне' resolved to 'note_save'
+    instead of 'reminder'. Two independent causes, both fixed:
+      1. 'мне' is a stripped filler word, so "напомни мне" collapsed to
+         "напомни" (7 chars) — Levenshtein-distance 1 from 'запомни'
+         (note_save's canon key), well inside the 20% typo-correction
+         threshold despite being a different real word, not a misspelling.
+      2. Russian CANON_SIMPLE had no bare 'напомни'/'напомни мне' key at
+         all (only the Ukrainian dict had 'нагадай': 'reminder'), so even
+         past the Levenshtein guard, fuzzy token_set_ratio fell back to
+         'запомни' as the closest candidate.
+    """
+    assert match_command('напомни мне') == 'reminder'
+    assert match_command('напомни') == 'reminder'
+    assert match_command('напомни через 10 минут выпить воды') == 'reminder'
+    # note_save itself must still resolve correctly — not collateral damage
+    assert match_command('запомни это') == 'note_save'
+    assert match_command('запиши идею') == 'note_save'

@@ -7,6 +7,7 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
     "full": {
         "games": True,
         "qa": True,
+        "llm_chat_fallback": True,
         "cinema": True,
         "system_monitoring": True,
         "battery_monitor": True,
@@ -21,10 +22,13 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
         "inbox_digest": False,
         "remote_control": False,
         "push_to_talk": True,
+        "git_integration": True,
+        "translator": True,
     },
     "assistant": {
         "games": False,
         "qa": False,
+        "llm_chat_fallback": True,
         "cinema": False,
         "system_monitoring": True,
         "battery_monitor": True,
@@ -39,10 +43,13 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
         "inbox_digest": False,
         "remote_control": False,
         "push_to_talk": True,
+        "git_integration": True,
+        "translator": True,
     },
     "minimal": {
         "games": False,
         "qa": False,
+        "llm_chat_fallback": True,
         "cinema": False,
         "system_monitoring": True,
         "battery_monitor": True,
@@ -57,6 +64,8 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
         "inbox_digest": False,
         "remote_control": False,
         "push_to_talk": True,
+        "git_integration": True,
+        "translator": True,
     },
 }
 _cached_flags: dict[str, bool] | None = None

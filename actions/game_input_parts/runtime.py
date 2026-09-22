@@ -53,9 +53,21 @@ def _speak_response(text: str):
 
 
 def _handle_telemetry_action(action: str):
+    profile = get_loaded_profile_stem()
+    if profile == 'farming_simulator_22':
+        # FS22 has no live telemetry channel (see features/fs22/monitor.py's
+        # module docstring) — only the real-time session report is available,
+        # handled separately from the planetbase telemetry-dict path below.
+        if action == 'session_report':
+            try:
+                from features.fs22.monitor import get_session_report
+                _speak_response(get_session_report())
+            except Exception:
+                _speak_response("Ошибка получения отчёта по сессии.")
+        return
     try:
         from features.planetbase import telemetry as pb_tel
-        if get_loaded_profile_stem() != 'planetbase':
+        if profile != 'planetbase':
             return
         data = pb_tel.get()
         if not data.get("_valid"):
@@ -202,6 +214,10 @@ def _handle_telemetry_action(action: str):
                 _speak_response("Метель!")
             else:
                 _speak_response("Внимание: стихийное бедствие!")
+
+        elif action == "session_report":
+            from features.planetbase.monitor import get_session_report
+            _speak_response(get_session_report())
 
     except Exception:
         _speak_response("Ошибка получения телеметрии.")

@@ -33,6 +33,7 @@ _session_start: float = 0.0
 _session_jobs: int = 0
 _session_revenue: int = 0
 _session_dist_km: float = 0.0
+_prev_session: Optional[dict] = None
 _stop_event = threading.Event()
 _thread: Optional[threading.Thread] = None
 _auto_cruise: bool = False
@@ -95,6 +96,21 @@ def get_session_report() -> str:
             [f"Пройдено: {_fkm(int(round(_session_dist_km)))}."],
             [f"Пройдено: {_fkm(int(round(_session_dist_km)))}."]
         ))
+    if _prev_session and _session_revenue > 0:
+        prev_rev = int(_prev_session.get('revenue', 0))
+        if prev_rev > 0:
+            diff_pct = round((_session_revenue - prev_rev) / prev_rev * 100)
+            if abs(diff_pct) >= 5:
+                if diff_pct > 0:
+                    parts.append(_r(
+                        [f"Это на {diff_pct}% больше, чем за прошлую сессию."],
+                        [f"Це на {diff_pct}% більше, ніж за минулу сесію."]
+                    ))
+                else:
+                    parts.append(_r(
+                        [f"Это на {abs(diff_pct)}% меньше, чем за прошлую сессию."],
+                        [f"Це на {abs(diff_pct)}% менше, ніж за минулу сесію."]
+                    ))
     return _resolve_addr(" ... ".join(parts))
 
 def get_wear_report() -> str:
@@ -304,6 +320,7 @@ def _announce_job_delivered_fallback(data: dict) -> None:
         _session_revenue += int(data.get("jobDeliveredRevenue", 0))
         _session_dist_km += float(data.get("jobDeliveredDistanceKm", 0))
         _speak(text)
+        _save_session_snapshot()
 
 
 def _announce_job_start(data: dict) -> None:
@@ -354,6 +371,7 @@ def _announce_job_delivered(data: dict) -> None:
                     _session_jobs += 1
                     _session_revenue += _rev
                     _session_dist_km += _dist
+                    _save_session_snapshot()
                 else:
                     _announce_job_delivered_fallback(_snap)
             threading.Thread(target=_llm_delivery, daemon=True).start()
@@ -372,7 +390,7 @@ from .monitor_checks_safety import (
 )
 from .monitor_checks_progress import (
     _check_engine_transition, _check_job_lifecycle, _check_fuel, _check_rest, _check_deadline, _check_route_progress, _check_idle, _check_eta,
-    _check_live_commentary,
+    _check_live_commentary, _check_real_break,
 )
 
 def _check_speed_limit_and_cruise(state: _MonitorState, data: dict) -> float:
@@ -465,6 +483,7 @@ def _monitor_loop() -> None:
 
             _check_wear(state, data)
             _check_rest(state, data, engine_on)
+            _check_real_break(state, data, engine_on)
             _check_deadline(state, data)
             on_job = _check_route_progress(state, data, engine_on)
             _check_cargo_damage(state, data, on_job)
@@ -492,15 +511,30 @@ def _monitor_loop() -> None:
 
 
 
+def _save_session_snapshot() -> None:
+    try:
+        from .session_history import save_session
+        save_session(_session_jobs, _session_revenue, _session_dist_km)
+    except Exception:
+        pass
+
+
 def start() -> None:
-    global _thread, _session_start, _session_jobs, _session_revenue, _session_dist_km
+    global _thread, _session_start, _session_jobs, _session_revenue, _session_dist_km, _prev_session
     if _thread and _thread.is_alive(): return
     _session_start = time.monotonic()
     _session_jobs = 0
     _session_revenue = 0
     _session_dist_km = 0.0
+    try:
+        from .session_history import load_last_session
+        _prev_session = load_last_session()
+    except Exception:
+        _prev_session = None
     _stop_event.clear()
     _thread = threading.Thread(target=_monitor_loop, daemon=True, name="ets2_navigator")
     _thread.start()
 def stop() -> None:
     _stop_event.set()
+    if _session_jobs > 0:
+        _save_session_snapshot()

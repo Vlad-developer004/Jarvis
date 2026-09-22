@@ -512,7 +512,14 @@ def resolve_folder_for_hint(folder_hint: str | None, base_ctx: str) -> tuple[Pat
     # Strictly forward search unless permitted in settings
     try:
         import json, os
-        settings_path = os.path.join('data', 'jarvis_settings.json')
+        # Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) —
+        # a project-relative path here would never see this setting (and
+        # gets wiped by a rebuild).
+        try:
+            from config_pack.config import get_settings_path
+            settings_path = get_settings_path()
+        except Exception:
+            settings_path = os.path.join('data', 'jarvis_settings.json')
         if os.path.exists(settings_path):
             with open(settings_path, encoding='utf-8') as f:
                 allow_parent = json.load(f).get('allow_parent_search', False)
