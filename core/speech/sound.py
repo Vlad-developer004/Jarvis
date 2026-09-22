@@ -1,3 +1,4 @@
+import os
 import time
 import threading
 import numpy as np
@@ -5,6 +6,22 @@ import pygame
 
 _cached_sounds = {}
 _lock = threading.Lock()
+
+
+def _sounds_dir() -> str:
+    from config_pack.config import get_project_root
+    return os.path.join(get_project_root(), 'audio', 'sfx')
+
+
+def _load_sound_file(sound_type: str) -> "pygame.mixer.Sound | None":
+    for ext in ('.wav', '.mp3', '.ogg'):
+        path = os.path.join(_sounds_dir(), sound_type + ext)
+        if os.path.isfile(path):
+            try:
+                return pygame.mixer.Sound(path)
+            except Exception:
+                return None
+    return None
 
 def _add_trill_pulse(t, wave, sample_rate, t_start, duration, f_start, f_end, vol=0.3):
     t_end = t_start + duration
@@ -64,9 +81,12 @@ def _synthesize_sound(sound_type: str, sample_rate: int = 44100) -> pygame.mixer
 def _get_sound(sound_type: str) -> pygame.mixer.Sound:
     with _lock:
         if sound_type not in _cached_sounds:
-            mix_init = pygame.mixer.get_init()
-            sr = mix_init[0] if mix_init else 44100
-            _cached_sounds[sound_type] = _synthesize_sound(sound_type, sample_rate=sr)
+            sound = _load_sound_file(sound_type)
+            if sound is None:
+                mix_init = pygame.mixer.get_init()
+                sr = mix_init[0] if mix_init else 44100
+                sound = _synthesize_sound(sound_type, sample_rate=sr)
+            _cached_sounds[sound_type] = sound
         return _cached_sounds[sound_type]
 
 def play_alert_sound(sound_type: str = 'reminder') -> None:
@@ -81,18 +101,7 @@ def play_alert_sound(sound_type: str = 'reminder') -> None:
         if not pygame.mixer.get_init():
             raise RuntimeError("Mixer not initialized")
         
-        if sound_type == 'alarm':
-            # Play a sequence of 3 premium chimes
-            def _play_seq():
-                try:
-                    sound = _get_sound('alarm')
-                    for _ in range(3):
-                        sound.play()
-                        time.sleep(0.4)
-                except Exception:
-                    pass
-            threading.Thread(target=_play_seq, daemon=True).start()
-        elif sound_type == 'red_alert':
+        if sound_type == 'red_alert':
             # Play the sweeping klaxon alarm
             def _play_seq():
                 try:

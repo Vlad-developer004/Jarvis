@@ -1,6 +1,6 @@
 """Visual security alert for features/guard.py — a HUD popup with the
 captured intruder photo, replacing "beep and hope you're at your desk" as
-the only signal. The audio cue (winsound.Beep + spoken line) stays; this
+the only signal. The audio cue (red_alert sound + spoken line) stays; this
 adds the visual half so the alert is visible if you weren't listening.
 """
 from __future__ import annotations
@@ -57,7 +57,7 @@ def show_guard_alert(hud, image_path: str | None) -> None:
     ).pack(pady=(0, 16))
 
     ctk.CTkButton(
-        win, text=i18n.tr('dialog.continue'), command=win.destroy,
+        win, text=i18n.tr('guard.alert_dismiss'), command=win.destroy,
         height=JStyle.H_LARGE, font=('Consolas', 13, 'bold'),
         fg_color=_blend(_RED, 0.18), hover_color=_blend(_RED, 0.28),
         text_color=_RED, border_color=_blend(_RED, 0.65),

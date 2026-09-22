@@ -1,0 +1,11 @@
+pygame 2.6.1 (SDL 2.28.4, Python 3.12.8)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+[TRAY-DEBUG] start_tray called, spawning thread
+[TRAY-DEBUG] _run entered
+[TRAY-DEBUG] Win32Tray created, hwnd= 9701674
+[INIT] Semantic model ready.
+[TTS] Initializing Manager...
+[TTS] Starting Worker thread...
+[TTS-WORKER] Thread started.
+[TTS-WORKER] [1790029213.026] Processing: C:\Users\tanja\AppData\Local\Temp\jarvis_tts_cache\silero_a1b505473450.wav
+[TTS-WORKER] [1790029213.194] Playing: C:\Users\tanja\AppData\Local\Temp\jarvis_tts_cache\silero_a1b505473450.wav

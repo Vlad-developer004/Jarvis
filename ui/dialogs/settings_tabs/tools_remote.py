@@ -105,7 +105,8 @@ def build_remote_card(c_remote, hud, _add_context_menu):
         border_width=2, corner_radius=JStyle.RAD_PANEL
     ).pack(anchor='center', fill='x', padx=4, pady=(4, 4))
 
-    if os.environ.get('TELEGRAM_BOT_TOKEN') and os.environ.get('TELEGRAM_CHAT_ID'):
+    from core.system import module_enabled
+    if os.environ.get('TELEGRAM_BOT_TOKEN') and os.environ.get('TELEGRAM_CHAT_ID') and module_enabled('remote_control'):
         _show_connected_mode()
     else:
         _show_edit_mode()

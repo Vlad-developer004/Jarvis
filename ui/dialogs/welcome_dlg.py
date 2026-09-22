@@ -332,9 +332,6 @@ def open_welcome(hud, force: bool = False) -> None:
     bot = tk.Frame(win, bg=_PANEL)
     bot.pack(fill='x', side='bottom')
     
-    tk.Label(bot, text=i18n.tr('welcome.footer_text'),
-             bg=_PANEL, fg=_DIM, font=(F, _sf(10))).pack(side='left', padx=_px(20), pady=_px(14))
-
     def _open_settings():
         try:
             from ui.dialogs.settings_dlg import open_settings
@@ -348,6 +345,10 @@ def open_welcome(hud, force: bool = False) -> None:
         except Exception:
             pass
 
+    # Pack the buttons (side='right') before the footer label so they always
+    # get their required space; the label is packed last with fill='x' and
+    # wraplength so it shrinks/wraps into whatever room is left instead of
+    # pushing the buttons past the window edge on narrow/zoomed layouts.
     # CTK widgets automatically scale by zoom_factor, so pass base logical pixels
     ctk.CTkButton(bot, text=i18n.tr('welcome.settings_btn'), command=_open_settings,
                   height=JStyle.H_LARGE, font=(F, 12),
@@ -366,6 +367,21 @@ def open_welcome(hud, force: bool = False) -> None:
                   fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.28),
                   text_color=_CYAN, border_color=_blend(_CYAN, 0.65),
                   border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(14), _px(4)), pady=_px(10))
+
+    footer_lbl = tk.Label(bot, text=i18n.tr('welcome.footer_text'),
+                           bg=_PANEL, fg=_DIM, font=(F, _sf(10)), anchor='w', justify='left')
+    footer_lbl.pack(side='left', fill='x', expand=True, padx=_px(20), pady=_px(14))
+
+    def _on_footer_resize(e=None):
+        try:
+            w = bot.winfo_width()
+            if w > 100:
+                footer_lbl.configure(wraplength=max(100, w - _px(420)))
+        except Exception:
+            pass
+
+    bot.bind('<Configure>', lambda e: _on_footer_resize())
+    win.after(200, _on_footer_resize)
 
     win.grab_set()
     win.focus_set()

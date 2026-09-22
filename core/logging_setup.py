@@ -1,9 +1,19 @@
 """Centralized logging system for JARVIS."""
 import logging
 import logging.handlers
+import sys
 from pathlib import Path
 
-_LOGS_DIR = Path(__file__).parent.parent / 'logs'
+# In a frozen PyInstaller onedir build, __file__ resolves inside _internal/
+# (one level below the exe), so Path(__file__).parent.parent would land on
+# _internal itself instead of the exe's own directory — writing per-module
+# logs into a folder build.bat never creates or cleans, invisible next to
+# Jarvis.exe, and (as observed) still open/locked when build_installer.bat
+# tries to compress that same _internal tree right after a test run.
+if getattr(sys, 'frozen', False):
+    _LOGS_DIR = Path(sys.executable).parent / 'logs'
+else:
+    _LOGS_DIR = Path(__file__).parent.parent / 'logs'
 _LOGS_DIR.mkdir(exist_ok=True)
 
 # Configure logging levels

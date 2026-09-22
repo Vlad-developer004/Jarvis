@@ -21,6 +21,14 @@ oa_d,   oa_b,   oa_h   = gather("openai")
 gen_d,  gen_b,  gen_h  = gather("google.generativeai")
 sel_d,  sel_b,  sel_h  = gather("selenium")
 def _walk_datas(src_dir: str, dst_dir: str, exts: tuple[str, ...] | None = None) -> list[tuple[str, str]]:
+    # PyInstaller's `datas` tuple is (source_file, DEST_DIRECTORY): the file
+    # is placed inside DEST_DIRECTORY under its own basename. Passing the
+    # full destination *file* path here (including the filename) makes
+    # PyInstaller create a directory with that name and nest the file one
+    # level deeper (e.g. data/locales/ru.json ends up being a directory
+    # containing data/locales/ru.json/ru.json) — every __file__-relative
+    # open() of these paths then fails with PermissionError. The dest must
+    # be the *directory* portion only.
     out: list[tuple[str, str]] = []
     if not os.path.isdir(src_dir):
         return out
@@ -31,8 +39,9 @@ def _walk_datas(src_dir: str, dst_dir: str, exts: tuple[str, ...] | None = None)
             if exts and (not fn.lower().endswith(exts)):
                 continue
             full = os.path.join(base, fn)
-            rel = os.path.relpath(full, src_dir)
-            out.append((full, os.path.join(dst_dir, rel)))
+            rel_dir = os.path.relpath(base, src_dir)
+            dest_subdir = dst_dir if rel_dir == '.' else os.path.join(dst_dir, rel_dir)
+            out.append((full, dest_subdir))
     return out
 def _project_datas() -> list[tuple[str, str]]:
     datas: list[tuple[str, str]] = []
@@ -60,7 +69,7 @@ def _project_datas() -> list[tuple[str, str]]:
     ]
     for p in safe_files:
         if os.path.exists(p):
-            datas.append((p, os.path.join("data", os.path.basename(p))))
+            datas.append((p, "data"))
     return datas
 def _filter_datas(datas_list):
     # Strictly exclude any personal or session data
@@ -73,9 +82,14 @@ def _filter_datas(datas_list):
     }
     filtered = []
     for src, dst in datas_list:
-        # Normalize separators for consistent matching
+        # Normalize separators for consistent matching. dst is a DEST
+        # DIRECTORY (see _walk_datas), so a trailing slash is added before
+        # prefix checks below — otherwise a file living right at
+        # "data/locales" (dst == "data/locales", no trailing slash) would
+        # fail `startswith('data/locales/')` and get silently dropped.
         d_norm = dst.replace('\\', '/')
-        name = os.path.basename(d_norm)
+        d_norm_slash = d_norm + '/'
+        name = os.path.basename(src)
         if name in forbidden or name == '.env' or name == 'secrets.env' or name.endswith('.log'):
             continue
         
@@ -85,9 +99,9 @@ def _filter_datas(datas_list):
         # _project_datas() above whenever a new __file__-relative data dir
         # is added there.
         if d_norm.startswith('data/'):
-            is_gp = d_norm.startswith('data/game_profiles/')
-            is_locales = d_norm.startswith('data/locales/')
-            is_integrations = d_norm.startswith('data/integrations/')
+            is_gp = d_norm_slash.startswith('data/game_profiles/')
+            is_locales = d_norm_slash.startswith('data/locales/')
+            is_integrations = d_norm_slash.startswith('data/integrations/')
             is_safe = name in ['extensions_catalog.json', 'jarvis_settings.example.json']
             if not (is_gp or is_locales or is_integrations or is_safe):
                 continue

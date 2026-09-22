@@ -70,7 +70,10 @@ def bootstrap():
             self.terminal = original_stream
             self.log = open(filename, "a", encoding="utf-8")
         def write(self, message):
-            self.terminal.write(message)
+            # sys.stdout/stderr are None in a windowed (no-console) frozen
+            # build launched by double-click — only the file half applies then.
+            if self.terminal is not None:
+                self.terminal.write(message)
             if message.strip(): # Avoid double timestamps on empty lines
                 ts = time.strftime("[%Y-%m-%d %H:%M:%S] ")
                 self.log.write(ts + message)
@@ -78,7 +81,8 @@ def bootstrap():
                 self.log.write(message)
             self.log.flush()
         def flush(self):
-            self.terminal.flush()
+            if self.terminal is not None:
+                self.terminal.flush()
             self.log.flush()
 
     log_file = os.path.join('logs', 'jarvis.log')

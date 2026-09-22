@@ -45,7 +45,9 @@ def _dispatch(handler, text: str) -> None:
     from core.nlp.commands import match_command
     cmd = match_command(text)
     if not cmd:
+        print(f'[REMOTE] no command match for: {text!r}', flush=True)
         return
+    print(f'[REMOTE] dispatching cmd={cmd!r} text={text!r}', flush=True)
     handler.handle(cmd, text)
 
 
@@ -58,8 +60,9 @@ def _get_updates(offset: int, timeout: int) -> list | None:
             data = r.json()
             if data.get('ok'):
                 return data.get('result', [])
-    except Exception:
-        pass
+        print(f'[REMOTE] getUpdates HTTP {r.status_code}: {r.text[:200]}', flush=True)
+    except Exception as e:
+        print(f'[REMOTE] getUpdates failed: {e!r}', flush=True)
     return None
 
 
@@ -71,6 +74,7 @@ def _poll_loop(handler) -> None:
     while not _stop_event.is_set():
         updates = _get_updates(offset, timeout=25)
         if updates is None:
+            print(f'[REMOTE] poll failed, backing off {backoff}s', flush=True)
             if _stop_event.wait(timeout=backoff):
                 break
             backoff = min(backoff * 2, _MAX_BACKOFF)
