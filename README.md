@@ -23,6 +23,7 @@ A background Windows program listening for a wake word ("Jarvis"), turning speec
 
 - The **local LLM fallback** (see below) is a small, CPU-only 1B model. It's the last-resort layer for phrases nothing else recognized, and it will sometimes misfire or answer awkwardly — that's expected for its size, not a bug to report. Treat it as working infrastructure with a model that can be upgraded later, not a finished feature.
 - A few command-recognition edge cases are still being found and fixed as they come up in real use. If a phrase is misrecognized, that's useful to report — several real bugs this way have already been fixed and covered by regression tests.
+- **Guard mode's face check** is a lightweight DNN detector plus a simple recognizer, not state-of-the-art biometrics — poor lighting or an unusual angle can occasionally cause a false alarm or a missed one. Treat it as a helpful heads-up via Telegram, not a hardened security system.
 
 ---
 
@@ -32,6 +33,7 @@ A background Windows program listening for a wake word ("Jarvis"), turning speec
 git clone <this repository's URL>
 cd Jarvis
 pip install -r requirements.txt
+cp .env.example .env   # optional: fill in for Telegram bot, AI Q&A, mail — Jarvis runs fine without it
 python main.py
 ```
 
@@ -93,9 +95,20 @@ There are a lot of commands, and you don't need to memorize them. Just say at an
 - Jarvis proactively warns about fuel, driver fatigue, fines, equipment wear, trailer hitching/unhitching — unprompted, during gameplay.
 - AI narrates a pre-trip briefing and a post-delivery summary (needs a Groq/OpenAI/Gemini key).
 
+**Guard mode (webcam intruder alert)**
+- "Turn on guard mode" — while you're away, the webcam checks periodically for a face; the first capture "learns" your face as the owner.
+- If a face is detected that doesn't match the owner, Jarvis saves a snapshot and, if a Telegram bot is configured (see below), sends you the photo instantly with an alert.
+- Needs `requirements-vision-game.txt` (OpenCV) and downloads a small face-detection model on first use.
+
+**Remote control via your own Telegram bot**
+- Once you set `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (see `.env.example`), Jarvis long-polls your bot's own chat and runs any text message through the exact same intent matcher as spoken commands — so you can trigger voice commands remotely by texting your bot.
+- The same token/chat ID also power guard-mode intruder photo alerts above.
+- **Setup**: message [@BotFather](https://t.me/BotFather) on Telegram, `/newbot`, get the token — then message your new bot once and get your chat ID (e.g. via `https://api.telegram.org/bot<TOKEN>/getUpdates`). Put both into `.env` as `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Both features are no-ops (fully disabled, no errors) until these two variables are set — nobody else can use or see your bot.
+
 **Assistant and notes**
 - "Remind me to turn off the oven in 20 minutes".
 - "Dictation mode" — types what you say into any text field, with punctuation.
+- Calendar reminders spoken aloud (reads your `.ics` calendar), low-battery voice alerts, meeting-link shortcuts ("join the standup" opens the saved Zoom/Meet/Teams link).
 
 **Local AI fallback (offline, infrastructure in place, model quality still limited)**
 - When a phrase doesn't match any known command, instead of staying silent Jarvis hands it to a small local LLM (a LoRA fine-tune of Vikhr-Llama-3.2-1B, GGUF, CPU-only — no cloud, no API cost) running through `core/speech/llm_chat.py`.
