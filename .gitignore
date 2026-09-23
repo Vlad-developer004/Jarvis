@@ -33,6 +33,15 @@ data/jarvis_settings.json
 data/exe_cache.json
 data/commands_vault.json
 data/model_cache.json
+data/sessions.json
+data/game_cache.json
+data/mic_profile.json
+data/disabled_keyboards.json
+data/extensions_installed.json
+data/game_mode_prefs.json
+data/previous_power_plan.txt
+data/update_ready.json
+data/update/
 
 data/intent_model_onnx_quant/
 

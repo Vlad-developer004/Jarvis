@@ -7,6 +7,7 @@ from .. import hud_constants as _hc
 from ..hud_state import HudState, STATE
 from ..hud_utils import _blend, _set_dark_title_bar, _draw_grid, _draw_hex_grid, _center_window
 from core import i18n
+from core.system.version import APP_VERSION
 
 def open_perf_monitor(hud, reopen: bool = False) -> None:
     if not reopen and hud._perf_win and hud._perf_win.winfo_exists():
@@ -81,7 +82,7 @@ def open_perf_monitor(hud, reopen: bool = False) -> None:
             _hex = "".join(random.choices("0123456789ABCDEF", k=8))
             bg_c.create_text(20, 60 + i*12, text=f"0x{_hex}  [LINK_STABLE]", fill=_blend(_CYAN, 0.15), font=_f8, anchor='w', tags='tech')
             bg_c.create_text(w-20, h-60 - i*12, text=f"SYS_VAL_0{i}: {random.randint(1000,9999)}", fill=_blend(_CYAN, 0.15), font=_f8, anchor='e', tags='tech')
-        bg_c.create_text(w-40, 40, text="STRK_DIAG_CORE v1.5", fill=_blend(_CYAN, 0.2), font=_f8, anchor='e', tags='tech')
+        bg_c.create_text(w-40, 40, text=f"STRK_DIAG_CORE v{APP_VERSION}", fill=_blend(_CYAN, 0.2), font=_f8, anchor='e', tags='tech')
         
     def _draw_base():
         bg_c.delete('base')

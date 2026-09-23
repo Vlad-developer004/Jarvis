@@ -12,6 +12,7 @@ import math
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
+from core.system.version import APP_VERSION
 
 def _theme():
     try:
@@ -178,7 +179,7 @@ class HUD_AI_Window(tk.Toplevel):
         # Bottom status indicator
         self.status_lbl = tk.Label(
             self.right_panel,
-            text="SYSTEM STATUS: STREAMING  ·  API CORE v1.5",
+            text=f"SYSTEM STATUS: STREAMING  ·  API CORE v{APP_VERSION}",
             bg=_BG_COLOR(),
             fg=_DIM_COLOR(),
             font=("Consolas", int(7 * self.zoom)),
@@ -303,7 +304,7 @@ class HUD_AI_Window(tk.Toplevel):
         if self.img_label is None:
             self.img_label = tk.Label(self.left_panel, bg=_BG_COLOR())
             self.img_label.pack(fill="both", expand=True)
-        self.status_lbl.configure(text="SYSTEM STATUS: VIDEO PREVIEW (MUTED)  ·  API CORE v1.5")
+        self.status_lbl.configure(text=f"SYSTEM STATUS: VIDEO PREVIEW (MUTED)  ·  API CORE v{APP_VERSION}")
 
         def _next_frame():
             if gen != self._video_gen or not self.winfo_exists():
@@ -355,7 +356,7 @@ class HUD_AI_Window(tk.Toplevel):
                 self.img_label.configure(image=photo)
                 self.img_label.image = photo
                 
-            self.status_lbl.configure(text="SYSTEM STATUS: ACTIVE  ·  API CORE v1.5")
+            self.status_lbl.configure(text=f"SYSTEM STATUS: ACTIVE  ·  API CORE v{APP_VERSION}")
             self.adjust_height()
         except Exception as e:
             print(f"[AI-WINDOW] Error setting image: {e}", flush=True)
@@ -379,7 +380,7 @@ class HUD_AI_Window(tk.Toplevel):
                 self.placeholder.pack(fill="both", expand=True)
             except Exception as e:
                 print(f"[AI-WINDOW] Error resetting placeholder: {e}", flush=True)
-        self.status_lbl.configure(text="SYSTEM STATUS: STREAMING  ·  API CORE v1.5")
+        self.status_lbl.configure(text=f"SYSTEM STATUS: STREAMING  ·  API CORE v{APP_VERSION}")
 
 def _async_wiki_search(window, subject):
     """Runs in background to fetch wikipedia thumbnail image."""
@@ -394,7 +395,7 @@ def _async_wiki_search(window, subject):
     img_url = None
     try:
         context = ssl._create_unverified_context()
-        req = urllib.request.Request(url, headers={'User-Agent': 'JarvisOS/1.5'})
+        req = urllib.request.Request(url, headers={'User-Agent': f'JarvisOS/{APP_VERSION}'})
         with urllib.request.urlopen(req, timeout=4, context=context) as response:
             data = json.loads(response.read().decode('utf-8'))
             pages = data.get('query', {}).get('pages', {})
@@ -409,7 +410,7 @@ def _async_wiki_search(window, subject):
                     # Try fallback to parsing images of the top page
                     top_page_title = top_page['title']
                     parse_url = f"https://{lang}.wikipedia.org/w/api.php?action=parse&page={urllib.parse.quote(top_page_title)}&prop=images&format=json"
-                    req2 = urllib.request.Request(parse_url, headers={'User-Agent': 'JarvisOS/1.5'})
+                    req2 = urllib.request.Request(parse_url, headers={'User-Agent': f'JarvisOS/{APP_VERSION}'})
                     with urllib.request.urlopen(req2, timeout=4, context=context) as res2:
                         pdata = json.loads(res2.read().decode('utf-8'))
                         images = pdata.get('parse', {}).get('images', [])
@@ -426,7 +427,7 @@ def _async_wiki_search(window, subject):
                         if candidates:
                             first_img = candidates[0]
                             info_url = f"https://{lang}.wikipedia.org/w/api.php?action=query&titles=File:{urllib.parse.quote(first_img)}&prop=imageinfo&iiprop=url&format=json"
-                            req3 = urllib.request.Request(info_url, headers={'User-Agent': 'JarvisOS/1.5'})
+                            req3 = urllib.request.Request(info_url, headers={'User-Agent': f'JarvisOS/{APP_VERSION}'})
                             with urllib.request.urlopen(req3, timeout=4, context=context) as res3:
                                 idata = json.loads(res3.read().decode('utf-8'))
                                 ipages = idata.get('query', {}).get('pages', {})
@@ -459,7 +460,7 @@ def _async_wiki_search(window, subject):
         
         if not os.path.exists(path):
             context = ssl._create_unverified_context()
-            req = urllib.request.Request(img_url, headers={'User-Agent': 'JarvisOS/1.5'})
+            req = urllib.request.Request(img_url, headers={'User-Agent': f'JarvisOS/{APP_VERSION}'})
             with urllib.request.urlopen(req, timeout=6, context=context) as response:
                 with open(path, 'wb') as f:
                     f.write(response.read())

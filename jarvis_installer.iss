@@ -6,7 +6,7 @@
 ; (or open this file in the Inno Setup Compiler GUI and press Build)
 
 #define MyAppName "J.A.R.V.I.S."
-#define MyAppVersion "1.5"
+#define MyAppVersion "0.1.0"
 #define MyAppExeName "Jarvis.exe"
 
 [Setup]
