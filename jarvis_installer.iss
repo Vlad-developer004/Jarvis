@@ -8,6 +8,7 @@
 #define MyAppName "J.A.R.V.I.S."
 #define MyAppVersion "0.1.0"
 #define MyAppExeName "Jarvis.exe"
+#define DownloadsDir GetEnv("USERPROFILE") + "\Downloads"
 
 [Setup]
 ; Fixed AppId so upgrades over an existing install work correctly.
@@ -25,12 +26,15 @@ LicenseFile=EULA.txt
 ; somewhere the current user can always write to without elevation.
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputDir=installer_output
+OutputDir={#DownloadsDir}
 OutputBaseFilename=JarvisInstaller
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-Compression=lzma2
-SolidCompression=yes
+; "fast" instead of the lzma2 default: most of the payload (PyTorch DLLs,
+; ONNX/sherpa-onnx models) is already compressed binary data, so lzma2 spends
+; a very long time for near-zero size savings on those files.
+Compression=lzma2/fast
+SolidCompression=no
 WizardStyle=modern
 
 [Languages]

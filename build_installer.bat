@@ -33,6 +33,6 @@ if errorlevel 1 (
 
 echo.
 echo Build complete!
-echo Output: installer_output\JarvisInstaller.exe
+echo Output: %USERPROFILE%\Downloads\JarvisInstaller.exe
 echo ============================================================
 pause
