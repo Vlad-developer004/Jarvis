@@ -170,7 +170,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
 
         tk.Frame(_dlg, bg=_blend(accent, 0.15), height=1).pack(fill='x')
         _br = tk.Frame(_dlg, bg=_BG); _br.pack(fill='x', padx=14, pady=10)
-        _bk = dict(height=32, corner_radius=7, border_width=1, font=(hud._F, _sf(9), 'bold'))
+        _bk = dict(height=32, corner_radius=7, border_width=1, font=(hud._F, hud._fsc(9), 'bold'))
         ctk.CTkButton(_br, text=i18n.tr('dev.pick_btn'), command=_confirm,
                       fg_color=_blend(accent, 0.1), hover_color=_blend(accent, 0.22),
                       text_color=_WHITE, border_color=_blend(accent, 0.5),
@@ -189,7 +189,13 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
 
     _enabled_apps = hud._settings.get('context_apps', ['code.exe', 'pycharm64.exe', 'phpstorm64.exe', 'antigravity.exe'])
 
-    _btn_k = dict(height=30, font=(hud._F, _sf(9), 'bold'), corner_radius=7, border_width=1)
+    # hud._fsc(), not _sf()/hud._fs() — CTk widgets are already scaled by
+    # ctk.set_widget_scaling(zoom_factor) (see hud.py), so a font size that
+    # also multiplies by zoom_factor itself (as _fs() does, for plain
+    # tk widgets) gets scaled twice — at zoom_factor=2.0 (4K@200% Windows)
+    # that made these buttons ~2x too wide and pushed the whole row (entry +
+    # buttons, packed side='left' with no wrap) off the visible window edge.
+    _btn_k = dict(height=30, font=(hud._F, hud._fsc(9), 'bold'), corner_radius=7, border_width=1)
 
     _ctx_rows_frame = tk.Frame(c_context, bg=_PANEL)
     _ctx_rows_frame.pack(fill='x', pady=(0, 8))
@@ -249,7 +255,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     
     ent_app_exe = ctk.CTkEntry(_ctx_input_row, placeholder_text=i18n.tr('dev.process_name'),
                                 placeholder_text_color=_blend(_WHITE, 0.3),
-                                font=(hud._F, _sf(10)), fg_color=_BG,
+                                font=(hud._F, hud._fsc(10)), fg_color=_BG,
                                 border_color=_blend(_CYAN, 0.3), height=30, corner_radius=7)
     ent_app_exe.pack(side='left', fill='x', expand=True, padx=(0, 6))
     _add_context_menu(ent_app_exe)
@@ -375,7 +381,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     _ext_add_row.pack(fill='x', pady=(0, 4))
     ent_code_ext = ctk.CTkEntry(_ext_add_row, placeholder_text=i18n.tr('dev.ext_placeholder'),
                                  placeholder_text_color=_blend(_WHITE, 0.3),
-                                 font=(hud._F, _sf(10)), fg_color=_BG,
+                                 font=(hud._F, hud._fsc(10)), fg_color=_BG,
                                  border_color=_blend(_CYAN, 0.3), height=30, corner_radius=7)
     ent_code_ext.pack(side='left', fill='x', expand=True, padx=(0, 6))
     _add_context_menu(ent_code_ext)
@@ -685,7 +691,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     win.bind('<Escape>', _deselect_rows)
 
     _fkw = dict(fg_color=_BG, border_color=_blend(_GREEN, 0.28), height=30,
-                corner_radius=7, font=(hud._F, _sf(10)), placeholder_text_color=_blend(_WHITE, 0.35))
+                corner_radius=7, font=(hud._F, hud._fsc(10)), placeholder_text_color=_blend(_WHITE, 0.35))
 
     # Mini-header above the form
     _form_hdr = tk.Frame(c_proj, bg=_PANEL)
@@ -718,7 +724,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
                                corner_radius=7, border_width=1,
                                fg_color=_blend(_GREEN, 0.07), hover_color=_blend(_GREEN, 0.2),
                                text_color=_WHITE, border_color=_blend(_GREEN, 0.35),
-                               font=(hud._F, _sf(9), 'bold'))
+                               font=(hud._F, hud._fsc(9), 'bold'))
     _find_btn.pack(side='left')
 
     # ── Search results (always pre-packed here, between name and path) ──
@@ -805,7 +811,7 @@ def build_dev_tab(inner, win, hud, _save_hud_settings):
     ctk.CTkButton(_path_row, text='📁', width=30, height=30, corner_radius=7, border_width=1,
                   fg_color=_blend(_GREEN, 0.07), hover_color=_blend(_GREEN, 0.2),
                   text_color=_WHITE, border_color=_blend(_GREEN, 0.35),
-                  font=(hud._F, _sf(10)), command=_browse_proj).pack(side='left')
+                  font=(hud._F, hud._fsc(10)), command=_browse_proj).pack(side='left')
 
     # ── Editor row ──
     _ped_row = tk.Frame(_fi, bg=_BG); _ped_row.pack(fill='x')

@@ -120,9 +120,19 @@ def build_left(hud) -> None:
             tk.Label(_mic_vals, text=tr('threshold'), bg=_PANEL, fg=_TEXT, font=(hud._F, JStyle.TEXT_TINY, 'bold')).pack(side='left')
             hud._mic_thresh_lbl = tk.Label(_mic_vals, text=_thresh_display, bg=_PANEL, fg=_AMBER, font=(hud._F, JStyle.TEXT_BODY, 'bold'))
             hud._mic_thresh_lbl.pack(side='left', padx=(4, 0))
+
+            # Live "is it actually hearing me" readout — separate from the
+            # gain/threshold config above, which only shows what's configured,
+            # not whether the mic is currently picking anything up. Updated
+            # from core.system.state.app_state (written every audio frame by
+            # the engine loop) via update_sys_widgets()'s existing polling —
+            # never touched directly from the audio thread.
+            hud._mic_activity_lbl = tk.Label(_mic_inner, text='', bg=_PANEL, fg=_DIM, font=(hud._F, JStyle.TEXT_TINY, 'bold'), anchor='w')
+            hud._mic_activity_lbl.pack(fill='x', pady=(4, 0))
         else:
             hud._mic_thresh_lbl = tk.Label(p)
             hud._mic_gain_lbl = tk.Label(p)
+            hud._mic_activity_lbl = tk.Label(p)
     else:
         _dummy = tk.Label(p, text='', bg=_PANEL)
         hud._cpu_bar = _dummy
@@ -182,6 +192,8 @@ def build_left(hud) -> None:
                 open_videos_manager(h)
             hud._videos_btn_frame = make_hud_btn(hud, p, i18n.tr('hud.saved_videos'), '▶', _CYAN, _open_videos, icon_fs=20)
             
+    if module_enabled('song_id'):
+        make_hud_btn(hud, p, i18n.tr('hud.recognized_songs'), '♪', _MAG, hud._open_songs, icon_fs=22)
     _as_on = autostart_enabled()
     hud._autostart_btn = make_hud_btn(hud, p, i18n.tr('hud.system_autostart'), '◉' if _as_on else '○', _GREEN if _as_on else _DIM, hud._toggle_autostart, icon_fs=24)
     _has_spells = _ext.has_feature('spells')

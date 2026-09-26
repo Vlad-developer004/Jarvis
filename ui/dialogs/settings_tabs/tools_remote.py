@@ -15,7 +15,11 @@ def build_remote_card(c_remote, hud, _add_context_menu):
     _remote_edit_f = tk.Frame(c_remote, bg=_PANEL)
     _remote_status = tk.Label(c_remote, text='', bg=_PANEL, fg=_blend(_WHITE, 0.4), font=(hud._F, _sf(8)), padx=14)
 
-    _remote_entry_kw = dict(font=(hud._F, _sf(10), 'bold'), fg_color=_BG, text_color=_WHITE,
+    # hud._fsc(), not _sf()/hud._fs() — these are CTk widgets, already scaled
+    # by ctk.set_widget_scaling(zoom_factor) globally (see hud.py); a font
+    # size that also multiplies by zoom_factor itself gets scaled twice,
+    # overflowing the row at high zoom (4K@200% -> zoom_factor=2.0).
+    _remote_entry_kw = dict(font=(hud._F, hud._fsc(10), 'bold'), fg_color=_BG, text_color=_WHITE,
                              border_color=_blend(_CYAN, 0.35), border_width=1,
                              corner_radius=JStyle.RAD_PANEL, height=JStyle.H_NORM,
                              placeholder_text_color=_blend(_WHITE, 0.25))
@@ -30,7 +34,7 @@ def build_remote_card(c_remote, hud, _add_context_menu):
 
     _paste_btn_kw = dict(width=36, height=JStyle.H_NORM, fg_color='transparent',
                           border_color=_blend(_CYAN, 0.5), border_width=1, text_color=_CYAN,
-                          hover_color=_blend(_CYAN, 0.15), font=(hud._F, _sf(11)), corner_radius=JStyle.RAD_PANEL)
+                          hover_color=_blend(_CYAN, 0.15), font=(hud._F, hud._fsc(11)), corner_radius=JStyle.RAD_PANEL)
 
     tk.Label(_remote_edit_f, text='Bot Token', bg=_PANEL, fg=_blend(_CYAN, 0.8), font=(hud._F, _sf(9), 'bold'), anchor='w').pack(fill='x', pady=(10, 0), padx=4)
     _token_row = tk.Frame(_remote_edit_f, bg=_PANEL)

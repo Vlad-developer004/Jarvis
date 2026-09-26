@@ -27,6 +27,14 @@ class AppState:
         self.hud = None
         self.last_media_hwnd: int = 0
         self.remote_control_enabled: bool = True
+        # Live mic-activity readout for the HUD (single-attribute writes,
+        # no lock needed — see class docstring above). Updated every audio
+        # frame from the engine's hot loop (core/engine/jarvis.py), read
+        # periodically by the HUD's own polling loop — never call into the
+        # HUD directly from the audio thread (binding rule: UI updates only
+        # through the existing message-passing mechanism).
+        self.mic_level: int = 0        # last frame's RMS (core.audio_utils.rms_int16 scale)
+        self.last_speech_ts: float = 0.0  # time.time() of the last detected voice onset, 0 = never
 
     def toggle_ignore_mode(self) -> bool:
         """Atomically flip ignore_mode and return the new value. Use this

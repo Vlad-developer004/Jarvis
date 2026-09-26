@@ -21,7 +21,7 @@ if 'pynvml' not in _sys.modules:
     class _NVMLError(Exception): pass
     _pynvml_stub.NVMLError = _NVMLError
     _pynvml_stub.NVMLError_DriverNotLoaded = _NVMLError
-    _pynvml_stub.nvmlInit = lambda: None
+    _pynvml_stub.nvmlInit = lambмda: None
     _pynvml_stub.nvmlShutdown = lambda: None
     _pynvml_stub.nvmlDeviceGetCount = lambda: 0
     _pynvml_stub.nvmlSystemGetDriverVersion = lambda: b'0.0'

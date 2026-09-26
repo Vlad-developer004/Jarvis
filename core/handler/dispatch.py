@@ -27,6 +27,7 @@ _MODULE_GATES = (
     (lambda c: c == 'calendar_next', 'calendar_ics', 'module.integrations_disabled'),
     (lambda c: c == 'inbox_unread', 'inbox_digest', 'module.integrations_disabled'),
     (lambda c: c == 'mail_compose', 'inbox_digest', 'module.mail_disabled'),
+    (lambda c: c == 'song_id', 'song_id', 'module.song_disabled'),
 )
 
 # ---------------------------------------------------------------------------

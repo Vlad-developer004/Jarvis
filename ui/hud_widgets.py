@@ -247,7 +247,14 @@ class _HUDDropdown:
         # Close when another APPLICATION becomes the active window (Alt-Tab, click outside)
         # <Deactivate> fires only on app-level deactivation — NOT when our own dropdown Toplevel gets focus
         self._deactivate_id = self.master.winfo_toplevel().bind('<Deactivate>', lambda e: self.close(), add='+')
-        
+        # <Deactivate> alone doesn't reliably fire when the owning window is
+        # minimized (taskbar/Win+D) on Windows — the popup is an
+        # overrideredirect Toplevel, which isn't tied to its owner's iconify
+        # state by the window manager, so it was staying visible floating on
+        # screen after the settings window got minimized. <Unmap> fires on
+        # iconify and catches that case.
+        self._unmap_id = self.master.winfo_toplevel().bind('<Unmap>', lambda e: self.close(), add='+')
+
         self.container = tk.Frame(self.menu, bg=_BG)
         self.container.pack(fill='both', expand=True)
         self.canvas = tk.Canvas(self.container, bg=_BG, highlightthickness=0, borderwidth=0)
@@ -339,6 +346,10 @@ class _HUDDropdown:
             try: self.master.winfo_toplevel().unbind('<Deactivate>', self._deactivate_id)
             except: pass
             self._deactivate_id = None
+        if hasattr(self, '_unmap_id') and self._unmap_id:
+            try: self.master.winfo_toplevel().unbind('<Unmap>', self._unmap_id)
+            except: pass
+            self._unmap_id = None
 
     def configure(self, values=None, width=None, height=40):
         if values is not None: self.values = values
@@ -361,7 +372,12 @@ class _HUDSearchableDropdown(_HUDDropdown):
         self.menu.configure(bg=_BG, highlightbackground=self.accent, highlightthickness=1)
         
         self.master.after(50, lambda: setattr(self, '_click_id', self.master.winfo_toplevel().bind('<Button-1>', self._check_click, add='+')))
-        
+        # Same close-on-Alt-Tab/minimize handling as the base _HUDDropdown.open()
+        # (see the comment there) — this subclass builds its own Toplevel from
+        # scratch instead of calling super().open(), so it needs these too.
+        self._deactivate_id = self.master.winfo_toplevel().bind('<Deactivate>', lambda e: self.close(), add='+')
+        self._unmap_id = self.master.winfo_toplevel().bind('<Unmap>', lambda e: self.close(), add='+')
+
         search_f = tk.Frame(self.menu, bg=_PANEL)
         search_f.pack(fill='x')
         

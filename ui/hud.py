@@ -535,6 +535,7 @@ class JarvisHUD:
             'spell_editor': '_spell_win',
             'keybind_editor': '_keybind_win',
             'mail': '_mail_win',
+            'songs': '_songs_win',
         }
         for key, attr in mapping.items():
             if keep and key == keep:
@@ -580,6 +581,11 @@ class JarvisHUD:
         if not reopen:
             self._close_other_subwins(keep='deck')
         open_deck(self, reopen=reopen)
+    def _open_songs(self, reopen=False):
+        from .dialogs.songs_dlg import open_songs_dialog
+        if not reopen:
+            self._close_other_subwins(keep='songs')
+        open_songs_dialog(self, reopen=reopen)
     def _open_extensions(self, reopen=False):
         from .dialogs.extensions import open_extensions
         if not reopen:

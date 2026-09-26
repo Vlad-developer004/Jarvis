@@ -33,14 +33,43 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         _hint(c_modules, i18n.tr('premium.modules_profiles_hint'), hud)
         
         _feature_profile_var = tk.StringVar(value=str(_settings.get('feature_profile', 'minimal')))
-        _feature_status_lbl = tk.Label(c_modules, text='', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(10)))
+        # Restart notice frame (hidden until a profile change actually needs
+        # one) — same pack-on-demand pattern as the theme-change notice in
+        # settings_tabs/appearance.py, reused here since a feature-profile
+        # switch equally requires a restart to take effect.
+        _profile_restart_f = tk.Frame(c_modules, bg=_blend(_AMBER, 0.08),
+                                       highlightbackground=_blend(_AMBER, 0.3), highlightthickness=1)
         _feature_desc_lbl = tk.Label(c_modules, text='', bg=_PANEL, fg=_DIM, font=(hud._F, _sf(10)), justify='left', anchor='w')
         _feature_desc_lbl.pack(fill='x', pady=(4, 0))
+
+        def _show_profile_restart_notice():
+            for w in _profile_restart_f.winfo_children(): w.destroy()
+            lbl = tk.Label(
+                _profile_restart_f, text=i18n.tr('premium.profile_saved_msg'),
+                bg=_blend(_AMBER, 0.08), fg=_AMBER,
+                font=(hud._F, _sf(9), 'bold'), anchor='w', justify='left'
+            )
+            lbl.pack(side='left', fill='x', expand=True, padx=12, pady=8)
+            def _upd_wrap(e, l=lbl):
+                l.configure(wraplength=max(100, e.width - hud._px(190)))
+            _profile_restart_f.bind('<Configure>', _upd_wrap, add='+')
+            def _restart():
+                import subprocess, sys, os as _os
+                subprocess.Popen([sys.executable] + sys.argv)
+                win.after(200, lambda: _os._exit(0))
+            ctk.CTkButton(
+                _profile_restart_f, text=i18n.tr('theme.restart_btn'), command=_restart,
+                height=34, font=(hud._F, _sf(9), 'bold'),
+                fg_color=_blend(_AMBER, 0.15), hover_color=_blend(_AMBER, 0.25),
+                text_color=_AMBER, border_color=_blend(_AMBER, 0.5),
+                border_width=1, corner_radius=6, width=160
+            ).pack(side='right', padx=8, pady=6)
+            _profile_restart_f.pack(fill='x', pady=(6, 0))
         
         _feature_presets = {
-            'full': {'games': True, 'qa': True, 'llm_chat_fallback': True, 'cinema': True, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': True, 'morning_briefing': True, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True},
-            'assistant': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True},
-            'minimal': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': False, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True}
+            'full': {'games': True, 'qa': True, 'llm_chat_fallback': True, 'cinema': True, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': True, 'morning_briefing': True, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': True},
+            'assistant': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': False},
+            'minimal': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': False, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': False}
         }
         _feature_desc_map = {
             'full': i18n.tr('premium.profile_full_desc'),
@@ -61,7 +90,7 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         def _apply_feature_profile():
             profile = _feature_profile_var.get(); _settings['feature_profile'] = profile; _save_hud_settings(_settings)
             _feature_desc_lbl.configure(text=_feature_desc_map.get(profile, _feature_desc_map['minimal']))
-            _feature_status_lbl.configure(text=i18n.tr('premium.profile_saved_msg'), fg=_AMBER)
+            _show_profile_restart_notice()
             _refresh_module_switches_from_profile(); _refresh_load_summary(); _schedule_auto_dep_sync('profile-change')
             try: from core.system import refresh_module_flags; refresh_module_flags()
             except Exception: pass
@@ -77,7 +106,6 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             rb.pack(side='left', padx=(0, 6))
             lbl = tk.Label(row, text=f'{title} — {sub}', bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='w'); lbl.pack(side='left', fill='x', expand=True); lbl.bind('<Button-1>', lambda e, v=val: (_feature_profile_var.set(v), _apply_feature_profile()))
         _feature_desc_lbl.configure(text=_feature_desc_map.get(_feature_profile_var.get(), _feature_desc_map['minimal']))
-        _feature_status_lbl.pack(fill='x', pady=(6, 0))
 
         def _upd_desc_wrap(e, l=_feature_desc_lbl): l.configure(wraplength=max(hud._px(100), e.width - hud._px(20)))
         c_modules.bind('<Configure>', _upd_desc_wrap, add='+')
@@ -101,6 +129,7 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             'inbox_digest': {'title': i18n.tr('premium.module_mail_title'), 'icon': '✉', 'what': i18n.tr('premium.module_mail_desc'), 'weight': 1},
             'git_integration': {'title': i18n.tr('premium.module_git_title'), 'icon': '⎇', 'what': i18n.tr('premium.module_git_desc'), 'weight': 1},
             'translator': {'title': i18n.tr('premium.module_translator_title'), 'icon': '⇄', 'what': i18n.tr('premium.module_translator_desc'), 'weight': 1},
+            'song_id': {'title': i18n.tr('premium.module_song_title'), 'icon': '♪', 'what': i18n.tr('premium.module_song_desc'), 'weight': 1},
         }
         _module_order = list(_module_meta.keys()); _module_switch_vars = {}
         _module_load_lbl = tk.Label(c_modules, text='', bg=_PANEL, fg=_CYAN, font=(hud._F, _sf(9), 'bold'), anchor='w'); _module_load_lbl.pack(fill='x', pady=(4, 2))
@@ -292,9 +321,12 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
                 return
             from features.qa import model_fetcher
             api_key = _load_current_api_key(provider)
-            if not api_key and provider != 'openrouter':
+            # 'local' needs no key at all (Ollama/llama.cpp/TabbyAPI don't
+            # check it by default) — same free pass 'openrouter' already gets.
+            if not api_key and provider not in ('openrouter', 'local'):
                 _refresh_status_var.set(i18n.tr('premium.ai_no_key'))
                 return
+            base_url = _local_url_ent.get().strip() if provider == 'local' else ''
             _refreshing.add(provider)
             _refresh_status_var.set(i18n.tr('premium.ai_refreshing'))
             def _on_done(prov, models):
@@ -308,17 +340,45 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
                         if _ai_prov_var.get() == prov:
                             _on_ai_upd()
                     else:
-                        _refresh_status_var.set(i18n.tr('premium.ai_no_key'))
+                        _refresh_status_var.set(i18n.tr('premium.ai_no_key') if provider != 'local' else i18n.tr('premium.ai_local_unreachable'))
                 win.after(0, _ui)
-            model_fetcher.refresh_async(provider, api_key, _on_done)
+            model_fetcher.refresh_async(provider, api_key, _on_done, base_url=base_url)
 
         _p_ids = list(_prov_meta.keys())
+
+        def _fit_prov_font_size(text: str, avail_px: int, base_n: int, min_n: int = 5) -> int:
+            """Shrink the button font just enough for `text` to fit avail_px,
+            measured with the real resolved font metrics — keeps provider
+            names (Anthropic/OpenRouter/...) from clipping ("Anthro") on
+            narrower windows or lower-DPI monitors, without a fixed guess
+            that only happens to work at one window size."""
+            import tkinter.font as tkfont
+            n = base_n
+            while n > min_n:
+                if tkfont.Font(family=hud._F, size=_sf(n), weight='bold').measure(text) <= avail_px:
+                    break
+                n -= 1
+            return n
+
         def _rebuild_prov_grid(e=None):
             [w.destroy() for w in _prov_list_outer.winfo_children()]; _btn_refs.clear()
             _cols = 2 if len(_p_ids) <= 4 else 3
+            container_w = (e.width if e is not None and e.width > 1 else _prov_list_outer.winfo_width()) or 400
+            col_w = max(60, container_w // _cols - hud._px(16))
             for i, p_id in enumerate(_p_ids):
                 row_i, col_i = divmod(i, _cols); info = _prov_meta[p_id]; is_p = (p_id == _ai_prov_var.get())
-                b = ctk.CTkButton(_prov_list_outer, text=f"{info['icon']}  {info['name']}", command=lambda pid=p_id: (_ai_prov_var.set(pid), _on_ai_upd()), font=(hud._F, _sf(8), 'bold'), height=30, corner_radius=6, border_width=2 if is_p else 1, fg_color=_blend(_CYAN, 0.22 if is_p else 0.05), border_color=_CYAN if is_p else _blend(_CYAN, 0.12)); b.grid(row=row_i, column=col_i, sticky='ew', padx=3, pady=2); _prov_list_outer.columnconfigure(col_i, weight=1); _btn_refs[p_id] = b
+                label = f"{info['icon']}  {info['name']}"
+                font_n = _fit_prov_font_size(label, col_w, 8)
+                def _pick_provider(pid=p_id):
+                    _ai_prov_var.set(pid); _on_ai_upd()
+                    # Re-sync the model catalog for whichever provider was
+                    # just selected — Groq/OpenAI/etc. included, not just
+                    # Local — instead of showing whatever was cached from
+                    # the last manual ⟳ click (or nothing, if never
+                    # refreshed). _auto_refresh() already no-ops quietly if
+                    # there's no key configured for that provider yet.
+                    _auto_refresh(pid)
+                b = ctk.CTkButton(_prov_list_outer, text=label, command=_pick_provider, font=(hud._F, _sf(font_n), 'bold'), height=30, corner_radius=6, border_width=2 if is_p else 1, fg_color=_blend(_CYAN, 0.22 if is_p else 0.05), border_color=_CYAN if is_p else _blend(_CYAN, 0.12)); b.grid(row=row_i, column=col_i, sticky='ew', padx=3, pady=2); _prov_list_outer.columnconfigure(col_i, weight=1); _btn_refs[p_id] = b
         tk.Label(ai_container, text=i18n.tr('premium.ai_model_specs_label'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8), 'bold'), anchor='center').pack(fill='x', pady=(4, 0))
         tk.Label(ai_container, textvariable=_stat_alias, bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(10), 'bold'), anchor='center').pack(fill='x', pady=(2, 6))
         stats_f = tk.Frame(ai_container, bg=_PANEL); stats_f.pack(fill='x', pady=(0, 8)); _stat_cells_frame = tk.Frame(stats_f, bg=_PANEL); _stat_cells_frame.pack(fill='x')
@@ -341,10 +401,61 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         _ai_model_menu = _HUDDropdown(hud, ai_container, _init_models, _ai_model_var, command=_on_model_upd, accent=_CYAN); _model_menu_ref[0] = _ai_model_menu; _ai_model_menu.frame.pack(fill='x', pady=(4, 2), padx=2)
         tk.Label(ai_container, textvariable=_refresh_status_var, bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8)), anchor='center').pack(fill='x', pady=(0, 6))
 
+        # Manual model override — the catalog above is now kept in sync
+        # automatically, but a model your account has access to can lag
+        # behind the public catalog (early access, a private fine-tune, a
+        # model your key can use that the listing endpoint doesn't surface),
+        # so a way to just type the exact id and use it directly is still
+        # worth having alongside the sync.
+        _custom_model_row = tk.Frame(ai_container, bg=_PANEL); _custom_model_row.pack(fill='x', pady=(0, 6), padx=2)
+        _custom_model_ent = ctk.CTkEntry(_custom_model_row, placeholder_text=i18n.tr('premium.ai_custom_model_placeholder'), font=(hud._F, 11), height=32, fg_color=_BG, border_color=_blend(_CYAN, 0.25), corner_radius=8)
+        _custom_model_ent.pack(side='left', fill='x', expand=True, padx=(0, 6))
+
+        def _apply_custom_model():
+            mid = _custom_model_ent.get().strip()
+            if not mid:
+                return
+            p = _ai_prov_var.get()
+            _ai_model_var.set(mid)
+            _settings['ai_model'] = mid
+            _save_hud_settings(_settings)
+            _update_stats(p, mid)
+            _custom_model_ent.delete(0, 'end')
+        ctk.CTkButton(_custom_model_row, text='✓', command=_apply_custom_model, width=32, height=32, font=(hud._F, hud._fsc(10), 'bold'), fg_color=_blend(_CYAN, 0.1), hover_color=_blend(_CYAN, 0.22), text_color=_CYAN, corner_radius=8).pack(side='right')
+        _custom_model_ent.bind('<Return>', lambda e: _apply_custom_model())
+
+        # Local-server address — only shown for provider == 'local', since
+        # it's the one provider without a fixed base_url (see
+        # llm_processor._OPENAI_COMPAT['local']). Created hidden; _on_ai_upd
+        # packs/unpacks it as the selected provider changes.
+        _local_hint_lbl = tk.Label(ai_container, text=i18n.tr('premium.ai_local_hint'), bg=_PANEL, fg=_DIM, font=(hud._F, _sf(8)), justify='left', anchor='w', wraplength=1)
+        _local_url_ent = ctk.CTkEntry(ai_container, placeholder_text=i18n.tr('premium.ai_local_url_placeholder'), font=(hud._F, 11), height=40, fg_color=_BG, border_color=_blend(_CYAN, 0.3), corner_radius=10)
+        ai_container.bind('<Configure>', lambda e: _local_hint_lbl.configure(wraplength=max(hud._px(100), e.width - hud._px(8))), add='+')
+
+        _last_synced_local_url = ['']
+        def _save_local_url(*_):
+            url = _local_url_ent.get().strip()
+            _settings['ai_local_base_url'] = url
+            _save_hud_settings(_settings)
+            try:
+                from features.qa.llm_processor import invalidate_clients
+                invalidate_clients('local')
+            except Exception:
+                pass
+            # Re-sync the model catalog against the (possibly new) address —
+            # editing the URL is exactly when the old cached model list is
+            # most likely wrong.
+            if url != _last_synced_local_url[0]:
+                _last_synced_local_url[0] = url
+                _auto_refresh('local')
+        _local_url_ent.bind('<FocusOut>', _save_local_url)
+        _local_url_ent.bind('<Return>', _save_local_url)
+
         _ai_ent = ctk.CTkEntry(ai_container, placeholder_text=i18n.tr('premium.ai_api_key_placeholder'), font=(hud._F, 11), show='•', height=40, fg_color=_BG, border_color=_blend(_CYAN, 0.3), corner_radius=10); _ai_ent.pack(fill='x', pady=(0, 8), padx=2)
         try:
             from ui.dialogs.extensions_common import _bind_ctk_entry_clipboard
             _bind_ctk_entry_clipboard(win, _ai_ent, hud)
+            _bind_ctk_entry_clipboard(win, _local_url_ent, hud)
         except Exception:
             pass
 
@@ -356,6 +467,28 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
                     _ai_ent.insert(0, k)
             except Exception:
                 pass
+            if provider == 'local':
+                _local_hint_lbl.pack(fill='x', pady=(0, 4), padx=2, before=_ai_ent)
+                _local_url_ent.pack(fill='x', pady=(0, 8), padx=2, before=_ai_ent)
+                _local_url_ent.delete(0, 'end')
+                _local_url_ent.insert(0, _settings.get('ai_local_base_url', '') or 'http://localhost:11434/v1')
+                # wraplength starts at a throwaway value (see creation above)
+                # and is normally corrected by the ai_container <Configure>
+                # handler — but that only fires on an actual resize, so if
+                # the container is already at its final size when this tab
+                # is built, the label was staying wrapped at ~1px forever
+                # (every character on its own line). Set it here too, from
+                # whatever width is already known.
+                ai_container.update_idletasks()
+                w = ai_container.winfo_width()
+                _local_hint_lbl.configure(wraplength=max(hud._px(100), (w - hud._px(8)) if w > 1 else hud._px(400)))
+            else:
+                _local_hint_lbl.pack_forget()
+                _local_url_ent.pack_forget()
+            if provider == 'local':
+                _topk_frame.pack(fill='x')
+            else:
+                _topk_frame.pack_forget()
 
         btn_g = tk.Frame(ai_container, bg=_PANEL); btn_g.pack(fill='x')
         def _mini_btn(parent, text, col, cmd, c): ctk.CTkButton(parent, text=text, command=cmd, height=32, font=(hud._F, 11, 'bold'), fg_color=_blend(col, 0.08), hover_color=_blend(col, 0.18), text_color=col, border_color=_blend(col, 0.3), border_width=1, corner_radius=6).grid(row=0, column=c, sticky='ew', padx=3); parent.columnconfigure(c, weight=1)
@@ -380,6 +513,16 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         def _do_save():
             key = _ai_ent.get().strip()
             p = _ai_prov_var.get()
+            if p == 'local':
+                # No API key required for a local server — just persist the
+                # address (and the key too, if the user's TabbyAPI setup
+                # actually wants one) and refresh the model list.
+                _save_local_url()
+                if key:
+                    os.environ[_prov_meta.get(p, {}).get('key', '') or 'LOCAL_LLM_API_KEY'] = key
+                _refresh_status_var.set(i18n.tr('premium.ai_key_saved'))
+                _auto_refresh(p)
+                return
             env_name = _prov_meta.get(p, {}).get('key', '')
             if not key or not env_name:
                 return
@@ -417,10 +560,69 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
                 _refresh_status_var.set(f'✗ {e}')
 
         import webbrowser
-        _mini_btn(btn_g, f'🌐 {i18n.tr("premium.ai_btn_website")}', _CYAN, lambda: webbrowser.open(_prov_meta[_ai_prov_var.get()]['url']), 0)
+        def _open_prov_site():
+            url = _prov_meta.get(_ai_prov_var.get(), {}).get('url', '')
+            if url:
+                webbrowser.open(url)
+        _mini_btn(btn_g, f'🌐 {i18n.tr("premium.ai_btn_website")}', _CYAN, _open_prov_site, 0)
         _mini_btn(btn_g, f'📋 {i18n.tr("premium.ai_btn_paste")}', _CYAN, _do_paste, 1)
         _mini_btn(btn_g, f'💾 {i18n.tr("premium.ai_btn_save")}', _GREEN, _do_save, 2)
+
+        # --- Advanced generation params ---
+        tk.Frame(ai_container, bg=_BRD, height=1).pack(fill='x', pady=(10, 4))
+        tk.Label(ai_container, text=i18n.tr('premium.ai_advanced_title'), bg=_PANEL, fg=_TEXT, font=(hud._F, _sf(9), 'bold'), anchor='w').pack(fill='x')
+
+        def _debounced_setting_save(after_ref, key, value):
+            if after_ref[0]:
+                win.after_cancel(after_ref[0])
+            def _save():
+                _settings[key] = value
+                _save_hud_settings(_settings)
+            after_ref[0] = win.after(400, _save)
+
+        _temp_lbl = _label_row(ai_container, i18n.tr('premium.ai_temperature'), _CYAN, hud)
+        _cur_temp = float(_settings.get('ai_temperature') or 0.3)
+        _temp_lbl.configure(text=f'{_cur_temp:.2f}')
+        _temp_save_after = [None]
+        def _on_temp(v):
+            val = round(float(v), 2)
+            _temp_lbl.configure(text=f'{val:.2f}')
+            _debounced_setting_save(_temp_save_after, 'ai_temperature', val)
+        _slider(ai_container, 0.0, 1.0, 20, _CYAN, _cur_temp, _on_temp, hud)
+        _hint(ai_container, i18n.tr('premium.ai_temperature_hint'), hud)
+
+        _maxtok_lbl = _label_row(ai_container, i18n.tr('premium.ai_max_tokens'), _CYAN, hud)
+        _cur_maxtok = int(_settings.get('ai_max_tokens') or 250)
+        _maxtok_lbl.configure(text=str(_cur_maxtok))
+        _maxtok_save_after = [None]
+        def _on_maxtok(v):
+            val = int(round(float(v) / 10) * 10)
+            _maxtok_lbl.configure(text=str(val))
+            _debounced_setting_save(_maxtok_save_after, 'ai_max_tokens', val)
+        _slider(ai_container, 50, 2000, 39, _CYAN, _cur_maxtok, _on_maxtok, hud)
+
+        # top_k — only shown for 'local': not part of the OpenAI chat
+        # completions schema, so Groq/OpenAI/etc. would just ignore it
+        # (or reject it) — only local inference servers (llama.cpp/
+        # Ollama/TabbyAPI) actually honor it (see llm_processor._ask_openai_compat).
+        _topk_frame = tk.Frame(ai_container, bg=_PANEL)
+        _topk_lbl = _label_row(_topk_frame, i18n.tr('premium.ai_top_k'), _MAG, hud)
+        _cur_topk = int(_settings.get('ai_top_k') or 40)
+        _topk_lbl.configure(text=str(_cur_topk))
+        _topk_save_after = [None]
+        def _on_topk(v):
+            val = int(round(float(v)))
+            _topk_lbl.configure(text=str(val))
+            _debounced_setting_save(_topk_save_after, 'ai_top_k', val)
+        _slider(_topk_frame, 1, 100, 99, _MAG, _cur_topk, _on_topk, hud)
+        _hint(_topk_frame, i18n.tr('premium.ai_top_k_hint'), hud)
+
         _on_ai_upd(); _refresh_load_summary()
+        if _ai_prov_var.get() == 'local':
+            _last_synced_local_url[0] = _local_url_ent.get().strip()
+        # Sync the catalog for whichever provider was active when the
+        # dialog was last closed, same as picking it fresh from the grid.
+        _auto_refresh(_ai_prov_var.get())
 
         row_mini = tk.Frame(c_ai, bg=_PANEL)
         row_mini.pack(fill='x', pady=(6, 8), padx=12)

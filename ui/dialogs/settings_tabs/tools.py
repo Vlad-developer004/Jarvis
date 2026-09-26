@@ -284,7 +284,12 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
     _mtg_count_lbl = tk.Label(c_mtg, text=i18n.tr('tools.meetings_saved').format(n=len(_meetings_list)), bg=_PANEL, fg=_DIM,
                                 font=(hud._F, _sf(9)))
     _mtg_count_lbl.pack(anchor='w', pady=(4, 0))
-    _entry_kw = dict(font=(hud._F, _sf(10), 'bold'), fg_color=_BG, text_color=_WHITE,
+    # hud._fsc(), not _sf()/hud._fs() — CTk widgets are already scaled by
+    # ctk.set_widget_scaling(zoom_factor) globally (see hud.py); doubling
+    # that scaling here is what made the "БЫСТРЫЕ ССЫЛКИ" placeholder text
+    # (voice phrase / meeting URL / name) overflow its own entry field at
+    # high DPI (4K@200% -> zoom_factor=2.0).
+    _entry_kw = dict(font=(hud._F, hud._fsc(10), 'bold'), fg_color=_BG, text_color=_WHITE,
                      border_color=_blend(_GREEN, 0.35), border_width=1,
                      corner_radius=JStyle.RAD_PANEL, height=JStyle.H_NORM, # Reduced from 44
                      placeholder_text_color=_blend(_WHITE, 0.25))
@@ -412,7 +417,7 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
 
     _gm_entry = ctk.CTkEntry(
         c_gm, placeholder_text=i18n.tr('tools.gamemode_placeholder'),
-        font=(hud._F, _sf(10)), fg_color=_BG, border_color=_blend(_AMBER, 0.35),
+        font=(hud._F, hud._fsc(10)), fg_color=_BG, border_color=_blend(_AMBER, 0.35),
         height=JStyle.H_NORM, corner_radius=JStyle.RAD_PANEL # Reduced from 44
     )
     _gm_entry.pack(fill='x', pady=(4, 8), padx=4) # Reduced from 12
@@ -582,7 +587,7 @@ def build_tools_tab(inner, win, hud, _save_hud_settings):
     ctk.CTkButton(
         _upd_btn_row, text=i18n.tr('tools.update_install_btn'), command=_do_install_now,
         fg_color='transparent', hover_color=_blend(_GREEN, 0.2), text_color=_WHITE,
-        border_color=_blend(_GREEN, 0.8), corner_radius=JStyle.RAD_BTN, height=hud._px(30),
+        border_color=_blend(_GREEN, 0.8), corner_radius=JStyle.RAD_BTN, height=30,
     ).pack(fill='x')
 
     _refresh_update_status()

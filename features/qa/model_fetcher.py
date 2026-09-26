@@ -118,7 +118,17 @@ def _fetch_groq(api_key: str) -> list[dict]:
         {'Authorization': f'Bearer {api_key}'},
         provider='groq',
     )
-    skip_tokens = ('whisper', 'distil', 'guard', 'tool-use', 'vision')
+    # Groq's /v1/models has no modality field at all (confirmed against
+    # their own API reference — every model, chat or TTS/STT, reports the
+    # same {id, context_window, max_completion_tokens, ...} shape with
+    # nothing distinguishing the two). There is no data-driven way to tell
+    # a text chat model from an audio one here; this substring list is the
+    # only signal available and needs a new entry whenever Groq adds a
+    # non-chat model family under a name that doesn't already match one of
+    # these (it happened with canopylabs/orpheus and playai-tts, neither of
+    # which contain any of the previous tokens).
+    skip_tokens = ('whisper', 'distil', 'guard', 'tool-use', 'vision',
+                   'orpheus', 'playai', 'tts')
     out = []
     for m in data.get('data', []):
         mid = m.get('id', '')
@@ -134,15 +144,21 @@ def _fetch_openai(api_key: str) -> list[dict]:
         {'Authorization': f'Bearer {api_key}'},
         provider='openai',
     )
-    allowed_prefixes = ('gpt-4', 'gpt-3.5', 'o1', 'o3', 'o4', 'chatgpt-4o')
+    # Exclusion-based on purpose, not an allowlist of chat-model prefixes —
+    # an allowlist goes stale the moment OpenAI ships a new generation
+    # (gpt-5, gpt-6, o5, ...): it would silently vanish from the catalog
+    # until someone remembers to add the new prefix here, which defeats the
+    # whole point of live-syncing the model list. Filter out only the
+    # clearly non-chat-completion families instead — new chat models show
+    # up automatically.
     skip_tokens = ('instruct', 'vision', 'realtime', 'audio', 'search',
-                   'tts', 'whisper', 'dall', 'embedding', 'moderation')
+                   'tts', 'whisper', 'dall-e', 'embedding', 'moderation',
+                   'davinci', 'babbage', 'curie', 'ada-', 'transcribe',
+                   'image', 'sora')
     out = []
     for m in data.get('data', []):
         mid = m.get('id', '')
         if not mid:
-            continue
-        if not any(mid.startswith(p) for p in allowed_prefixes):
             continue
         if any(s in mid for s in skip_tokens):
             continue
@@ -218,6 +234,22 @@ def _fetch_openrouter(api_key: str = '') -> list[dict]:
     return sorted(out, key=lambda x: x['id'])
 
 
+def _fetch_local(api_key: str = '', base_url: str = '') -> list[dict]:
+    """Ollama / llama.cpp's llama-server / TabbyAPI — all three expose the
+    same OpenAI-compatible GET /v1/models, so one fetcher covers them."""
+    base = (base_url or 'http://localhost:11434/v1').rstrip('/')
+    headers: dict = {}
+    if api_key and api_key != 'not-needed':
+        headers['Authorization'] = f'Bearer {api_key}'
+    data = _http_get(f'{base}/models', headers, timeout=5, provider='local')
+    out = []
+    for m in data.get('data', []):
+        mid = m.get('id', '')
+        if mid:
+            out.append({'id': mid, 'ctx': _UNKNOWN})
+    return sorted(out, key=lambda x: x['id'])
+
+
 _FETCHERS: dict[str, Callable] = {
     'groq':       _fetch_groq,
     'openai':     _fetch_openai,
@@ -225,6 +257,7 @@ _FETCHERS: dict[str, Callable] = {
     'deepseek':   _fetch_deepseek,
     'anthropic':  _fetch_anthropic,
     'openrouter': _fetch_openrouter,
+    'local':      _fetch_local,
 }
 
 
@@ -241,7 +274,7 @@ def is_cache_stale(provider: str, ttl: int = _CACHE_TTL) -> bool:
 _RETRY_COOLDOWN = 300  # 5 min before retrying a failed fetch
 
 
-def fetch_and_cache(provider: str, api_key: str = '') -> bool:
+def fetch_and_cache(provider: str, api_key: str = '', base_url: str = '') -> bool:
     """Fetch model list from provider API and persist to disk cache.
 
     Returns True on success. On failure writes a short-TTL tombstone to the
@@ -253,7 +286,7 @@ def fetch_and_cache(provider: str, api_key: str = '') -> bool:
         _log.warning('Unknown provider: %s', provider)
         return False
     try:
-        models = fetcher(api_key)
+        models = fetcher(api_key, base_url) if provider == 'local' else fetcher(api_key)
         if not models:
             _log.warning('Empty model list returned for %s', provider)
             _write_tombstone(provider)
@@ -285,11 +318,26 @@ def _write_tombstone(provider: str) -> None:
     _save_json(_cache_path(), cache)
 
 
+def _live_limits_path() -> str:
+    return os.path.join(_data_dir(), 'model_live_limits.json')
+
+
+def _live_rpm(provider: str, model_id: str) -> str | int:
+    """RPM captured from a real x-ratelimit-limit-requests response header
+    (see llm_processor._capture_rate_limit_headers) — reflects the caller's
+    actual account/tier, unlike the static model_limits.json guess, so it
+    takes priority when we have it."""
+    live = _load_json(_live_limits_path())
+    entry = live.get(f'{provider}:{model_id}')
+    return entry['rpm'] if entry else _UNKNOWN
+
+
 def get_models_for_ui(provider: str) -> dict:
     """Return {model_id: {ctx, rpm, rpd, alias}} ready for the UI.
 
     Models come from disk cache (dynamic).
-    Limits (rpm/rpd/desc) are overlaid from model_limits.json.
+    Limits (rpm/rpd/desc) are overlaid from model_limits.json, then rpm is
+    overridden by a live-captured value if one exists (see _live_rpm).
     If no cache exists yet, falls back to the limits file model list.
     """
     cache = _load_json(_cache_path())
@@ -302,7 +350,7 @@ def get_models_for_ui(provider: str) -> dict:
         return {
             mid: {
                 'ctx':   info.get('ctx', _UNKNOWN),
-                'rpm':   info.get('rpm', _UNKNOWN),
+                'rpm':   _live_rpm(provider, mid) if _live_rpm(provider, mid) != _UNKNOWN else info.get('rpm', _UNKNOWN),
                 'rpd':   info.get('rpd', _UNKNOWN),
                 'alias': info.get('desc', mid),
             }
@@ -316,9 +364,10 @@ def get_models_for_ui(provider: str) -> dict:
         lim = prov_limits.get(mid, {})
         # Prefer context window from API; fall back to limits file
         ctx = api_ctx if (api_ctx and api_ctx != _UNKNOWN) else lim.get('ctx', _UNKNOWN)
+        live_rpm = _live_rpm(provider, mid)
         result[mid] = {
             'ctx':   ctx,
-            'rpm':   lim.get('rpm', _UNKNOWN),
+            'rpm':   live_rpm if live_rpm != _UNKNOWN else lim.get('rpm', _UNKNOWN),
             'rpd':   lim.get('rpd', _UNKNOWN),
             'alias': lim.get('desc', ''),
         }
@@ -329,6 +378,7 @@ def refresh_async(
     provider: str,
     api_key: str,
     on_done: Callable[[str, dict], None] | None = None,
+    base_url: str = '',
 ) -> None:
     """Fetch provider models in a background daemon thread.
 
@@ -336,7 +386,7 @@ def refresh_async(
     The caller is responsible for dispatching to the UI thread if needed.
     """
     def _work():
-        ok = fetch_and_cache(provider, api_key)
+        ok = fetch_and_cache(provider, api_key, base_url)
         if on_done:
             models = get_models_for_ui(provider) if ok else {}
             try:

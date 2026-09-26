@@ -33,6 +33,7 @@ data/jarvis_settings.json
 data/exe_cache.json
 data/commands_vault.json
 data/model_cache.json
+data/model_live_limits.json
 data/sessions.json
 data/game_cache.json
 data/mic_profile.json

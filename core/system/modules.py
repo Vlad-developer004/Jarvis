@@ -24,6 +24,7 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
         "push_to_talk": True,
         "git_integration": True,
         "translator": True,
+        "song_id": True,
     },
     "assistant": {
         "games": False,
@@ -45,6 +46,7 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
         "push_to_talk": True,
         "git_integration": True,
         "translator": True,
+        "song_id": False,
     },
     "minimal": {
         "games": False,
@@ -66,6 +68,7 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
         "push_to_talk": True,
         "git_integration": True,
         "translator": True,
+        "song_id": False,
     },
 }
 _cached_flags: dict[str, bool] | None = None

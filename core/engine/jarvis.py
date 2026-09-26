@@ -163,6 +163,7 @@ class JarvisEngine:
                 # gain to be usable at all, the raw signal is close to silent.
                 audio_ring.push(data)
                 rms = rms_int16(data)
+                app_state.mic_level = rms
                 if (
                     app_state.jarvis_active
                     and (not app_state.game_mode)
@@ -196,6 +197,7 @@ class JarvisEngine:
                     self.pre_buf.append(data)
                     start_trigger = (rms > self.voice_on) or (vad_prob > _vad_thresh)
                     if start_trigger:
+                        app_state.last_speech_ts = time.time()
                         if app_state.game_mode:
                             try:
                                 _qs = self.transcribe_queue.qsize()

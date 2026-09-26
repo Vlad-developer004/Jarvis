@@ -170,7 +170,10 @@ def _pick_app_dialog(win, hud, on_selected):
     def _upd_p_wrap(e, l=h_lbl): l.configure(wraplength=e.width)
     top_bar.bind('<Configure>', _upd_p_wrap, add='+')
     ctrl_f = tk.Frame(pick_win, bg=_BG); ctrl_f.pack(fill='x', padx=20, pady=(15, 10))
-    ent_search = ctk.CTkEntry(ctrl_f, placeholder_text=i18n.tr('app_picker.search_placeholder'), font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=hud._px(44), corner_radius=JStyle.RAD_PANEL)
+    # height=44, not hud._px(44) — CTk widgets are already scaled by
+    # ctk.set_widget_scaling(zoom_factor) globally, so a dimension that also
+    # multiplies by zoom_factor itself gets scaled twice at high DPI.
+    ent_search = ctk.CTkEntry(ctrl_f, placeholder_text=i18n.tr('app_picker.search_placeholder'), font=(hud._F, JStyle.TEXT_BODY), fg_color=_BG, border_color=_blend(_CYAN, 0.3), height=44, corner_radius=JStyle.RAD_PANEL)
     ent_search.pack(side='left', fill='x', expand=True, padx=(0, 10))
     _show_all_var = tk.BooleanVar(value=False)
     sw_all = ctk.CTkSwitch(ctrl_f, text=i18n.tr('app_picker.system_apps'), variable=_show_all_var, font=(hud._F, JStyle.TEXT_BODY, 'bold'), progress_color=_CYAN, fg_color=_BRD_I, button_color=_CYAN, switch_width=36, switch_height=18)
@@ -193,4 +196,4 @@ def _pick_app_dialog(win, hud, on_selected):
         if sel:
             app = _f_data[sel[0]]; on_selected(app.get('exe') or app['name']); pick_win.destroy()
     lb.bind('<Double-Button-1>', _on_pick)
-    ctk.CTkButton(pick_win, text=i18n.tr('app_picker.select_btn'), command=_on_pick, height=hud._px(44), width=hud._px(280), font=(hud._F, JStyle.TEXT_H1, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))
+    ctk.CTkButton(pick_win, text=i18n.tr('app_picker.select_btn'), command=_on_pick, height=44, width=280, font=(hud._F, JStyle.TEXT_H1, 'bold'), fg_color=_CYAN, text_color=_BG).pack(anchor='center', pady=(0, 20))

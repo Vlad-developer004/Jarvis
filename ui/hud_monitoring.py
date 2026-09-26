@@ -104,10 +104,33 @@ def start_sys_thread(hud) -> None:
     threading.Thread(target=_worker, daemon=True).start()
 
 def update_sys_widgets(hud) -> None:
+    # Live "does the mic actually hear me" readout — independent of the
+    # hud._sys_data dict below (early-returns if empty), and read straight
+    # from core.system.state.app_state rather than through that dict since
+    # the engine's audio loop already writes it there every frame; this is
+    # just the periodic UI-thread read side of that same safe hand-off.
+    try:
+        lbl = getattr(hud, '_mic_activity_lbl', None)
+        if lbl is not None and lbl.winfo_exists():
+            from core.system.state import app_state
+            last_ts = app_state.last_speech_ts
+            if last_ts <= 0:
+                lbl.configure(text=i18n.tr('hud.mic_activity_none'), fg=_DIM)
+            else:
+                elapsed = time.time() - last_ts
+                if elapsed < 2.0:
+                    lbl.configure(text=i18n.tr('hud.mic_activity_hearing'), fg=_GREEN)
+                else:
+                    secs = int(elapsed)
+                    unit = i18n.tr('hud.mic_activity_ago')
+                    col = _AMBER if elapsed < 120 else _RED
+                    lbl.configure(text=f'● {secs} {unit}', fg=col)
+    except Exception: pass
+
     with hud._sys_lock:
         d = dict(hud._sys_data)
     if not d: return
-        
+
     def _set(bar, lbl, pct, text, col=None):
         try:
             bar.set(min(pct / 100.0, 1.0))

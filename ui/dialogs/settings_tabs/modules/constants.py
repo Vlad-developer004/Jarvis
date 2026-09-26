@@ -35,4 +35,13 @@ _AI_CONFIG = {
         'env':  'OPENROUTER_API_KEY',
         'site': 'https://openrouter.ai/keys',
     },
+    'Local': {
+        # Self-hosted OpenAI-compatible server — Ollama, llama.cpp's
+        # llama-server, TabbyAPI. No fixed 'site' (nothing to sign up for);
+        # the server address is configured in the UI instead of an API key.
+        'id':   'local',
+        'icon': '🖥',
+        'env':  'LOCAL_LLM_API_KEY',
+        'site': '',
+    },
 }

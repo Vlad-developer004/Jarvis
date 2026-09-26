@@ -1,18 +1,19 @@
 """Song recognition ("what's this song?").
 
-Recognition order, cheapest/most-local first:
-  1. actions/song_cache.py — a local JSON cache of songs already recognized
-     before, matched by audio fingerprint (actions/song_fingerprint.py).
-     Instant, no network.
-  2. Shazam, via the keyless `shazamio` library — this is the real Shazam
+Recognition order:
+  1. Shazam, via the keyless `shazamio` library — this is the real Shazam
      backend, but reverse-engineered so it needs no signup or API key at
      all. This is the *default* recognizer, so a fresh Jarvis install can
      recognize songs immediately with zero configuration.
-  3. AudD (https://audd.io/), only if the user has set AUDD_API_KEY in
+  2. AudD (https://audd.io/), only if the user has set AUDD_API_KEY in
      secrets.env — an optional fallback for when Shazam's endpoint has
      nothing (e.g. very new/regional releases) or is unreachable.
-A successful hit from either #2 or #3 is written into the local cache, so
-the *next* time that song plays, step #1 catches it offline.
+A successful hit is appended to actions/song_cache.py's history log (for the
+"Recognized songs" HUD panel) — every call still goes to Shazam/AudD, though:
+an earlier version tried to answer repeat plays from a local audio-fingerprint
+match first, but that occasionally mismatched an unrelated new recording
+against an old cached entry and silently reported the wrong song, which is
+worse than the extra network round-trip it was saving.
 
 Two audio sources:
   - 'mic'  — reads from the shared ring buffer the always-on engine keeps
@@ -156,9 +157,23 @@ def _download_cover(url: str) -> str | None:
         return None
 
 
-def _youtube_search_url(artist: str, title: str) -> str:
+def _youtube_url(artist: str, title: str) -> str:
+    """A direct link to the actual video when we can resolve one, not just
+    a search-results page the user still has to click through — reuses the
+    same ytsearch1: yt-dlp lookup actions/youtube.py already does for the
+    "open on YouTube" voice command. Falls back to a plain search URL if
+    the lookup fails (no match, network hiccup, yt-dlp not usable) so the
+    feature never regresses to nothing."""
+    query = f'{artist} {title}'.strip()
+    try:
+        from actions.youtube import _get_url_by_search
+        url = _get_url_by_search(query)
+        if url:
+            return url
+    except Exception as e:
+        _log.warning('YouTube direct-link resolution failed, falling back to search: %s', e)
     from urllib.parse import quote_plus
-    return f'https://www.youtube.com/results?search_query={quote_plus(f"{artist} {title}".strip())}'
+    return f'https://www.youtube.com/results?search_query={quote_plus(query)}'
 
 
 _SHAZAM_LOCALE = {
@@ -237,7 +252,7 @@ def _query_shazam(wav_path: str) -> dict:
         'release_date': '',
         'spotify_url': spotify_url,
         'apple_music_url': apple_music_url,
-        'youtube_url': _youtube_search_url(artist, title),
+        'youtube_url': _youtube_url(artist, title),
         'cover_path': _download_cover(cover_url),
     }
 
@@ -292,22 +307,9 @@ def _query_audd(wav_path: str) -> dict:
         'release_date': result.get('release_date', ''),
         'spotify_url': (spotify.get('external_urls') or {}).get('spotify', ''),
         'apple_music_url': apple.get('url', ''),
-        'youtube_url': _youtube_search_url(artist, title),
+        'youtube_url': _youtube_url(artist, title),
         'cover_path': _download_cover(cover_url),
     }
-
-
-def _match_cache(raw: bytes, rate: int, channels: int):
-    """Returns (hit_or_None, query_hashes) — hashes are returned either way
-    so the caller can remember() them into the cache on a fresh network hit."""
-    try:
-        from actions.song_fingerprint import fingerprint_pcm
-        from actions import song_cache
-        hashes = fingerprint_pcm(raw, rate, channels)
-        return song_cache.match(hashes), hashes
-    except Exception as e:
-        _log.error('local cache match failed: %s', e, exc_info=True)
-        return None, []
 
 
 def recognize_song(source: str = 'mic', seconds: float = _RECORD_SECONDS) -> dict:
@@ -326,10 +328,6 @@ def recognize_song(source: str = 'mic', seconds: float = _RECORD_SECONDS) -> dic
         channels = _CHANNELS
     if not raw:
         return {'ok': False, 'error': 'record_failed'}
-
-    cache_hit, query_hashes = _match_cache(raw, rate, channels)
-    if cache_hit:
-        return cache_hit
 
     tmp_path = os.path.join(tempfile.gettempdir(), f'jarvis_songid_{int(time.time() * 1000)}.wav')
     try:
@@ -354,10 +352,10 @@ def recognize_song(source: str = 'mic', seconds: float = _RECORD_SECONDS) -> dic
             else:
                 res = audd_res
 
-        if res.get('ok') and query_hashes:
+        if res.get('ok'):
             try:
                 from actions import song_cache
-                song_cache.remember(res, query_hashes)
+                song_cache.remember(res)
             except Exception:
                 pass
         return res
