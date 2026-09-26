@@ -1,6 +1,7 @@
 import threading
 from features.qa import search_answer
 from core.responses import spk
+from core.speech.tts import strip_speech_markup
 from core.logging_setup import get_logger as _get_logger
 _log = _get_logger('ai')
 def handle_ai(handler, cmd, text_lower, amount):
@@ -99,9 +100,9 @@ def handle_ai(handler, cmd, text_lower, amount):
                     full_ans.append(chunk)
                     buffer += chunk
                     
-                    curr_text = "".join(full_ans).strip()
+                    curr_text = strip_speech_markup("".join(full_ans).strip())
                     update_ai_window_text(curr_text)
-                    
+
                     # Update HUD (word-by-word/chunk-by-chunk)
                     if has_hud:
                         # Limit HUD text length to avoid overflow, show last ~60 chars if long

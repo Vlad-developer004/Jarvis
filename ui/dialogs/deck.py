@@ -4,7 +4,6 @@ from ui.hud_style import JStyle
 import json, os, threading, time
 import tkinter as tk
 import customtkinter as ctk
-from typing import Optional
 from ..hud_constants import _BG, _PANEL, _BRD, _BRD_I, _SEP, _CYAN, _MAG, _GREEN, _AMBER, _RED, _WHITE, _TEXT, _DIM, _GRID, _DYN, _STA, _RU_MON, _RU_DAYS
 from ..hud_state import HudState, STATE, set_mode
 from ..hud_utils import _blend, _bar_color, _set_dark_title_bar, _apply_window_icon, _center_window, _make_resizable
@@ -119,7 +118,18 @@ def open_deck(hud, reopen: bool = False) -> None:
     )
     sort_btn.pack()
 
-    search_entry.bind('<KeyRelease>', lambda e: _build_cards(search_entry.get()))
+    # Debounced: with ~150+ commands, _build_cards tears down and rebuilds
+    # every card widget on the main thread. Rebuilding on every single
+    # keystroke made typing feel like ~0.5 fps; wait for a short pause
+    # instead of rebuilding mid-word.
+    _search_after = [None]
+
+    def _on_search_key(_e=None):
+        if _search_after[0]:
+            win.after_cancel(_search_after[0])
+        _search_after[0] = win.after(180, lambda: _build_cards(search_entry.get()))
+
+    search_entry.bind('<KeyRelease>', _on_search_key)
     
     tk.Frame(win_for_content, bg=_SEP, height=hud._px(1)).pack(fill='x', padx=hud._px(20), pady=(0, hud._px(4)))
     
@@ -261,6 +271,7 @@ def open_deck(hud, reopen: bool = False) -> None:
         'win_snap_right': ('Окно: Вправо', 'Расположение окна на правой половине экрана.', 'окно вправо'),
         'weather': ('Погода', 'Запрос актуального прогноза погоды для вашего региона.', 'какая погода'),
         'nasa_apod': ('NASA: Картинка дня', 'Астрономическая картинка дня NASA с описанием, показывается в окне ИИ-ассистента.', 'покажи картинку дня от наса'),
+        'song_id': ('Что за песня', 'Слушает несколько секунд звук (с микрофона или, если сказать "с компьютера", напрямую с ПК) и определяет играющую песню — сначала по локальному кэшу уже узнанных песен, затем через Shazam (без ключа), затем через AudD, если он настроен.', 'что за песня играет'),
         'reminder': ('Напоминание', 'Установка голосового напоминания через заданный интервал.', 'напомни через [время]'),
         'google_search': ('Поиск Google', 'Открытие браузера с результатами поиска по вашему запросу.', 'найди в гугле [запрос]'),
         'git_commit': ('Git: Коммит', 'Автоматический git add, git commit и git push для проекта.', 'сделай коммит'),
@@ -304,7 +315,7 @@ def open_deck(hud, reopen: bool = False) -> None:
         'ЗВУК И ЭКРАН': ['vol_', 'app_vol', 'audio_switch', 'brightness', 'screenshot', 'start_video', 'move_monitor'],
         'ПРИЛОЖЕНИЯ И ОКНА': ['app_', 'win_', 'min_', 'max_', 'close_', 'browser_tab', 'open_task_manager', 'open_obs', 'terminal', 'google_', 'git_', 'clip_', 'undo', 'redo', 'select_all', 'press_enter', 'change_layout', 'context_close'],
         'ФАЙЛЫ И ДОКУМЕНТЫ': ['folder', 'doc', 'sheet', 'pres', 'any', 'paste_file', 'create_', 'delete_', 'explorer_', 'find_', 'recent_', 'empty_trash'],
-        'ИГРЫ И АВТОМАТИЗАЦИЯ': ['game_mode', 'mouse_', 'dictation_', 'note_save', 'cancel_reminder', 'reminder', 'ocr_', 'weather', 'nasa_apod'],
+        'ИГРЫ И АВТОМАТИЗАЦИЯ': ['game_mode', 'mouse_', 'dictation_', 'note_save', 'cancel_reminder', 'reminder', 'ocr_', 'weather', 'nasa_apod', 'song_id'],
         'ИНТЕРФЕЙС HUD': ['show_hud', 'min_win', 'reactor_']
     }
 
@@ -396,63 +407,144 @@ def open_deck(hud, reopen: bool = False) -> None:
             return i18n.tr(key)
         return cat_name
 
-    def _make_card(parent, name: str, phrase: str, desc: str, cat: str = '', wrap_w: int = 300) -> tk.Frame:
-        card = tk.Frame(parent, bg=_PANEL, highlightbackground=_BRD, highlightthickness=1)
-        card.grid_columnconfigure(0, weight=1)
-        tk.Label(card, text=name, bg=_PANEL, fg=_WHITE, font=(hud._F, _f13, 'bold'), anchor='w', wraplength=wrap_w, justify='left').grid(row=0, column=0, sticky='ew', padx=hud._px(15), pady=(hud._px(12), hud._px(4)))
-        tk.Label(card, text=phrase, bg=_PANEL, fg=_CYAN, font=(hud._F, _f12, 'bold'), anchor='w', wraplength=wrap_w, justify='left').grid(row=1, column=0, sticky='ew', padx=hud._px(15))
-        _desc_text = f'{desc}  ·  {_tr_cat(cat)}' if cat else desc
-        tk.Label(card, text=_desc_text, bg=_PANEL, fg=_TEXT, font=(hud._F, _f10), anchor='w', wraplength=wrap_w, justify='left').grid(row=2, column=0, sticky='ew', padx=hud._px(15), pady=(hud._px(4), hud._px(12)))
-        return card
-
     _last_cols = [0]
     _resize_after = [None]
+    _build_gen = [0]  # bumped per rebuild; lets a stale chunked build notice it's superseded and stop
+
+    # --- Widget pool ---------------------------------------------------
+    # Rebuilding used to destroy() every card/header widget and recreate
+    # them from scratch on every search keystroke, sort change or resize.
+    # Tk widget creation (each is a real native window under the hood) is
+    # the expensive part, not text updates — so we keep a pool of
+    # card/header widgets alive for the window's lifetime and just
+    # re-grid + re-text the ones a given view needs, grid_remove()-ing
+    # whatever's left over. This is what keeps things smooth as the
+    # command list grows toward the hundreds/~1000 mark, instead of the
+    # cost scaling with every keystroke.
+    _card_pool: list[dict] = []
+    _header_pool: list[dict] = []
+    _empty_lbl: list[tk.Label] = []
+
+    def _get_card(i: int) -> dict:
+        if i < len(_card_pool):
+            return _card_pool[i]
+        card = tk.Frame(inner, bg=_PANEL, highlightbackground=_BRD, highlightthickness=1)
+        card.grid_columnconfigure(0, weight=1)
+        name_lbl = tk.Label(card, bg=_PANEL, fg=_WHITE, font=(hud._F, _f13, 'bold'), anchor='w', justify='left')
+        name_lbl.grid(row=0, column=0, sticky='ew', padx=hud._px(15), pady=(hud._px(12), hud._px(4)))
+        phrase_lbl = tk.Label(card, bg=_PANEL, fg=_CYAN, font=(hud._F, _f12, 'bold'), anchor='w', justify='left')
+        phrase_lbl.grid(row=1, column=0, sticky='ew', padx=hud._px(15))
+        desc_lbl = tk.Label(card, bg=_PANEL, fg=_TEXT, font=(hud._F, _f10), anchor='w', justify='left')
+        desc_lbl.grid(row=2, column=0, sticky='ew', padx=hud._px(15), pady=(hud._px(4), hud._px(12)))
+        entry = {'frame': card, 'name': name_lbl, 'phrase': phrase_lbl, 'desc': desc_lbl}
+        _card_pool.append(entry)
+        return entry
+
+    def _get_header(i: int) -> dict:
+        if i < len(_header_pool):
+            return _header_pool[i]
+        lbl = tk.Label(inner, bg=_BG, fg=_MAG, font=(hud._F, _f11, 'bold'), anchor='w')
+        sep = tk.Frame(inner, bg=_MAG, height=hud._px(1))
+        entry = {'label': lbl, 'sep': sep}
+        _header_pool.append(entry)
+        return entry
+
+    def _get_empty_label() -> tk.Label:
+        if not _empty_lbl:
+            _empty_lbl.append(tk.Label(inner, text=i18n.tr('dialogs.deck.no_commands'),
+                                        bg=_BG, fg=_RED, font=(hud._F, _f12, 'bold')))
+        return _empty_lbl[0]
+
+    for _ci in range(3):  # 3 = max value _cols_for_width can return
+        inner.grid_columnconfigure(_ci, weight=1)
 
     def _build_cards(query: str = '') -> None:
         if not inner.winfo_exists(): return
-        for w in inner.winfo_children():
-            w.destroy()
+        _build_gen[0] += 1
+        gen = _build_gen[0]
         canvas.yview_moveto(0)
         q = query.strip().lower()
         cols = _cols_for_width(canvas.winfo_width() or _W)
         _last_cols[0] = cols
+        cw = canvas.winfo_width() or _W
+        card_wrap = (cw // cols) - hud._px(60)
 
-        def _grid_section(items_with_cat) -> None:
-            col_idx = 0
-            cur_row_f: Optional[tk.Frame] = None
-            cw = canvas.winfo_width() or _W
-            card_wrap = (cw // cols) - hud._px(60)
-            for name, phrase, desc, cat in items_with_cat:
-                if col_idx == 0:
-                    cur_row_f = tk.Frame(inner, bg=_BG)
-                    cur_row_f.pack(fill='x', pady=hud._px(4))
-                    for ci in range(cols):
-                        cur_row_f.grid_columnconfigure(ci, weight=1)
-                card = _make_card(cur_row_f, name, phrase, desc, cat, wrap_w=card_wrap)
-                card.grid(row=0, column=col_idx, sticky='nsew', padx=hud._px(5))
-                col_idx = (col_idx + 1) % cols
-
+        # Flatten whichever view is active (search matches, category
+        # groups, or a flat sort) into one plan of header/card entries,
+        # so the incremental renderer below doesn't need to know which
+        # mode produced it.
+        plan: list[tuple] = []
         if q:
-            matched = [(cat, name, phrase, desc) for cat, pid, name, phrase, desc in _all_items if q in name.lower() or q in phrase.lower() or q in desc.lower() or q in pid.lower()]
-            if not matched:
-                tk.Label(inner, text=i18n.tr('dialogs.deck.no_commands'), bg=_BG, fg=_RED, font=(hud._F, _f12, 'bold')).pack(pady=hud._px(50))
-            else:
-                _grid_section(matched)
+            matched = [(cat, name, phrase, desc) for cat, pid, name, phrase, desc in _all_items
+                       if q in name.lower() or q in phrase.lower() or q in desc.lower() or q in pid.lower()]
+            plan.extend(('card', name, phrase, desc, cat) for cat, name, phrase, desc in matched)
         else:
             mode = _sort_mode.get()
             if mode == 'cat':
                 for cat, items in _commands.items():
-                    tk.Label(inner, text=_tr_cat(cat), bg=_BG, fg=_MAG, font=(hud._F, _f11, 'bold'), anchor='w').pack(fill='x', padx=hud._px(10), pady=(hud._px(24), hud._px(8)))
-                    tk.Frame(inner, bg=_MAG, height=hud._px(1)).pack(fill='x', padx=hud._px(10), pady=(0, hud._px(12)))
-                    _grid_section([(cat, name, phrase, desc) for pid, name, phrase, desc in items])
+                    plan.append(('header', _tr_cat(cat)))
+                    plan.extend(('card', name, phrase, desc, cat) for pid, name, phrase, desc in items)
             elif mode == 'ru':
-                # Sort all by Russian name
-                sorted_items = sorted(_all_items, key=lambda x: x[2])
-                _grid_section([(cat, name, phrase, desc) for cat, pid, name, phrase, desc in sorted_items])
+                plan.extend(('card', name, phrase, desc, cat)
+                             for cat, pid, name, phrase, desc in sorted(_all_items, key=lambda x: x[2]))
             elif mode == 'en':
-                # Sort all by English ID
-                sorted_items = sorted(_all_items, key=lambda x: x[1])
-                _grid_section([(cat, name, phrase, desc) for cat, pid, name, phrase, desc in sorted_items])
+                plan.extend(('card', name, phrase, desc, cat)
+                             for cat, pid, name, phrase, desc in sorted(_all_items, key=lambda x: x[1]))
+
+        if q and not plan:
+            for c in _card_pool: c['frame'].grid_remove()
+            for h in _header_pool: h['label'].grid_remove(); h['sep'].grid_remove()
+            _get_empty_label().grid(row=0, column=0, columnspan=max(cols, 1), pady=hud._px(50))
+            return
+        _get_empty_label().grid_remove() if _empty_lbl else None
+
+        # Render in chunks across idle ticks so even a first build with
+        # hundreds/~1000 entries doesn't block the UI in one long frame.
+        # A stale build (superseded by a newer keystroke before it
+        # finished) sees its `gen` no longer matches and bails instead of
+        # racing the newer build for the same pooled widgets.
+        CHUNK = 120
+        st = {'row': 0, 'col': 0, 'card_i': 0, 'hdr_i': 0, 'pos': 0}
+
+        def _step():
+            if gen != _build_gen[0] or not inner.winfo_exists():
+                return
+            n = 0
+            while st['pos'] < len(plan) and n < CHUNK:
+                kind, *rest = plan[st['pos']]
+                if kind == 'header':
+                    if st['col'] != 0:
+                        st['row'] += 1
+                        st['col'] = 0
+                    hdr = _get_header(st['hdr_i']); st['hdr_i'] += 1
+                    hdr['label'].configure(text=rest[0])
+                    hdr['label'].grid(row=st['row'], column=0, columnspan=cols, sticky='w',
+                                       padx=hud._px(10), pady=(hud._px(24), hud._px(8)))
+                    hdr['sep'].grid(row=st['row'] + 1, column=0, columnspan=cols, sticky='ew',
+                                     padx=hud._px(10), pady=(0, hud._px(12)))
+                    st['row'] += 2
+                else:
+                    name, phrase, desc, cat = rest
+                    card = _get_card(st['card_i']); st['card_i'] += 1
+                    card['name'].configure(text=name, wraplength=card_wrap)
+                    card['phrase'].configure(text=phrase, wraplength=card_wrap)
+                    _desc_text = f'{desc}  ·  {_tr_cat(cat)}' if cat else desc
+                    card['desc'].configure(text=_desc_text, wraplength=card_wrap)
+                    card['frame'].grid(row=st['row'], column=st['col'], sticky='nsew',
+                                        padx=hud._px(5), pady=hud._px(4))
+                    st['col'] += 1
+                    if st['col'] >= cols:
+                        st['col'] = 0
+                        st['row'] += 1
+                n += 1
+                st['pos'] += 1
+            if st['pos'] < len(plan):
+                win.after(1, _step)
+            else:
+                for c in _card_pool[st['card_i']:]: c['frame'].grid_remove()
+                for h in _header_pool[st['hdr_i']:]: h['label'].grid_remove(); h['sep'].grid_remove()
+
+        _step()
 
     _build_cards()
     # Поиск теперь привязан через KeyRelease в начале

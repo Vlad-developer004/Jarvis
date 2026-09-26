@@ -28,22 +28,6 @@ if 'pynvml' not in _sys.modules:
     _sys.modules['pynvml'] = _pynvml_stub
     del _pynvml_stub, _NVMLError
 
-# g2p_en (warmed up in core/speech/tts.py's warmup_text_models(), right after
-# the PyTorch DLL preload below) imports nltk for tokenization, but nltk's
-# nltk.tag package eagerly pulls in nltk.tag.sequential -> nltk.classify ->
-# nltk.classify.scikitlearn -> sklearn -> pandas -> pyarrow as an unused
-# optional-classifier import. pyarrow's native extension loading DLL-conflicts
-# with the already-loaded torch/sherpa-onnx DLLs and crashes the whole process
-# with STATUS_ACCESS_VIOLATION (0xC0000005) — not a Python ImportError, so the
-# try/except ImportError already in pandas/sklearn's own code can't catch it.
-# Nothing in this project uses pyarrow or sklearn directly, so stub pyarrow
-# out before nltk gets a chance to import the real one.
-if 'pyarrow' not in _sys.modules:
-    _pyarrow_stub = _types.ModuleType('pyarrow')
-    _pyarrow_stub.__version__ = '0.0.0'
-    _sys.modules['pyarrow'] = _pyarrow_stub
-    del _pyarrow_stub
-
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
 import multiprocessing as _mp_mod
@@ -143,8 +127,8 @@ def _background_init():
             _log.error('Preload PyTorch error: %s', e, exc_info=True)
         app_state.pytorch_loaded.set()
 
-        # Pure-Python TTS text-model warmup (pymorphy3/g2p_en dictionaries) has
-        # no GPU/audio hardware contention, so start it immediately instead of
+        # Pure-Python TTS text-model warmup (pymorphy3 dictionaries) has no
+        # GPU/audio hardware contention, so start it immediately instead of
         # waiting for the audio engine — shaves 1-3s off first-response latency.
         if TTS_WARMUP:
             try:

@@ -61,10 +61,202 @@ _PHONETIC_DRIVES['C'] = 'Цэ'; _PHONETIC_DRIVES['K'] = 'Ка'; _PHONETIC_DRIVES
 _EXCEPTIONS = {'openai': 'опен эй ай', 'chatgpt': 'чат джи пи ти', 'gpt': 'джи пи ти', 'youtube': 'ютуб', 'discord': 'дискорд', 'twitch': 'твич', 'telegram': 'телеграм', 'whatsapp': 'вотсап', 'instagram': 'инстаграм', 'tiktok': 'тик ток', 'twitter': 'твиттер', 'facebook': 'фейсбук', 'netflix': 'нетфликс', 'spotify': 'спотифай', 'google': 'гугл', 'amazon': 'амазон', 'apple': 'эппл', 'iphone': 'айфон', 'ipad': 'айпэд', 'imac': 'аймак', 'android': 'андроид', 'windows': 'виндовс', 'microsoft': 'майкрософт', 'github': 'гитхаб', 'gitlab': 'гитлаб', 'chrome': 'хром', 'firefox': 'файерфокс', 'safari': 'сафари', 'nvidia': 'энвидиа', 'amd': 'амд', 'intel': 'интел', 'xbox': 'иксбокс', 'playstation': 'плейстейшн', 'nintendo': 'нинтендо', 'steam': 'стим', 'epic': 'эпик', 'games': 'геймс', 'launcher': 'лаунчер', 'euro': 'евро', 'truck': 'трак', 'simulator': 'симулятор', 'ets': 'е т с', 'minecraft': 'майнкрафт', 'cyberpunk': 'киберпанк', 'witcher': 'ведьмак', 'valorant': 'валорант', 'fortnite': 'фортнайт', 'overwatch': 'оверватч', 'hearthstone': 'хёртстон', 'dota': 'дота', 'counter': 'кантер', 'strike': 'страйк', 'planetbase': 'планет бэйс', 'iv': 'четыре', 'iii': 'три', 'ii': 'два', 'v': 'пять', 'exe': 'экзэ', 'dll': 'диэлэл', 'bat': 'бат', 'cmd': 'цээмдэ', 'zip': 'зип', 'rar': 'рар', 'mp3': 'эмпэ три', 'mp4': 'эмпэ четыре', 'pdf': 'пэдээф', 'jpg': 'джыпег', 'jpeg': 'джыпег', 'png': 'пээнг', 'antigravity': 'антигравити', 'gravity': 'гравити', 'anti': 'анти', 'python': 'питон', 'java': 'джава', 'javascript': 'джаваскрипт', 'typescript': 'тайпскрипт', 'react': 'реакт', 'docker': 'докер', 'linux': 'линукс', 'ubuntu': 'убунту', 'bluetooth': 'блютус', 'wifi': 'вайфай', 'wi-fi': 'вайфай', 'browser': 'браузер', 'nuclear': 'нуклеар', 'option': 'опшн', 'iron': 'айрон', 'hearts': 'хёртс', 'c': 'Ц', 'd': 'Д', 'e': 'Е', 'f': 'эф'}
 _ABBREV = {'vlc': 'вэ эл си', 'cpu': 'си пи ю', 'gpu': 'джи пи ю', 'ram': 'рэм', 'rom': 'ром', 'ssd': 'эс эс ди', 'hdd': 'эйч ди ди', 'usb': 'ю эс би', 'hdmi': 'эйч ди эм ай', 'fps': 'эф пи эс', 'api': 'эй пи ай', 'url': 'ю эр эл', 'gui': 'джи ю ай', 'ai': 'эй ай', 'pc': 'пи си', 'os': 'оу эс', 'ok': 'окей', 'vpn': 'вэ пэ эн', 'ip': 'ай пи', 'id': 'ай ди', 'vs': 'версус', 'gta': 'гта', 'rpg': 'эрпэгэ', 'ui': 'юай', 'ux': 'юикс', 'tv': 'тиви'}
 _UNIT_EXPANSIONS = {'gb': 'гигабайт', 'mb': 'мегабайт', 'kb': 'килобайт', 'km/h': 'километров в час', 'км/ч': 'километров в час', 'kg': 'килограмм', 'cm': 'сантиметров', 'mm': 'миллиметров'}
-_ARB = {'AA': 'а', 'AE': 'э', 'AH': 'а', 'AO': 'о', 'AW': 'ау', 'AY': 'ай', 'EH': 'э', 'ER': 'ер', 'EY': 'эй', 'IH': 'и', 'IY': 'и', 'OW': 'оу', 'OY': 'ой', 'UH': 'у', 'UW': 'у', 'B': 'б', 'CH': 'ч', 'D': 'д', 'DH': 'з', 'F': 'ф', 'G': 'г', 'HH': 'х', 'JH': 'дж', 'K': 'к', 'L': 'л', 'M': 'м', 'N': 'н', 'NG': 'нг', 'P': 'п', 'R': 'р', 'S': 'с', 'SH': 'ш', 'T': 'т', 'TH': 'т', 'V': 'в', 'W': 'в', 'Y': 'й', 'Z': 'з', 'ZH': 'ж'}
+# English words not in _EXCEPTIONS/_ABBREV are looked up in CMUdict (a
+# static ~126k-word pronouncing dictionary, see _g2p_word below) and their
+# ARPAbet pronunciation converted straight to Cyrillic — the previous
+# g2p_en+nltk pipeline did the same lookup but through nltk's POS tagger and
+# runtime data download, which is what actually caused the startup/offline
+# fragility (see CLAUDE.md's crash-sensitive-startup rule), not the concept
+# of dictionary-based G2P itself. CMUdict ships its data inside the pip
+# package (no download, no nltk).
+#
+# Reverse (Latin -> Cyrillic) transliteration below is the fallback for
+# whatever CMUdict doesn't have — in practice, far more often a romanized
+# Russian/Ukrainian proper noun (an artist name from Shazam/AudD, see
+# actions/song_id.py, a surname, a city) than a genuine unseen English word,
+# since CMUdict already covers the common-word case above it.
+_CYR_DIGRAPHS = (
+    ('shch', 'щ'), ('sch', 'щ'), ('yeah', 'е'),
+    ('zh', 'ж'), ('kh', 'х'), ('ts', 'ц'), ('ch', 'ч'), ('sh', 'ш'),
+    ('yu', 'ю'), ('ya', 'я'), ('yo', 'ё'), ('ye', 'е'), ('ph', 'ф'),
+    ('iy', 'ий'), ('yy', 'ый'), ('ii', 'ий'), ('ck', 'к'), ('qu', 'кв'),
+)
+_CYR_SINGLE = {
+    'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д', 'e': 'е', 'z': 'з',
+    'i': 'и', 'y': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о',
+    'p': 'п', 'r': 'р', 's': 'с', 't': 'т', 'u': 'у', 'f': 'ф', 'h': 'х',
+    'c': 'к', 'j': 'й', 'w': 'в', 'x': 'кс', 'q': 'к',
+}
+
+# English "silent e" / "magic e" rule: a single vowel followed by a single
+# consonant followed by a trailing e usually makes that vowel long
+# (site/like/time/name/game/note/live...). The plain per-letter loop above
+# reads these short and wrong ("live" -> "ливе" instead of "лайв") because it
+# has no notion of the trailing e modifying the preceding vowel — this is
+# the main source of genuine English words coming out garbled in a RU/UK
+# app whose fallback otherwise targets romanized Russian/Ukrainian proper
+# nouns (see the module comment above), which rarely have this shape.
+_MAGIC_E_VOWEL = {'a': 'эй', 'i': 'ай', 'o': 'оу', 'u': 'ю'}
+_MAGIC_E_PAT = re.compile(r'^([bcdfghjklmnpqrstvwxyz]*)([aiou])([bcdfghjklmnpqrstvwxyz])e$')
+# Common short words that fit the vCe shape but don't follow the magic-e
+# rule (irregular/unstressed vowel) — looked up before the regex fires.
+_MAGIC_E_EXCEPTIONS = {
+    'have': 'хэв', 'give': 'гив', 'live': 'лайв', 'love': 'лав',
+    'some': 'сам', 'come': 'кам', 'done': 'дан', 'gone': 'гон',
+    'none': 'нан', 'one': 'ван', 'move': 'мув', 'lose': 'луз',
+    'above': 'абав', 'glove': 'глав', 'use': 'юз', 'whose': 'хуз',
+}
+
+
+def _reverse_translit_cyrillic(word: str) -> str:
+    w = word.lower()
+    if w in _MAGIC_E_EXCEPTIONS:
+        result = _MAGIC_E_EXCEPTIONS[w]
+    else:
+        m = _MAGIC_E_PAT.match(w)
+        if m:
+            lead, vowel, cons = m.groups()
+            # "ce" is always soft /s/ in English (nice/price/ace), never
+            # the hard /k/ that bare 'c' maps to elsewhere (cat, disc).
+            cons_cyr = 'с' if cons == 'c' else _CYR_SINGLE.get(cons, cons)
+            result = ''.join(_CYR_SINGLE.get(c, c) for c in lead) + _MAGIC_E_VOWEL[vowel] + cons_cyr
+        else:
+            out = []
+            i = 0
+            n = len(w)
+            while i < n:
+                for pat, rep in _CYR_DIGRAPHS:
+                    if w.startswith(pat, i):
+                        out.append(rep)
+                        i += len(pat)
+                        break
+                else:
+                    out.append(_CYR_SINGLE.get(w[i], w[i]))
+                    i += 1
+            result = ''.join(out)
+    return result.capitalize() if word[:1].isupper() and not word.isupper() else result
+
+
+# ARPAbet (CMUdict's phoneme alphabet) -> Cyrillic. Vowel entries get a
+# leading '+' when they carry CMUdict's primary-stress digit (1) — Silero's
+# own symbol set supports '+' as an explicit stress mark (see _apply_stress
+# above), which is far more reliable than letting its accentor guess stress
+# on a synthetic pseudo-Russian spelling it's never seen.
+_ARPABET_TO_CYR = {
+    'AA': 'а', 'AE': 'э', 'AH': 'а', 'AO': 'о', 'AW': 'ау', 'AY': 'ай',
+    'EH': 'э', 'ER': 'ер', 'EY': 'эй', 'IH': 'и', 'IY': 'и', 'OW': 'оу',
+    'OY': 'ой', 'UH': 'у', 'UW': 'у', 'B': 'б', 'CH': 'ч', 'D': 'д',
+    'DH': 'з', 'F': 'ф', 'G': 'г', 'HH': 'х', 'JH': 'дж', 'K': 'к',
+    'L': 'л', 'M': 'м', 'N': 'н', 'NG': 'нг', 'P': 'п', 'R': 'р', 'S': 'с',
+    'SH': 'ш', 'T': 'т', 'TH': 'т', 'V': 'в', 'W': 'в', 'Y': 'й', 'Z': 'з',
+    'ZH': 'ж',
+}
+_ARPABET_PHONE_RE = re.compile(r'^([A-Z]+)([0-2])?$')
+_CYR_VOWELS = set('аеёиоуыэюя')
+_cmudict_data = None
+_cmudict_lock = threading.Lock()
+_cmudict_load_failed = False
+
+
+def _get_cmudict():
+    """Lazy-loaded, warmed up in the background by warmup_text_models() —
+    building the ~126k-word lookup table takes ~2s on first access, so a
+    caller reaching this cold (before warmup finishes) blocks on the lock
+    instead of re-triggering the load."""
+    global _cmudict_data, _cmudict_load_failed
+    if _cmudict_data is not None or _cmudict_load_failed:
+        return _cmudict_data
+    with _cmudict_lock:
+        if _cmudict_data is None and not _cmudict_load_failed:
+            try:
+                import cmudict
+                _cmudict_data = cmudict.dict()
+            except Exception as e:
+                print(f"TTS: cmudict unavailable ({e}), Latin words fall back to letter transliteration.", flush=True)
+                _cmudict_load_failed = True
+    return _cmudict_data
+
+
+def _g2p_word(word: str) -> str | None:
+    """CMUdict pronunciation -> Cyrillic, or None if the word isn't a known
+    English dictionary word (the caller then falls back to
+    _reverse_translit_cyrillic, which is what romanized proper nouns need)."""
+    d = _get_cmudict()
+    if not d:
+        return None
+    entries = d.get(word.lower())
+    if not entries:
+        return None
+    phones = entries[0]  # first pronunciation is CMUdict's most common one
+    out = []
+    stress_done = False
+    for p in phones:
+        m = _ARPABET_PHONE_RE.match(p)
+        if not m:
+            continue
+        cyr = _ARPABET_TO_CYR.get(m.group(1), '')
+        if m.group(2) == '1' and cyr and cyr[0] in _CYR_VOWELS and not stress_done:
+            cyr = '+' + cyr
+            stress_done = True
+        out.append(cyr)
+    result = ''.join(out)
+    if not result:
+        return None
+    return result.capitalize() if word[:1].isupper() and not word.isupper() else result
 _tts_models = {}  # Cache for models by language
 _tts_inference_lock = threading.Lock()  # Silero models are NOT thread-safe; serialise all save_wav calls
-_g2p, _g2p_lock = None, threading.Lock()
+
+# Silero's ssml_text path (see model.save_wav) supports <break time="500ms"/>
+# and <break strength="weak|medium|strong|x-strong"/> for pauses, plus
+# *word* focus/emphasis markers — used by the cloud QA answers
+# (features/qa/llm_processor.get_sys_prompt) to sound less flat. Only
+# self-closing <break/> is used (no <prosody>...</prosody> open/close pairs)
+# because _chunk_text can split a sentence anywhere .!? occurs, which would
+# tear an open/close tag pair across two independently-generated audio
+# chunks; a self-closing tag has no punctuation inside it, so it always
+# survives sentence splitting intact.
+_SSML_TAG_RE = re.compile(r'<[^<>]+>')
+_SSML_PLACEHOLDER_BASE = 0xE000  # Unicode Private Use Area — never matches \w or \d
+_SSML_PLACEHOLDER_MAX = 0xF8FF - _SSML_PLACEHOLDER_BASE  # PUA block size
+
+
+def _protect_ssml_tags(text: str) -> tuple[str, list[str]]:
+    """Swap <...> tags for single Private-Use-Area codepoints before the
+    RU/UA text-normalization regexes run — otherwise words like "break"/
+    "time" and numbers inside attribute values (e.g. 500ms) get
+    transliterated/spelled out like any other Latin word or number,
+    corrupting the tag. A single opaque codepoint (rather than a codepoint
+    pair wrapping a decimal index) avoids the digit itself being matched by
+    the standalone-number regex further down the pipeline."""
+    tags: list[str] = []
+    def _stash(m: re.Match) -> str:
+        if len(tags) > _SSML_PLACEHOLDER_MAX:
+            return m.group(0)  # bail out silently — pathologically many tags
+        tags.append(m.group(0))
+        return chr(_SSML_PLACEHOLDER_BASE + len(tags) - 1)
+    return _SSML_TAG_RE.sub(_stash, text), tags
+
+
+def _restore_ssml_tags(text: str, tags: list[str]) -> str:
+    if not tags:
+        return text
+    return ''.join(
+        tags[ord(c) - _SSML_PLACEHOLDER_BASE] if _SSML_PLACEHOLDER_BASE <= ord(c) < _SSML_PLACEHOLDER_BASE + len(tags) else c
+        for c in text
+    )
+
+
+def _needs_ssml_route(text: str) -> bool:
+    return '<' in text or '*' in text
+
+
+def strip_speech_markup(text: str) -> str:
+    """Drop <break .../> tags and *emphasis* asterisks for on-screen display
+    (AI answer window/HUD) — callers still pass the original, markup-intact
+    text to speak()/handler.speak() so TTS keeps the pauses/emphasis."""
+    if not text:
+        return text
+    return _SSML_TAG_RE.sub('', text).replace('*', '')
 _morph_ru = None
 _morph_uk = None
 _morph_lock = threading.Lock()
@@ -83,7 +275,7 @@ def invalidate_tts_speed_cache() -> None:
         _tts_speed_cache = None
 
 # --- Night volume cache ------------------------------------------------
-_night_vol_cache: tuple[int, int, int, int, float] | None = None
+_night_vol_cache: tuple[bool, int, int, int, int, float] | None = None
 _night_vol_lock = threading.Lock()
 
 def _invalidate_night_vol_cache() -> None:
@@ -91,7 +283,7 @@ def _invalidate_night_vol_cache() -> None:
     with _night_vol_lock:
         _night_vol_cache = None
 
-def _get_night_vol_settings() -> tuple[int, int, int, int, float]:
+def _get_night_vol_settings() -> tuple[bool, int, int, int, int, float]:
     global _night_vol_cache
     with _night_vol_lock:
         if _night_vol_cache is not None:
@@ -99,7 +291,8 @@ def _get_night_vol_settings() -> tuple[int, int, int, int, float]:
         try:
             from config_pack.config import get_settings_path as _gsp
             _s = json.load(open(_gsp(), encoding='utf-8'))
-            result: tuple[int, int, int, int, float] = (
+            result: tuple[bool, int, int, int, int, float] = (
+                bool(_s.get('tts_night_enabled', True)),
                 int(_s.get('tts_night_start', 22)),
                 int(_s.get('tts_night_start_min', 0)),
                 int(_s.get('tts_night_end', 7)),
@@ -107,7 +300,7 @@ def _get_night_vol_settings() -> tuple[int, int, int, int, float]:
                 float(_s.get('tts_night_volume', 0.7)),
             )
         except Exception:
-            result = (22, 0, 7, 0, 0.7)
+            result = (True, 22, 0, 7, 0, 0.7)
         _night_vol_cache = result
         return result
 
@@ -539,13 +732,14 @@ class TTSManager:
 
                         now_dt = datetime.now()
                         current_m = now_dt.hour * 60 + now_dt.minute
-                        _n_start_h, _n_start_m, _n_end_h, _n_end_m, _night_vol = _get_night_vol_settings()
+                        _n_enabled, _n_start_h, _n_start_m, _n_end_h, _n_end_m, _night_vol = _get_night_vol_settings()
                         start_m = _n_start_h * 60 + _n_start_m
                         end_m = _n_end_h * 60 + _n_end_m
                         if start_m <= end_m:
                             is_night = (start_m <= current_m < end_m)
                         else:
                             is_night = (current_m >= start_m or current_m < end_m)
+                        is_night = is_night and _n_enabled
                         vol = _MASTER_VOLUME * _night_vol if is_night else _MASTER_VOLUME
                         if is_night:
                             vol = max(vol, min(_MASTER_VOLUME, 0.2))
@@ -832,11 +1026,30 @@ def _ensure_model(lang: str = None) -> None:
             except OSError:
                 pass
         raise
+def _save_wav_native_speed(model, tmp_path: str, speaker: str, speed: float,
+                            want_native_speed: bool, *, text: str = None, ssml_text: str = None) -> None:
+    """save_wav wrapper sharing the speech_rate-support probe between the
+    plain-text and ssml_text call sites so it isn't duplicated per branch."""
+    global _silero_supports_speech_rate
+    kwargs = dict(speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
+    kwargs['text'] = text if ssml_text is None else None
+    kwargs['ssml_text'] = ssml_text
+    if want_native_speed:
+        try:
+            model.save_wav(speech_rate=speed, **kwargs)
+            _silero_supports_speech_rate = True
+            return
+        except TypeError:
+            _silero_supports_speech_rate = False
+    model.save_wav(**kwargs)
+
+
 def _generate_cached(text: str, _speed_pct: int = 100) -> str | None:
     global _silero_supports_speech_rate
     speed = _speed_pct / 100.0
     lang = _get_lang()
     speaker = _get_speaker(lang)
+    use_ssml = _needs_ssml_route(text)
     # Cache key includes speed so each rate has its own file
     cache_key = f'{text}|{speaker}|{lang}|{_SAMPLE_RATE}|{_speed_pct}'
     h = hashlib.md5(cache_key.encode('utf-8')).hexdigest()[:12]
@@ -848,15 +1061,19 @@ def _generate_cached(text: str, _speed_pct: int = 100) -> str | None:
             want_native_speed = abs(speed - 1.0) >= 0.02 and _silero_supports_speech_rate is not False
             import torch
             with _tts_inference_lock, torch.inference_mode():
-                if want_native_speed:
+                if use_ssml:
+                    ssml_payload = text if text.lstrip().startswith('<speak') else f'<speak>{text}</speak>'
                     try:
-                        model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path, speech_rate=speed)
-                        _silero_supports_speech_rate = True
-                    except TypeError:
-                        _silero_supports_speech_rate = False
-                        model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
+                        _save_wav_native_speed(model, tmp_path, speaker, speed, want_native_speed, ssml_text=ssml_payload)
+                    except Exception as ssml_err:
+                        # Cloud LLM produced invalid SSML (unbalanced/unknown
+                        # tag) — strip markup and speak it as plain text
+                        # rather than losing the whole reply.
+                        print(f"TTS-GENERATOR: SSML parse failed ({ssml_err}) for '{text[:30]}...', falling back to plain text.", flush=True)
+                        plain_text = _SSML_TAG_RE.sub('', text).replace('*', '')
+                        _save_wav_native_speed(model, tmp_path, speaker, speed, want_native_speed, text=plain_text)
                 else:
-                    model.save_wav(text=text, speaker=speaker, sample_rate=_SAMPLE_RATE, audio_path=tmp_path)
+                    _save_wav_native_speed(model, tmp_path, speaker, speed, want_native_speed, text=text)
             if os.path.exists(tmp_path):
                 os.replace(tmp_path, path)
         except Exception as e:
@@ -1166,6 +1383,7 @@ def normalize_for_tts(text: str) -> str:
         if cached is not None:
             _normalize_cache.move_to_end(key)
             return cached
+    text, _ssml_tags = _protect_ssml_tags(text)
     text = _apply_stress(text)
     # Convert phrase pause markers to sentence boundaries so Silero pauses naturally
     text = re.sub(r'\s+\.\.\.\s+', '. ', text)
@@ -1429,6 +1647,8 @@ def normalize_for_tts(text: str) -> str:
     except Exception:
         pass
 
+    if _ssml_tags:
+        text = _restore_ssml_tags(text, _ssml_tags)
     result = text.strip()
     with _normalize_cache_lock:
         _normalize_cache[key] = result
@@ -1453,23 +1673,14 @@ def _transliterate_word(m: re.Match) -> str:
             if pl in _EXCEPTIONS: result.append(_EXCEPTIONS[pl])
             elif p.isupper() and pl in _ABBREV: result.append(_ABBREV[pl])
             elif p.isupper() and len(p) <= 4: result.append(' '.join((_LETTER_NAMES.get(c, c) for c in p)))
-            else: result.append(_g2p_word(p))
+            else: result.append((p.islower() and _g2p_word(p)) or _reverse_translit_cyrillic(p))
         return ' '.join(result)
-    return _g2p_word(word)
-def _g2p_word(word: str) -> str:
-    global _g2p
-    if _g2p is None:
-        with _g2p_lock:
-            try:
-                from g2p_en import G2p
-                _g2p = G2p()
-            except Exception: _g2p = False
-    if not _g2p: return word
-    try:
-        phonemes = _g2p(word)
-        res = ''.join((_ARB.get(p.rstrip('012'), '') for p in phonemes))
-        return res if res else word
-    except Exception: return word
+    # CMUdict lookup only for lowercase words — a capitalized word is almost
+    # always a proper noun, and CMUdict's coverage of common Russian first
+    # names (Sasha, Vladimir, Nikita...) in their ANGLICIZED pronunciation
+    # would otherwise mis-read a Russian name that happens to also be a
+    # CMUdict entry.
+    return (word.islower() and _g2p_word(word)) or _reverse_translit_cyrillic(word)
 def speak(text: str, priority: int = 10, wait: bool = False) -> None:
     TTSManager().speak(text, priority, wait)
 
@@ -1503,9 +1714,9 @@ def invalidate_tts_caches() -> None:
     with _normalize_cache_lock:
         _normalize_cache.clear()
 def warmup_text_models() -> None:
-    """Pre-load pymorphy3/g2p_en dictionaries. Pure-Python, no GPU/audio
-    contact, so unlike warmup_tts() this is safe to call immediately at
-    process start instead of waiting for the audio engine to be ready."""
+    """Pre-load pymorphy3 dictionaries. Pure-Python, no GPU/audio contact,
+    so unlike warmup_tts() this is safe to call immediately at process start
+    instead of waiting for the audio engine to be ready."""
     global _text_warmup_started
     with _text_warmup_lock:
         if _text_warmup_started:
@@ -1523,18 +1734,18 @@ def warmup_text_models() -> None:
         except Exception as e:
             print(f"TTS-WARMUP: Morph preload failed: {e}")
 
-    def _warm_g2p():
-        # g2p_en.G2p() (used to transliterate Latin words like "Tesla"/"SpaceX"
-        # into Cyrillic phonetics) loads NLTK data on first use — another cold
-        # start that otherwise hits whichever response first mentions a Latin
-        # proper noun, regardless of how many sessions-old the model warmup is.
+    def _warm_cmudict():
+        # cmudict.dict() parses its bundled ~126k-word data file on first
+        # call (~2s) — same cold-start hazard as pymorphy3 above, warmed up
+        # in parallel rather than on the first sentence containing a Latin
+        # word.
         try:
-            _g2p_word('test')
+            _get_cmudict()
         except Exception as e:
-            print(f"TTS-WARMUP: G2p preload failed: {e}")
+            print(f"TTS-WARMUP: cmudict preload failed: {e}")
 
     threading.Thread(target=_warm_morph, daemon=True, name='TTS-WarmupMorph').start()
-    threading.Thread(target=_warm_g2p, daemon=True, name='TTS-WarmupG2p').start()
+    threading.Thread(target=_warm_cmudict, daemon=True, name='TTS-WarmupCmudict').start()
 def warmup_tts() -> None:
     global _warmup_started
     with _warmup_lock:
@@ -1560,9 +1771,9 @@ def warmup_tts() -> None:
             print(f"TTS-WARMUP: Failed: {e}")
 
     # _warm runs real Silero inference (model load + save_wav) — needs the big
-    # stack. Text-model warmup (pymorphy3/g2p_en) is pure-Python, no deep
-    # PyTorch recursion — started separately via warmup_text_models() so it
-    # doesn't have to wait for the audio engine to be ready.
+    # stack. Text-model warmup (pymorphy3) is pure-Python, no deep PyTorch
+    # recursion — started separately via warmup_text_models() so it doesn't
+    # have to wait for the audio engine to be ready.
     _spawn_with_big_stack(_warm, name='TTS-WarmupModel')
     warmup_text_models()
 def is_speaking() -> bool:

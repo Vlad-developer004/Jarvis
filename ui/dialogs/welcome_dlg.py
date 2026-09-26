@@ -139,8 +139,14 @@ def open_welcome(hud, force: bool = False) -> None:
     center_wrap.pack(fill='both', expand=True)
 
     # --- Address selection (first-run only) ---
-    _addr_section = tk.Frame(scroll_frame, bg=_BG)
-    _addr_section.pack(fill='x', padx=_px(24), pady=(_px(10), _px(4)))
+    # Boxed like the info cards below so it reads as its own important
+    # step instead of blending into the surrounding text (easy to miss
+    # on first scroll otherwise, especially for the address-mode choice).
+    _addr_card = tk.Frame(scroll_frame, bg=_BG, highlightbackground=_blend(_CYAN, 0.4),
+                          highlightthickness=1)
+    _addr_card.pack(fill='x', padx=_px(24), pady=(_px(10), _px(4)))
+    _addr_section = tk.Frame(_addr_card, bg=_blend(_CYAN, 0.05))
+    _addr_section.pack(fill='both', expand=True, padx=1, pady=1)
 
     is_uk_lang = (i18n.get_language() == 'uk')
     _addr_title = 'ХТО ВИ?' if is_uk_lang else 'КТО ВЫ?'
@@ -150,13 +156,13 @@ def open_welcome(hud, force: bool = False) -> None:
         'Выберите обращение — Джарвис будет обращаться к вам соответственно'
     )
 
-    tk.Label(_addr_section, text=_addr_title, bg=_BG, fg=_CYAN,
-             font=(F, _sf(13), 'bold'), anchor='w').pack(anchor='w')
-    tk.Label(_addr_section, text=_addr_subtitle, bg=_BG, fg=_DIM,
-             font=(F, _sf(10)), anchor='w').pack(anchor='w', pady=(_px(3), _px(10)))
+    tk.Label(_addr_section, text=_addr_title, bg=_blend(_CYAN, 0.05), fg=_CYAN,
+             font=(F, _sf(13), 'bold'), anchor='w').pack(anchor='w', padx=_px(14), pady=(_px(14), 0))
+    tk.Label(_addr_section, text=_addr_subtitle, bg=_blend(_CYAN, 0.05), fg=_DIM,
+             font=(F, _sf(10)), anchor='w').pack(anchor='w', padx=_px(14), pady=(_px(3), _px(10)))
 
-    _addr_row = tk.Frame(_addr_section, bg=_BG)
-    _addr_row.pack(fill='x')
+    _addr_row = tk.Frame(_addr_section, bg=_blend(_CYAN, 0.05))
+    _addr_row.pack(fill='x', padx=_px(14), pady=(0, _px(14)))
 
     import json as _json
     from config_pack.config import get_settings_path as _get_sp
@@ -194,17 +200,18 @@ def open_welcome(hud, force: bool = False) -> None:
         ('custom', '✏  Своё',  '✏  Своє', _AMBER),
     ]:
         _lbl_text = _lbl_uk if is_uk_lang else _lbl_ru
-        _btn_frame = tk.Frame(_addr_row, bg=_BG, highlightbackground=_blend(_col, 0.4),
-                              highlightthickness=1)
+        _btn_frame = tk.Frame(_addr_row, bg=_blend(_col, 0.06), width=_px(120), height=_px(38),
+                              highlightbackground=_blend(_col, 0.4), highlightthickness=1)
+        _btn_frame.pack_propagate(False)
         _btn_frame.pack(side='left', padx=(_px(0), _px(10)), pady=_px(2))
 
         _rb = ctk.CTkRadioButton(
             _btn_frame, text=_lbl_text,
             variable=_addr_mode_var, value=_val,
-            font=(F, _sf(11) + 6), fg_color=_col, hover_color=_blend(_col, 0.7),
+            font=(F, _sf(11)), fg_color=_col, hover_color=_blend(_col, 0.7),
             command=_on_addr_mode,
         )
-        _rb.pack(padx=_px(12), pady=_px(8))
+        _rb.place(relx=0.5, rely=0.5, anchor='center')
 
     _custom_frame = tk.Frame(_addr_section, bg=_BG)
     _cur_custom = _load_addr_settings().get('custom_address', '')
@@ -336,7 +343,7 @@ def open_welcome(hud, force: bool = False) -> None:
     tk.Frame(win, bg=_BRD, height=1).pack(fill='x', side='bottom')
     bot = tk.Frame(win, bg=_PANEL)
     bot.pack(fill='x', side='bottom')
-    
+
     def _open_settings():
         try:
             from ui.dialogs.settings_dlg import open_settings
@@ -350,44 +357,50 @@ def open_welcome(hud, force: bool = False) -> None:
         except Exception:
             pass
 
-    # Pack the buttons (side='right') before the footer label so they always
-    # get their required space; the label is packed last with fill='x' and
-    # wraplength so it shrinks/wraps into whatever room is left instead of
-    # pushing the buttons past the window edge on narrow/zoomed layouts.
-    # CTK widgets automatically scale by zoom_factor, so pass base logical pixels
-    ctk.CTkButton(bot, text=i18n.tr('welcome.settings_btn'), command=_open_settings,
-                  height=JStyle.H_LARGE, font=(F, 12),
-                  fg_color='transparent', hover_color=_blend(_DIM, 0.1),
-                  text_color=_DIM, border_color=_blend(_DIM, 0.3),
-                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(4), _px(14)), pady=_px(10))
-
-    ctk.CTkButton(bot, text=i18n.tr('welcome.deck_btn'), command=_open_deck,
-                  height=JStyle.H_LARGE, font=(F, 12),
-                  fg_color='transparent', hover_color=_blend(_MAG, 0.1),
-                  text_color=_MAG, border_color=_blend(_MAG, 0.3),
-                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(4), _px(4)), pady=_px(10))
-
-    ctk.CTkButton(bot, text=i18n.tr('dialog.continue'), command=win.destroy,
-                  height=JStyle.H_LARGE, font=(F, 13, 'bold'),
-                  fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.28),
-                  text_color=_CYAN, border_color=_blend(_CYAN, 0.65),
-                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(14), _px(4)), pady=_px(10))
-
+    # Footer text gets its own full-width row above the buttons, so it always
+    # wraps within the whole window width instead of being squeezed into
+    # whatever's left after three buttons on a narrow/zoomed window (that
+    # guesswork subtraction used to just clip the text against the buttons).
     footer_lbl = tk.Label(bot, text=i18n.tr('welcome.footer_text'),
                            bg=_PANEL, fg=_DIM, font=(F, _sf(10)), anchor='w', justify='left')
-    footer_lbl.pack(side='left', fill='x', expand=True, padx=_px(20), pady=_px(14))
+    footer_lbl.pack(side='top', fill='x', padx=_px(20), pady=(_px(10), _px(2)))
 
     def _on_footer_resize(e=None):
         try:
             w = bot.winfo_width()
             if w > 100:
-                footer_lbl.configure(wraplength=max(100, w - _px(420)))
+                footer_lbl.configure(wraplength=max(100, w - _px(40)))
         except Exception:
             pass
 
     bot.bind('<Configure>', lambda e: _on_footer_resize())
     win.after(200, _on_footer_resize)
 
-    win.grab_set()
+    btn_row = tk.Frame(bot, bg=_PANEL)
+    btn_row.pack(side='top', fill='x')
+
+    # CTK widgets automatically scale by zoom_factor, so pass base logical pixels
+    ctk.CTkButton(btn_row, text=i18n.tr('welcome.settings_btn'), command=_open_settings,
+                  height=JStyle.H_LARGE, font=(F, 12),
+                  fg_color='transparent', hover_color=_blend(_DIM, 0.1),
+                  text_color=_DIM, border_color=_blend(_DIM, 0.3),
+                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(4), _px(14)), pady=(_px(2), _px(12)))
+
+    ctk.CTkButton(btn_row, text=i18n.tr('welcome.deck_btn'), command=_open_deck,
+                  height=JStyle.H_LARGE, font=(F, 12),
+                  fg_color='transparent', hover_color=_blend(_MAG, 0.1),
+                  text_color=_MAG, border_color=_blend(_MAG, 0.3),
+                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(4), _px(4)), pady=(_px(2), _px(12)))
+
+    ctk.CTkButton(btn_row, text=i18n.tr('dialog.continue'), command=win.destroy,
+                  height=JStyle.H_LARGE, font=(F, 13, 'bold'),
+                  fg_color=_blend(_CYAN, 0.18), hover_color=_blend(_CYAN, 0.28),
+                  text_color=_CYAN, border_color=_blend(_CYAN, 0.65),
+                  border_width=2, corner_radius=JStyle.RAD_PANEL).pack(side='right', padx=(_px(14), _px(4)), pady=(_px(2), _px(12)))
+
+    # No grab_set(): this window has buttons that open other app windows
+    # (deck/settings) while staying open itself — a modal grab would trap
+    # all input on this window and make those other windows unreachable
+    # (even Alt-Tab can't raise them above it).
     win.focus_set()
 

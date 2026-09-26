@@ -514,7 +514,16 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         is_sub = key.startswith(('network_', 'sysinfo_'))
         sw_row = tk.Frame(c2, bg=_PANEL)
         sw_row.pack(fill='x', pady=4, padx=(hud._px(28) if is_sub else 0, 0))
-        
+
+        if is_sub:
+            # A tree-branch glyph so the indent reads as "this belongs to
+            # the module above" instead of looking like a random offset.
+            conn_f = tk.Frame(sw_row, bg=_PANEL, width=hud._px(18), height=hud._px(36))
+            conn_f.pack_propagate(False)
+            conn_f.pack(side='left')
+            tk.Label(conn_f, text='└', bg=_PANEL, fg=_blend(_MAG, 0.45),
+                     font=(hud._F, _sf(13))).place(relx=0.5, rely=0.45, anchor='center')
+
         icon_f = tk.Frame(sw_row, bg=_PANEL, width=hud._px(36), height=hud._px(36))
         icon_f.pack_propagate(False)
         icon_f.pack(side='left')

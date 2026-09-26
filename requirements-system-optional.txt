@@ -1,2 +1,6 @@
 winsdk==1.0.0b10
 winrt-Windows.Devices.Radios>=3.2.1
+# WASAPI loopback capture for "song_id" (song recognition) when asked to
+# listen to this PC's own audio output instead of the microphone. Optional —
+# song.py falls back to mic-only recording if this isn't installed.
+PyAudioWPatch>=0.2.12.post1

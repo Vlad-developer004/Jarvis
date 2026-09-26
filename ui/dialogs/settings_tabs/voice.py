@@ -956,8 +956,29 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
 
     # --- Night mode ---
     tk.Frame(c_tts, bg=_BRD, height=1).pack(fill='x', pady=(10, 0))
-    tk.Label(c_tts, text=i18n.tr('voice.tts_night_title'),
-             bg=_PANEL, fg=_CYAN, font=(hud._F, _sf(10), 'bold'), anchor='w').pack(fill='x', pady=(6, 0))
+    _night_title_row = tk.Frame(c_tts, bg=_PANEL)
+    _night_title_row.pack(fill='x', pady=(6, 0))
+    tk.Label(_night_title_row, text=i18n.tr('voice.tts_night_title'),
+             bg=_PANEL, fg=_CYAN, font=(hud._F, _sf(10), 'bold'), anchor='w').pack(side='left')
+
+    _night_enabled_var = tk.BooleanVar(value=bool(_s_json.get('tts_night_enabled', True)))
+
+    def _on_night_toggle():
+        sj = _load_settings_json()
+        sj['tts_night_enabled'] = _night_enabled_var.get()
+        _save_settings_json(sj)
+        try:
+            from core.speech.tts import invalidate_tts_caches
+            invalidate_tts_caches()
+        except Exception:
+            pass
+
+    ctk.CTkSwitch(
+        _night_title_row, text='', variable=_night_enabled_var,
+        command=_on_night_toggle, progress_color=_CYAN, fg_color=_BRD_I,
+        button_color=_WHITE, switch_width=36, switch_height=18,
+    ).pack(side='right')
+
     _hint(c_tts, i18n.tr('voice.tts_night_hint'))
 
     _night_row = tk.Frame(c_tts, bg=_PANEL)

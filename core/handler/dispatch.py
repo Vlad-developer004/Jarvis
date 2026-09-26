@@ -261,6 +261,9 @@ def _w_social(h, cmd, t, a):
 def _w_reactor(h, cmd, t, a):
     from .commands.reactor import handle_reactor
     handle_reactor(h, cmd, t, a)
+def _w_song(h, cmd, t, a):
+    from .commands.song import handle_song
+    handle_song(h, cmd, t)
 
 # ---------------------------------------------------------------------------
 # Dispatch tables. Exact-match commands are looked up in _EXACT (O(1)); only
@@ -362,6 +365,8 @@ _reg_exact(['show_help'], _handle_show_help)
 _reg_exact(['show_hud', 'open_settings', 'open_keybinds', 'open_extensions', 'open_perf', 'open_deck'], _handle_hud_group)
 
 _reg_prefix('reactor_', _w_reactor)
+
+_reg_exact(['song_id'], _w_song)
 
 class CommandHandler(BaseHandler):
     def __init__(self, pa, rate, chunk, asr):

@@ -255,9 +255,21 @@ class JarvisHUD:
         self.root.bind_all('<Control-0>', lambda e: self._zoom_reset())
 
     def _auto_detect_zoom(self) -> float:
+        # Read the Windows DPI scaling percentage directly instead of
+        # guessing it from screen resolution. Resolution and scale % are
+        # independent (a 4K screen can be set to 100%, 150% or 200% in
+        # Windows) — the old width-based guess assumed 4K == 200% and
+        # produced oversized UI whenever that wasn't actually the case,
+        # while a correctly-scaled 4K@200% setup matched by luck.
         try:
             import ctypes
-            # Get physical screen width directly from Windows API
+            dpi = ctypes.windll.user32.GetDpiForSystem()  # 96 = 100%
+            if dpi > 0:
+                return round(max(0.6, min(2.5, dpi / 96.0)), 2)
+        except Exception:
+            pass
+        try:
+            import ctypes
             sw = ctypes.windll.user32.GetSystemMetrics(0)
             if sw >= 3800: return 2.0   # 4K
             if sw >= 2500: return 1.5   # 2K / QHD

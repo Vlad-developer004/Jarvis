@@ -7,6 +7,7 @@ import win32gui
 import ctypes
 import pyaudio
 from core.audio_utils import open_input_stream, rms_int16
+from core import audio_ring
 from core.system import app_state
 from core.voice_debug_log import voice_event
 from core.logging_setup import get_logger as _get_logger
@@ -31,6 +32,7 @@ class JarvisEngine:
         self.game_silence_frames = max(1, GAME_SILENCE_MS // CHUNK_MS)
         self.transcribe_queue = _queue_mod.Queue(maxsize=64)
         self.stream = open_input_stream(self.pa, RATE, self.chunk)
+        audio_ring.configure(RATE)
         self.speaking = False
         self.had_voice = False
         self.silence_cnt = 0
@@ -154,6 +156,12 @@ class JarvisEngine:
                     arr = _np.frombuffer(data, dtype=_np.int16)
                     arr = _np.clip(arr * gain, -32768, 32767).astype(_np.int16)
                     data = arr.tobytes()
+                # Pushed post-gain: song_id.py's mic source reads from this
+                # buffer, and should hear the same calibrated-loudness audio
+                # the rest of the pipeline (VAD/STT) does, not the raw
+                # pre-gain signal — on a mic that needs a large calibrated
+                # gain to be usable at all, the raw signal is close to silent.
+                audio_ring.push(data)
                 rms = rms_int16(data)
                 if (
                     app_state.jarvis_active

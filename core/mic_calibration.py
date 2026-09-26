@@ -79,6 +79,19 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
             pass
     def _wait():
         _wait_tts_done(extra_sec=0.4)
+    def _beep():
+        # An explicit "go" cue instead of relying on the user's own sense of
+        # when the spoken prompt has fully ended — people naturally start
+        # talking the instant they've heard enough of the phrase to know
+        # what's being asked, which is *before* TTS playback (and the
+        # measurement window that follows it) actually finishes, clipping
+        # the start of what gets recorded.
+        try:
+            import winsound
+            winsound.Beep(950, 150)
+        except Exception:
+            pass
+        time.sleep(0.15)  # let the beep's tail clear the mic before measuring
     import random as _rnd
     _ok_phrases = [
         'Принято!',
@@ -97,6 +110,7 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
         for attempt in range(1, max_attempts + 1):
             _speak(prompt if attempt == 1 else f'Попытка {attempt}.')
             _wait()
+            _beep()
             frames_needed = int(_LISTEN_WINDOW_SEC / (chunk_ms / 1000.0))
             rms_vals: list[float] = []
             for _ in range(frames_needed):
@@ -133,9 +147,9 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
     else:
         noise_floor = float(MIN_THRESH)
     speech_min = max(float(MIN_THRESH), noise_floor * 2.5)
-    _speak('Отлично. Теперь скажите вслух три раза: «проверка микрофона» — говорите уверенно, в полный голос.')
+    _speak('Отлично. Сейчас три раза прозвучит сигнал — после каждого сигнала скажите вслух «проверка микрофона», уверенно, в полный голос.')
     _wait()
-    _loud_labels = ['Первый раз — говорите.', 'Второй раз.', 'И третий раз.']
+    _loud_labels = ['Приготовьтесь — первый раз.', 'Второй раз.', 'И третий раз.']
     loud_peaks: list[float] = []
     for i in range(3):
         peak = _capture_peak(_loud_labels[i], speech_min)
@@ -146,9 +160,9 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
                          noise_floor=noise_floor, sample_rate=rate)
             return (int(speech_min * 2), MIC_GAIN)
         loud_peaks.append(peak)
-    _speak('Хорошо, почти готово. Теперь скажите то же самое вполголоса или чуть отодвинувшись от микрофона — два раза.')
+    _speak('Хорошо, почти готово. После сигнала скажите то же самое вполголоса или чуть отодвинувшись от микрофона — два раза.')
     _wait()
-    _quiet_labels = ['Первый раз — тихо.', 'Ещё раз, негромко.']
+    _quiet_labels = ['Приготовьтесь — тихо.', 'Ещё раз, негромко.']
     quiet_peaks: list[float] = []
     for i in range(2):
         peak = _capture_peak(_quiet_labels[i], noise_floor * 2.0)

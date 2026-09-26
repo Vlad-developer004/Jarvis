@@ -4,6 +4,7 @@ import threading
 import time
 import urllib.request
 import urllib.parse
+import webbrowser
 import json
 import hashlib
 import tempfile
@@ -257,10 +258,31 @@ class HUD_AI_Window(tk.Toplevel):
             return
         self.text_box.configure(state="normal")
         self.text_box.delete("1.0", tk.END)
-        self.text_box.insert(tk.END, text)
+        self._insert_with_links(text)
         self.text_box.configure(state="disabled")
         self.text_box.see("1.0")
         self.adjust_height()
+
+    def _insert_with_links(self, text):
+        """Inserts text into text_box, turning any http(s) URL into a
+        clickable, underlined link (opened via webbrowser) instead of dead
+        plain text — used by song_id.py's result card (Spotify/Apple
+        Music/YouTube links), harmless for callers like NASA's explanation
+        text that don't contain any URLs at all."""
+        import re
+        url_re = re.compile(r'https?://\S+')
+        pos = 0
+        for i, m in enumerate(url_re.finditer(text)):
+            self.text_box.insert(tk.END, text[pos:m.start()])
+            url = m.group(0)
+            tag = f'link_{i}'
+            self.text_box.insert(tk.END, url, (tag,))
+            self.text_box.tag_configure(tag, foreground=_BORDER_COLOR(), underline=True)
+            self.text_box.tag_bind(tag, '<Enter>', lambda e: self.text_box.configure(cursor='hand2'))
+            self.text_box.tag_bind(tag, '<Leave>', lambda e: self.text_box.configure(cursor=''))
+            self.text_box.tag_bind(tag, '<Button-1>', lambda e, u=url: webbrowser.open(u))
+            pos = m.end()
+        self.text_box.insert(tk.END, text[pos:])
 
     def _stop_video(self):
         """Invalidate any in-flight _next_video_frame() after()-loop and
