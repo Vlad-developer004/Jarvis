@@ -148,8 +148,14 @@ def _empty_trash(handler, cmd, text_lower):
 def _create_folder(handler, cmd, text_lower):
     from core.handler.dispatch import parse_folder_name
     from ui.dialogs.name_dlg import ask_text
-    name = parse_folder_name(text_lower, 'create').strip()
-    base_path = get_context_path(handler)
+    from actions.filesystem import resolve_folder_for_hint
+    name, folder_hint = parse_folder_name(text_lower, 'create')
+    name = name.strip()
+    ctx_path = get_context_path(handler)
+    base_path, folder_warn = resolve_folder_for_hint(folder_hint, ctx_path)
+    base_path = str(base_path)
+    if folder_warn:
+        handler.speak(folder_warn)
     if not name:
         res = ask_text(
             title='ПАПКА — J.A.R.V.I.S.',
@@ -181,8 +187,14 @@ def _create_folder(handler, cmd, text_lower):
 def _delete_folder(handler, cmd, text_lower):
     from core.handler.dispatch import parse_folder_name
     from ui.dialogs.name_dlg import ask_text
-    name = parse_folder_name(text_lower, 'delete').strip()
-    base_path = get_context_path(handler)
+    from actions.filesystem import resolve_folder_for_hint
+    name, folder_hint = parse_folder_name(text_lower, 'delete')
+    name = name.strip()
+    ctx_path = get_context_path(handler)
+    base_path, folder_warn = resolve_folder_for_hint(folder_hint, ctx_path)
+    base_path = str(base_path)
+    if folder_warn:
+        handler.speak(folder_warn)
     if not name:
         res = ask_text(
             title='УДАЛЕНИЕ — J.A.R.V.I.S.',
@@ -441,6 +453,12 @@ def _find_file(handler, cmd, text_lower):
         if query.startswith(kw):
             query = query[len(kw):].strip()
             break
+    # Drop a leading descriptor ("файл фамилия Манхольт" -> "Манхольт") that
+    # would otherwise pollute the fuzzy match against the actual filename.
+    query = re.sub(
+        r'^(файл|документ)?\s*(по\s+)?(фамили[ияей]+|имени|название[мю]?)\s+',
+        '', query,
+    ).strip()
     if not query:
         handler.speak(spk("files.ask_filename"))
         handler._set_interactive('find_file_ask', {'file_type': file_type}, timeout=20.0)

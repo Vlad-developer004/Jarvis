@@ -12,6 +12,7 @@ from ..hud_constants import (
 )
 from ..hud_utils import _blend, _set_dark_title_bar, _apply_window_icon
 from config_pack.config import get_settings_path
+from core.system.version import APP_VERSION
 
 # Same file the rest of the app reads/writes (%APPDATA%\Jarvis\jarvis_settings.json).
 # This used to be a project-relative 'data/jarvis_settings.json' — a rebuild/
@@ -122,7 +123,7 @@ def open_welcome(hud, force: bool = False) -> None:
     badge = tk.Frame(hdr, bg=_blend(_CYAN, 0.08),
                      highlightbackground=_blend(_CYAN, 0.3), highlightthickness=1)
     badge.pack(side='right', anchor='n', padx=(0, _px(4)), pady=_px(4))
-    tk.Label(badge, text=' v 1.5—HUD ', bg=_blend(_CYAN, 0.08), fg=_CYAN,
+    tk.Label(badge, text=f' v {APP_VERSION}—HUD ', bg=_blend(_CYAN, 0.08), fg=_CYAN,
              font=(F, _sf(9), 'bold')).pack(padx=_px(10), pady=_px(6))
 
     tk.Frame(win, bg=_BRD, height=1).pack(fill='x', padx=_px(20))

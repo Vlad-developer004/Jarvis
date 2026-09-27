@@ -31,17 +31,79 @@ def _onnx_threads() -> int:
     if cpus >= 12:
         return 3
     return max(1, min(2, cpus))
+_STT_RETRY_SECONDS = 120  # background retry interval while an STT model is missing
+
+def _notify_model_download(active: bool, failed: bool = False) -> None:
+    """Best-effort HUD notice around an STT model download — same rationale
+    as core/speech/tts.py's helper of the same name: these models aren't
+    bundled in the installer, so a silent download failure would leave
+    Jarvis simply not responding to voice with no visible cause. Never
+    raises: must not affect ASR loading if the HUD isn't up yet."""
+    try:
+        from ui import hud as _hud
+        from ui.hud_constants import _AMBER, _RED
+        if failed:
+            _hud.notify('stt_model',
+                         f'Не удалось скачать модель распознавания речи — повторю через {_STT_RETRY_SECONDS // 60} мин',
+                         _RED, duration=6000)
+        elif active:
+            _hud.notify('stt_model', 'Скачиваю модель распознавания речи...', _AMBER)
+        else:
+            _hud.clear_notify('stt_model')
+    except Exception:
+        pass
+
+def _schedule_retry(instance, retry_fn, *, pending_attr: str = '_retry_pending',
+                     seconds: float = _STT_RETRY_SECONDS) -> None:
+    """Actually makes good on _notify_model_download's 'повторю через N мин'
+    instead of leaving it to the user's next spoken command / next audio
+    chunk — that would otherwise re-hit the same multi-second-to-minutes
+    download timeout inline, on whatever thread called it. One retry chain
+    per (instance, pending_attr) at a time — pending_attr is distinct per
+    failure kind (STT model vs VAD model) so they don't block each other on
+    the same ASR instance — set/read under whichever lock the caller already
+    holds. retry_fn reschedules again on repeat failure via the same
+    except-block path, so this keeps retrying at a fixed interval for as
+    long as the app runs."""
+    if getattr(instance, pending_attr, False):
+        return
+    setattr(instance, pending_attr, True)
+    def _retry():
+        setattr(instance, pending_attr, False)
+        try:
+            retry_fn()
+        except Exception:
+            pass
+    t = threading.Timer(seconds, _retry)
+    t.daemon = True
+    t.start()
 def _stream_download(url: str, filepath: str, timeout: int = 60) -> None:
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        content_length = response.getheader('Content-Length')
-        expected_size = int(content_length) if content_length else None
-        with open(filepath, 'wb') as out_file:
-            shutil.copyfileobj(response, out_file, length=1024 * 1024)
-        if expected_size is not None:
-            actual_size = os.path.getsize(filepath)
-            if actual_size < expected_size:
-                raise OSError(f"Download incomplete: got {actual_size} bytes, expected {expected_size} bytes")
+    """Raises on any failure — but critically also never leaves a partial/
+    truncated file behind at `filepath`. A caller that only checks
+    os.path.exists(filepath) to decide whether a download is needed (every
+    caller here does) would otherwise treat a half-written file as "already
+    downloaded" forever, and hand a corrupt model file straight to
+    sherpa_onnx/vosk — which, like llama.cpp elsewhere in this codebase, can
+    hard-crash the process natively on a malformed model instead of raising
+    a catchable Python exception."""
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            content_length = response.getheader('Content-Length')
+            expected_size = int(content_length) if content_length else None
+            with open(filepath, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file, length=1024 * 1024)
+            if expected_size is not None:
+                actual_size = os.path.getsize(filepath)
+                if actual_size < expected_size:
+                    raise OSError(f"Download incomplete: got {actual_size} bytes, expected {expected_size} bytes")
+    except Exception:
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
+        raise
 class _SileroVadMixin:
     """Shared Silero VAD (via sherpa-onnx) for any ASR engine.
 
@@ -65,8 +127,26 @@ class _SileroVadMixin:
         if self.vad is not None: return
         with self._vad_lock:
             if self.vad is not None: return
+            # vad_check() calls this on every audio chunk where rms crosses
+            # a low threshold — essentially continuously whenever there's any
+            # ambient sound. Before this guard, a failed download got
+            # retried right here, synchronously, on the live audio-capture
+            # thread, with _stream_download's up-to-90s timeout — repeatedly,
+            # on every qualifying chunk. That stalls stream.read() for the
+            # whole engine, which looks exactly like "says the wake word,
+            # Jarvis never responds": the mic loop is stuck retrying a dead
+            # download instead of reading audio. Once a download has failed,
+            # back off to the scheduled background retry below instead.
+            if getattr(self, '_vad_retry_pending', False):
+                return
             import sherpa_onnx
-            self._ensure_vad_downloaded()
+            try:
+                self._ensure_vad_downloaded()
+            except Exception as e:
+                _log.error('VAD model download failed: %s', e)
+                _notify_model_download(active=False, failed=True)
+                _schedule_retry(self, self._lazy_load_vad, pending_attr='_vad_retry_pending')
+                return
             config = sherpa_onnx.VadModelConfig()
             config.silero_vad.model = os.path.join(self.vad_dir, 'silero_vad.onnx')
             config.silero_vad.min_silence_duration = getattr(self, '_vad_min_silence', 0.25)
@@ -74,7 +154,29 @@ class _SileroVadMixin:
             config.sample_rate = self.rate
             config.num_threads = _onnx_threads()
             _log.info('Loading VAD from %s', config.silero_vad.model)
-            self.vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=30)
+            try:
+                self.vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=30)
+            except Exception as e:
+                _log.critical('CRITICAL: failed to construct VAD from %s: %s', config.silero_vad.model, e, exc_info=True)
+                # A bad (but present) file won't be re-downloaded by the
+                # os.path.exists() check in _ensure_vad_downloaded — remove
+                # it so the scheduled retry actually re-fetches instead of
+                # hitting this same construction failure forever.
+                try:
+                    os.remove(config.silero_vad.model)
+                except OSError:
+                    pass
+                _schedule_retry(self, self._lazy_load_vad, pending_attr='_vad_retry_pending')
+                raise
+
+    def _warmup_vad_async(self) -> None:
+        """Proactively load VAD in the background at startup, same reasoning
+        as STT/TTS warmup: without this, the first load attempt happens
+        inside vad_check() on the live audio-capture thread on whichever
+        chunk first crosses the loudness gate — fine on the (normal) fast
+        path, but see _lazy_load_vad's docstring for why a slow/failed first
+        attempt there is worse than elsewhere."""
+        threading.Thread(target=self._lazy_load_vad, daemon=True, name='VadWarmup').start()
 
     def set_vad_mode(self, game_mode: bool):
         with self._vad_lock:
@@ -164,11 +266,31 @@ class ASR(_SileroVadMixin):
         models_base = _get_base_models_path()
         self.stt_dir = models_base / 'sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16'
         os.makedirs(str(self.stt_dir), exist_ok=True)
-        for fname in ['model.int8.onnx', 'tokens.txt']:
+        needed = ['model.int8.onnx', 'tokens.txt']
+        missing = [f for f in needed if not os.path.exists(os.path.join(self.stt_dir, f))]
+        if missing:
+            _notify_model_download(active=True)
+        for fname in needed:
             if not os.path.exists(os.path.join(self.stt_dir, fname)):
                 url = f'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16/resolve/main/{fname}'
                 self._download_and_extract(url, self.stt_dir, fname)
-        self._ensure_vad_downloaded()
+        if missing:
+            # _download_and_extract swallows its own exceptions (just deletes
+            # the partial file) — re-check on disk rather than relying on it
+            # to report failure.
+            still_missing = [f for f in needed if not os.path.exists(os.path.join(self.stt_dir, f))]
+            _notify_model_download(active=False, failed=bool(still_missing))
+        try:
+            self._ensure_vad_downloaded()
+        except Exception as e:
+            # A VAD hiccup must not take STT down with it — this is just an
+            # opportunistic pre-fetch; vad_check()'s own _lazy_load_vad()
+            # independently retries (with its own cooldown/notify) the next
+            # time it's actually needed. Previously this raised unguarded and
+            # aborted _lazy_load_stt() before it ever reached the STT model
+            # construction below, even though the STT files themselves had
+            # already downloaded fine in the loop above.
+            _log.warning('VAD pre-fetch failed (STT unaffected, will retry lazily): %s', e)
     def _lazy_load_stt(self):
         if self.recognizer is not None: return
         with self._reload_lock:
@@ -188,6 +310,7 @@ class ASR(_SileroVadMixin):
                 _log.info('STT loaded successfully')
             except Exception as e:
                 _log.critical('CRITICAL: failed to load STT: %s', e, exc_info=True)
+                _schedule_retry(self, self._lazy_load_stt)
                 raise
     def reload_with_hotwords(self, words: list[str], score: float=2.0):
         # No-op: the NeMo CTC model used here has no hotwords/context-biasing
@@ -200,6 +323,7 @@ class ASR(_SileroVadMixin):
         pass
     def warmup_stt(self):
         threading.Thread(target=self._lazy_load_stt, daemon=True).start()
+        self._warmup_vad_async()
     def reset(self):
         self._audio_buffer.clear()
         self._vad_reset()
@@ -272,6 +396,7 @@ class ASR_Vosk(_SileroVadMixin):
         m_dir = _get_base_models_path() / model_cfg['dir']
         if not m_dir.exists():
             _log.info("Downloading Vosk model '%s'...", model_cfg['dir'])
+            _notify_model_download(active=True)
             models_parent = m_dir.parent
             models_parent.mkdir(exist_ok=True)
             m_zip = models_parent / f"{model_cfg['dir']}.zip"
@@ -290,15 +415,20 @@ class ASR_Vosk(_SileroVadMixin):
                     z.extractall(str(dest_root))
                 m_zip.unlink(missing_ok=True)
                 _log.info('Vosk model download complete.')
+                _notify_model_download(active=False)
             except Exception as e:
                 _log.critical('CRITICAL ERROR downloading Vosk model: %s', e, exc_info=True)
                 if m_zip.exists():
                     m_zip.unlink()
+                _notify_model_download(active=False, failed=True)
+                _schedule_retry(self, self._lazy_load)
+                return
         try:
             self._model = vosk.Model(str(m_dir))
             _log.info("Vosk model '%s' ready.", self._lang)
         except Exception as e:
             _log.error('Failed to load Vosk model %s: %s', m_dir, e, exc_info=True)
+            _schedule_retry(self, self._lazy_load)
             return
         if self._hotwords:
             self._rec = vosk.KaldiRecognizer(self._model, self.rate, json.dumps(self._hotwords + ["[unk]"]))
@@ -316,6 +446,7 @@ class ASR_Vosk(_SileroVadMixin):
         def _warm():
             with self._lock: self._lazy_load()
         threading.Thread(target=_warm, daemon=True).start()
+        self._warmup_vad_async()
     def reload_with_hotwords(self, words: list[str], score: float = 2.0) -> None:  # score unused but kept for interface compat
         with self._lock:
             self._hotwords = words

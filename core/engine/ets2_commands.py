@@ -151,6 +151,18 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
             brake = 'ручник поднят' if data.get('parkBrake') else 'ручник снят'
             _speak(f'Статус тягача: {engine}, {brake}. Запас хода {f_range} километров.')
         else: _speak('Телеметрия недоступна.')
+    elif action == 'speed_status':
+        if data:
+            speed_kmh = int(round(float(data.get('speed', 0)) * 3.6))
+            limit_kmh = int(round(float(data.get('speedLimit', 0)) * 3.6))
+            if limit_kmh > 0:
+                if speed_kmh > limit_kmh:
+                    _speak(f'Скорость {speed_kmh}, лимит {limit_kmh}. Превышение на {speed_kmh - limit_kmh}.')
+                else:
+                    _speak(f'Скорость {speed_kmh}, лимит {limit_kmh}. В пределах нормы.')
+            else:
+                _speak(f'Скорость {speed_kmh}. Ограничение на этом участке не определено.')
+        else: _speak('Телеметрия недоступна.')
     elif action == 'route_status':
         if data:
             dist = float(data.get('routeDistance', 0))

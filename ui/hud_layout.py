@@ -7,6 +7,7 @@ from .hud_utils import _make_sun_icon
 from core.extensions import ExtensionManager
 from core.system import autostart_enabled, module_enabled
 from core import i18n
+from core.system.version import APP_VERSION
 
 def tr(key: str) -> str:
     """Локализация текстов HUD"""
@@ -18,7 +19,7 @@ def build_header(hud) -> None:
     hdr = tk.Frame(hud.root, bg=_BG, height=hud._px(40))
     hdr.pack(fill='x')
     hdr.pack_propagate(False)
-    hud._hdr_os_lbl = tk.Label(hdr, text='  JARVIS OS  v1.5', bg=_BG, fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
+    hud._hdr_os_lbl = tk.Label(hdr, text=f'  JARVIS OS  v{APP_VERSION}', bg=_BG, fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
     hud._hdr_os_lbl.pack(side='left', padx=8)
     hud._hdr_time = tk.Label(hdr, text='', bg=_BG, fg=_TEXT, font=(hud._F, _hdr_sm, 'bold'))
     hud._hdr_time.pack(side='right', padx=12)
@@ -192,7 +193,7 @@ def build_left(hud) -> None:
                 open_videos_manager(h)
             hud._videos_btn_frame = make_hud_btn(hud, p, i18n.tr('hud.saved_videos'), '▶', _CYAN, _open_videos, icon_fs=20)
             
-    if module_enabled('song_id'):
+    if module_enabled('song_id') and hud._widget_vis.get('songs_btn', True):
         make_hud_btn(hud, p, i18n.tr('hud.recognized_songs'), '♪', _MAG, hud._open_songs, icon_fs=22)
     _as_on = autostart_enabled()
     hud._autostart_btn = make_hud_btn(hud, p, i18n.tr('hud.system_autostart'), '◉' if _as_on else '○', _GREEN if _as_on else _DIM, hud._toggle_autostart, icon_fs=24)

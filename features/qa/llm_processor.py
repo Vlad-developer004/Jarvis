@@ -142,21 +142,15 @@ def get_sys_prompt() -> str:
         lang = 'ru'
     lang_name = 'украинский' if lang == 'uk' else 'русский'
     return (
-        f'КРИТИЧЕСКОЕ ПРАВИЛО: Начни свой ответ строго со строки вида: '
-        f'[Subject: <главный субъект/объект вопроса в именительном падеже на языке {lang_name}>], '
-        f'после чего сделай перенос строки и пиши сам ответ. '
-        f'Пример начала ответа:\n[Subject: Тони Старк]\nТони Старк — это...\n\n'
-        f'Ты — J.A.R.V.I.S., лаконичный и профессиональный ИИ-ассистент, созданный Тони Старком. '
-        f'Обязательно отвечай на языке: {lang_name}. '
-        f'Отвечай максимально кратко (1-3 предложения), строго по существу, '
-        f'в стиле Тони Старка: вежливо, остроумно, но уверенно. '
-        f'Если вопрос пользователя не связан с предыдущей темой разговора, отвечай на новый вопрос, '
-        f'игнорируя предыдущий контекст. '
-        f'Твой ответ озвучивается голосом (TTS), поэтому можешь изредка использовать разметку для '
-        f'более живого звучания: *слово* — выделить голосом одно ключевое слово в предложении '
-        f'(не более одного на предложение), <break time="300ms"/> — короткая драматическая пауза '
-        f'(не более одной на весь ответ). Используй это только когда это действительно уместно, '
-        f'не в каждом ответе. Не используй никакую другую разметку (markdown, теги, списки).'
+        f'Ты — J.A.R.V.I.S., лаконичный и остроумный ИИ-ассистент Тони Старка. '
+        f'Отвечай на языке: {lang_name}, кратко (1-3 предложения), по существу, вежливо и уверенно. '
+        f'Если новый вопрос не связан с прошлой темой разговора — игнорируй прошлый контекст.\n'
+        f'Формат ответа: первая строка "[Subject: <тема ВОПРОСА НИЖЕ, именительный падеж, '
+        f'{lang_name}>]", затем с новой строки — сам ответ (тема в этом шаблоне условная, '
+        f'не копируй её, бери тему из реального вопроса).\n'
+        f'Для TTS изредка можно: *слово* — выделить одно слово в предложении (не больше '
+        f'одного на предложение), <break time="300ms"/> — одна пауза на весь ответ. '
+        f'Больше никакой разметки (markdown, теги, списки).'
     )
 
 
@@ -208,7 +202,9 @@ def wrap_llm_stream(generator, on_subject_found):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _build_messages(topic: str, question: str, last_ans: str) -> list[dict]:
+def _build_messages(topic: str, question: str, last_ans: str, history: list[dict] = None) -> list[dict]:
+    if history:
+        return history + [{'role': 'user', 'content': question}]
     if topic and last_ans:
         return [
             {'role': 'user', 'content': topic},
@@ -219,19 +215,94 @@ def _build_messages(topic: str, question: str, last_ans: str) -> list[dict]:
     return [{'role': 'user', 'content': prompt}]
 
 
+# ---------------------------------------------------------------------------
+# Follow-up conversation history — real multi-turn memory for the qa_search /
+# qa_clarify flow (core/handler/interactive.py's _state_qa_clarify), instead
+# of the single-previous-turn topic/last_ans reconstruction above (kept only
+# as a fallback for callers that don't pass history). Bounded to 85% of the
+# current model's own context window rather than a fixed turn count, since
+# that window ranges from ~4k (a small local model) to 100k+ (cloud) — a
+# fixed cap would either waste most of a big model's window or overflow a
+# small one.
+# ---------------------------------------------------------------------------
+_DEFAULT_CTX_TOKENS = 8192  # unknown model (not in the cached catalog) — conservative
+_HISTORY_BUDGET_FRACTION = 0.85
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, len(text or '') // 4)  # rough chars/4 heuristic, no tokenizer dependency
+
+
+def _parse_ctx_tokens(ctx_str: str) -> int | None:
+    """Reverses model_fetcher._fmt_ctx's '131.1k'/'2M'/'4096' formatting back
+    to an integer token count."""
+    if not ctx_str:
+        return None
+    s = ctx_str.strip().lower()
+    try:
+        if s.endswith('m'):
+            return int(float(s[:-1]) * 1_000_000)
+        if s.endswith('k'):
+            return int(float(s[:-1]) * 1_000)
+        return int(s)
+    except ValueError:
+        return None
+
+
+def _get_model_ctx_tokens(provider: str, model: str) -> int:
+    try:
+        from features.qa.model_fetcher import _cache_path, _load_json
+        cache = _load_json(_cache_path())
+        for m in cache.get(provider, {}).get('models', []):
+            if m.get('id') == model:
+                return _parse_ctx_tokens(m.get('ctx', '')) or _DEFAULT_CTX_TOKENS
+    except Exception:
+        pass
+    return _DEFAULT_CTX_TOKENS
+
+
+def _trim_history(history: list[dict], provider: str, model: str, question: str,
+                   sys_prompt: str, reply_budget: int) -> list[dict]:
+    """Drops the oldest (user, assistant) turns until the estimated prompt
+    size fits _HISTORY_BUDGET_FRACTION of the model's context window, leaving
+    room for the new question and the reply. Always keeps at least the most
+    recent turn, even if that alone doesn't fit — better than answering with
+    zero memory of a conversation that's clearly still going."""
+    if not history:
+        return history
+    budget = int(_get_model_ctx_tokens(provider, model) * _HISTORY_BUDGET_FRACTION)
+    reserved = _estimate_tokens(sys_prompt) + _estimate_tokens(question) + reply_budget
+    trimmed = list(history)
+    while len(trimmed) > 2:
+        used = reserved + sum(_estimate_tokens(m['content']) for m in trimmed)
+        if used <= budget:
+            break
+        trimmed = trimmed[2:]  # drop the oldest (user, assistant) pair
+    return trimmed
+
+
 def _max_tokens(question: str) -> int:
+    # Previously 220/140 — a factual "расскажи про X" answer about anything
+    # with actual substance (a public figure, a historical event) routinely
+    # ran past 140-220 tokens despite the system prompt asking for 1-3
+    # sentences, so the reply got hard-cut mid-word rather than mid-thought.
     q_low = (question or '').lower()
-    return 220 if any(p in q_low for p in _QUESTION_PHRASES) else 140
+    return 380 if any(p in q_low for p in _QUESTION_PHRASES) else 220
 
 
 # ---------------------------------------------------------------------------
 # Universal entry point
 # ---------------------------------------------------------------------------
 
-def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', stream: bool = False, sys_prompt: str = '', max_tokens: int = 0):
+def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', stream: bool = False, sys_prompt: str = '', max_tokens: int = 0, history: list[dict] = None):
     """Route a QA request to the configured LLM provider.
 
     If stream=True, returns a generator of text chunks.
+
+    history, when given (see core/handler/interactive.py's qa_clarify follow-
+    up flow), carries the REAL prior turns of this conversation rather than
+    just the single previous topic/answer — trimmed to fit the current
+    model's own context window (see _trim_history) before being sent.
     """
     try:
         import json
@@ -255,31 +326,49 @@ def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', st
     if user_max_tokens:
         max_tokens = int(user_max_tokens)
     top_k = settings.get('ai_top_k') or None  # only meaningful for 'local' (see _ask_openai_compat)
+    use_native_search = bool(settings.get('ai_web_search_enabled', False))
 
     params = dict(topic=topic, question=question, model=model,
                   timeout=timeout, last_ans=last_ans, stream=stream, sys_prompt=sys_prompt,
                   max_tokens=max_tokens, temperature=temperature)
 
+    def _with_history(p: str, m: str) -> dict:
+        params['history'] = _trim_history(history, p, m, question, sys_prompt or get_sys_prompt(),
+                                           reply_budget=max_tokens or 400)
+        return params
+
     if provider == 'groq':
         if model == 'llama-3.1-405b-reasoning':
             model = 'llama-3.3-70b-versatile'
         params['model'] = model or 'llama-3.3-70b-versatile'
-        return _ask_openai_compat('groq', **params)
+        return _ask_openai_compat('groq', **_with_history('groq', params['model']))
     elif provider == 'openai':
+        if use_native_search:
+            # Only these two OpenAI models actually run a real web search per
+            # request (see _ask_openai_compat's native_search branch) — no
+            # client-side tool loop, OpenAI does the search itself. Picking
+            # one overrides whatever chat model was configured, same as the
+            # user switching models manually — cheaper mini variant unless
+            # they already explicitly chose the full one.
+            params['model'] = model if model == 'gpt-4o-search-preview' else 'gpt-4o-mini-search-preview'
+            return _ask_openai_compat('openai', native_search=True, **_with_history('openai', params['model']))
         params['model'] = model or 'gpt-4o-mini'
-        return _ask_openai_compat('openai', **params)
+        return _ask_openai_compat('openai', **_with_history('openai', params['model']))
     elif provider in ('google', 'gemini'):
         params['model'] = model or 'gemini-1.5-flash'
-        return ask_gemini(**params)
+        return ask_gemini(**_with_history('google', params['model']))
     elif provider == 'deepseek':
         params['model'] = model or 'deepseek-chat'
-        return _ask_openai_compat('deepseek', **params)
+        return _ask_openai_compat('deepseek', **_with_history('deepseek', params['model']))
     elif provider == 'anthropic':
         params['model'] = model or 'claude-3-5-sonnet-latest'
-        return ask_anthropic(**params)
+        return ask_anthropic(**_with_history('anthropic', params['model']))
     elif provider == 'openrouter':
+        # No native_search here — OpenRouter has no per-request search flag
+        # of its own; a user who wants live search picks an already-search-
+        # grounded model from the catalog (e.g. perplexity/sonar) instead.
         params['model'] = model or 'deepseek/deepseek-chat'
-        return _ask_openai_compat('openrouter', **params)
+        return _ask_openai_compat('openrouter', **_with_history('openrouter', params['model']))
     elif provider == 'local':
         # Self-hosted OpenAI-compatible server (Ollama, llama.cpp's
         # llama-server, TabbyAPI, ...) — same /v1/chat/completions contract
@@ -287,10 +376,11 @@ def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', st
         # instead of a fixed constant (see settings_tabs/modules/premium_view.py).
         base_url = (settings.get('ai_local_base_url') or '').strip() or 'http://localhost:11434/v1'
         params['model'] = model or 'local-model'
-        return _ask_openai_compat('local', base_url_override=base_url, top_k=top_k, **params)
+        return _ask_openai_compat('local', base_url_override=base_url, top_k=top_k,
+                                   **_with_history('local', params['model']))
 
     params['model'] = 'llama-3.3-70b-versatile'
-    return _ask_openai_compat('groq', **params)
+    return _ask_openai_compat('groq', **_with_history('groq', params['model']))
 
 
 # ---------------------------------------------------------------------------
@@ -343,21 +433,21 @@ _OPENAI_COMPAT: dict[str, dict] = {
         'lib': 'groq', 'cls': 'Groq',
         'base_url': None,
         'extra_headers': {},
-        'default_max_tokens': 140,
+        'default_max_tokens': 220,
         'default_timeout': 8,
     },
     'openai': {
         'lib': 'openai', 'cls': 'OpenAI',
         'base_url': None,
         'extra_headers': {},
-        'default_max_tokens': 250,
+        'default_max_tokens': 350,
         'default_timeout': 12,
     },
     'deepseek': {
         'lib': 'openai', 'cls': 'OpenAI',
         'base_url': 'https://api.deepseek.com',
         'extra_headers': {},
-        'default_max_tokens': 250,
+        'default_max_tokens': 350,
         'default_timeout': 12,
     },
     'openrouter': {
@@ -367,7 +457,7 @@ _OPENAI_COMPAT: dict[str, dict] = {
             'HTTP-Referer': 'https://github.com/vlad-developer/jarvis',
             'X-Title': 'J.A.R.V.I.S. HUD',
         },
-        'default_max_tokens': 300,
+        'default_max_tokens': 400,
         'default_timeout': 15,
     },
     'local': {
@@ -379,7 +469,7 @@ _OPENAI_COMPAT: dict[str, dict] = {
         'lib': 'openai', 'cls': 'OpenAI',
         'base_url': None,
         'extra_headers': {},
-        'default_max_tokens': 250,
+        'default_max_tokens': 350,
         'default_timeout': 20,  # local inference can be slower than cloud
     },
 }
@@ -425,6 +515,15 @@ def _needs_openai_reasoning_params(provider: str, model: str) -> bool:
     return bool(_OPENAI_REASONING_RE.match((model or '').lower()))
 
 
+def _is_openai_search_preview(provider: str, model: str) -> bool:
+    """True for OpenAI's gpt-4o(-mini)-search-preview — these run a real web
+    search on OpenAI's side per request (no client-side tool loop needed),
+    but like the o-series reasoning models they reject sampling params
+    outright (400: 'incompatible request arguments... temperature, top_p,
+    frequency_penalty, presence_penalty'), just for an unrelated reason."""
+    return provider == 'openai' and (model or '').endswith('-search-preview')
+
+
 def _ask_openai_compat(
     provider: str,
     topic: str,
@@ -438,6 +537,8 @@ def _ask_openai_compat(
     base_url_override: str = None,
     temperature: float = None,
     top_k: int = None,
+    native_search: bool = False,
+    history: list[dict] = None,
 ):
     cfg = _OPENAI_COMPAT[provider]
     api_key = _load_api_key(provider)
@@ -450,7 +551,7 @@ def _ask_openai_compat(
     try:
         client = _get_openai_compat_client(provider, api_key, base_url_override)
         messages = [{'role': 'system', 'content': sys_prompt or get_sys_prompt()}]
-        messages.extend(_build_messages(topic, question, last_ans))
+        messages.extend(_build_messages(topic, question, last_ans, history=history))
         max_toks = max_tokens if max_tokens > 0 else (_max_tokens(question) if provider == 'groq' else cfg['default_max_tokens'])
         tout = timeout or cfg['default_timeout']
 
@@ -459,12 +560,17 @@ def _ask_openai_compat(
             req_kwargs['max_completion_tokens'] = max_toks
         else:
             req_kwargs['max_tokens'] = max_toks
-            req_kwargs['temperature'] = temperature if temperature is not None else 0.3
+            if not _is_openai_search_preview(provider, model):
+                req_kwargs['temperature'] = temperature if temperature is not None else 0.3
         if top_k is not None and provider == 'local':
             # Not part of the OpenAI schema — only actually honored by
             # local inference servers (llama.cpp/Ollama/TabbyAPI), which
             # accept extra sampling fields in the request body.
             req_kwargs['extra_body'] = {'top_k': top_k}
+        if native_search:
+            # Model itself runs the search server-side; empty dict = default
+            # search context size, no extra config needed for our use case.
+            req_kwargs['web_search_options'] = {}
 
         if stream:
             def _gen():
@@ -503,7 +609,7 @@ def _ask_openai_compat(
 
 def ask_gemini(topic: str, question: str, model: str, timeout: int = 12,
                last_ans: str = '', stream: bool = False, sys_prompt: str = '', max_tokens: int = 0,
-               temperature: float = None):
+               temperature: float = None, history: list[dict] = None):
     api_key = _load_api_key('google')
     if not api_key:
         return iter([]) if stream else ''
@@ -525,7 +631,13 @@ def ask_gemini(topic: str, question: str, model: str, timeout: int = 12,
                 client = entry[0]
 
         contents: list[dict] = []
-        if topic and last_ans:
+        if history:
+            # Gemini's SDK uses 'model' where OpenAI-style history says
+            # 'assistant' — same (question, answer) pairs, different label.
+            contents.extend({'role': ('model' if m['role'] == 'assistant' else 'user'),
+                              'parts': [m['content']]} for m in history)
+            contents.append({'role': 'user', 'parts': [question]})
+        elif topic and last_ans:
             contents.extend([
                 {'role': 'user', 'parts': [topic]},
                 {'role': 'model', 'parts': [last_ans]},
@@ -535,7 +647,7 @@ def ask_gemini(topic: str, question: str, model: str, timeout: int = 12,
             prompt = f'Тема: «{topic}». Вопрос: «{question}»' if topic and question else (question or topic)
             contents.append({'role': 'user', 'parts': [prompt]})
 
-        gen_cfg = {'max_output_tokens': max_tokens if max_tokens > 0 else 250,
+        gen_cfg = {'max_output_tokens': max_tokens if max_tokens > 0 else 350,
                    'temperature': temperature if temperature is not None else 0.4}
 
         if stream:
@@ -562,7 +674,7 @@ def ask_gemini(topic: str, question: str, model: str, timeout: int = 12,
 
 def ask_anthropic(topic: str, question: str, model: str, timeout: int = 15,
                   last_ans: str = '', stream: bool = False, sys_prompt: str = '', max_tokens: int = 0,
-                  temperature: float = None):
+                  temperature: float = None, history: list[dict] = None):
     api_key = _load_api_key('anthropic')
     if not api_key:
         return iter([]) if stream else ''
@@ -576,14 +688,14 @@ def ask_anthropic(topic: str, question: str, model: str, timeout: int = 15,
             else:
                 client = entry[0]
 
-        messages = list(_build_messages(topic, question, last_ans))
+        messages = list(_build_messages(topic, question, last_ans, history=history))
         temp = temperature if temperature is not None else 0.4
 
         if stream:
             def _gen():
                 try:
                     with client.messages.stream(
-                        model=model, max_tokens=max_tokens if max_tokens > 0 else 250, temperature=temp,
+                        model=model, max_tokens=max_tokens if max_tokens > 0 else 350, temperature=temp,
                         system=sys_prompt or get_sys_prompt(), messages=messages, timeout=timeout,
                     ) as stream_ctx:
                         for text in stream_ctx.text_stream:
@@ -593,7 +705,7 @@ def ask_anthropic(topic: str, question: str, model: str, timeout: int = 15,
             return _gen()
 
         message = client.messages.create(
-            model=model, max_tokens=max_tokens if max_tokens > 0 else 250, temperature=temp,
+            model=model, max_tokens=max_tokens if max_tokens > 0 else 350, temperature=temp,
             system=sys_prompt or get_sys_prompt(), messages=messages, timeout=timeout,
         )
         return _clean(message.content[0].text) if message.content else ''

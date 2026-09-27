@@ -11,6 +11,17 @@ cv2_d,  cv2_b,  cv2_h  = gather("cv2")
 pil_d,  pil_b,  pil_h  = gather("PIL")
 vosk_d, vosk_b, vosk_h = gather("vosk")
 wsdk_d, wsdk_b, wsdk_h = gather("winsdk")
+# llama_cpp's compiled runtime (ggml/llama/mtmd .dll) lives in its own lib/
+# subfolder, loaded via os.add_dll_directory() at import time (see
+# llama_cpp/_ctypes_extensions.py) — there's no bundled PyInstaller hook for
+# it, so without this explicit collect_all() the whole lib/ folder is simply
+# missing from a frozen build. import llama_cpp then fails at
+# add_dll_directory() with WinError 3 (path not found) — llm_chat.py's
+# warmup catches that (never fatal to startup), but the local LLM fallback
+# is then permanently broken with no way to recover: unlike a missing
+# model.gguf (core/speech/llm_downloader.py), this is a missing DLL, not
+# something re-downloading the model fixes.
+llama_d, llama_b, llama_h = gather("llama_cpp")
 try:
     tt_d, tt_b, tt_h = gather("truck_telemetry")
 except Exception:
@@ -111,15 +122,15 @@ def _filter_datas(datas_list):
 
 datas = _filter_datas(
     ctk_d + sher_d + pgm_d + cv2_d + pil_d + vosk_d + wsdk_d + tt_d
-    + anth_d + oa_d + gen_d + sel_d
+    + anth_d + oa_d + gen_d + sel_d + llama_d
     + _project_datas()
     + collect_data_files("num2words")
     + collect_data_files("wikipedia")
 )
 ICON_PATH = os.path.join(ROOT, "assets", "icon.ico")
-binaries = ctk_b + sher_b + pgm_b + cv2_b + pil_b + vosk_b + wsdk_b + tt_b + anth_b + oa_b + gen_b + sel_b
+binaries = ctk_b + sher_b + pgm_b + cv2_b + pil_b + vosk_b + wsdk_b + tt_b + anth_b + oa_b + gen_b + sel_b + llama_b
 hiddenimports = (
-    ctk_h + sher_h + pgm_h + cv2_h + pil_h + vosk_h + wsdk_h + tt_h + [
+    ctk_h + sher_h + pgm_h + cv2_h + pil_h + vosk_h + wsdk_h + tt_h + llama_h + [
         "customtkinter",
         "tkinter", "tkinter.ttk", "tkinter.font",
         "PIL._tkinter_finder",

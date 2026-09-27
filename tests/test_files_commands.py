@@ -131,6 +131,76 @@ def test_delete_folder_with_name_in_utterance(monkeypatch, tmp_path):
     assert handler.play_response_calls
 
 
+# ── _create_folder / _delete_folder ("в папке X" location clause) ────────
+
+def test_create_folder_resolves_location_clause_to_base_path(monkeypatch, tmp_path):
+    # "создай папку отчеты в папке downloads" — 'downloads' is where the new
+    # folder should be created, not part of its name.
+    downloads = tmp_path / 'downloads'
+    downloads.mkdir()
+    monkeypatch.setattr(files_cmd, 'get_context_path', lambda h: str(tmp_path))
+    created = []
+    monkeypatch.setattr(files_cmd, 'create_folder_at',
+                         lambda base, name: created.append((base, name)) or (True, 'ok'))
+    handler = _FakeHandler()
+
+    files_cmd._create_folder(handler, 'create_folder', 'создай папку отчеты в папке downloads')
+
+    assert created == [(str(downloads.resolve()), 'отчеты')]
+    assert handler.play_response_calls
+
+
+def test_create_folder_with_only_location_clause_prompts_for_name_there(monkeypatch, tmp_path):
+    # "создай папку в папке downloads" — no name given at all: base_path must
+    # resolve to 'downloads' and the name dialog must be shown (not a folder
+    # literally named "в папке downloads").
+    downloads = tmp_path / 'downloads'
+    downloads.mkdir()
+    monkeypatch.setattr(files_cmd, 'get_context_path', lambda h: str(tmp_path))
+    asked = []
+    monkeypatch.setattr('ui.dialogs.name_dlg.ask_text',
+                         lambda **kw: asked.append(kw) or None)
+    handler = _FakeHandler()
+
+    files_cmd._create_folder(handler, 'create_folder', 'создай папку в папке downloads')
+
+    assert len(asked) == 1
+    assert asked[0]['initial_path'] == str(downloads.resolve())
+    # Cancelled (ask_text returned None) — nothing should be created, but the
+    # user is told so.
+    assert handler.spoken
+
+
+def test_create_folder_speaks_warning_when_location_not_found(monkeypatch, tmp_path):
+    monkeypatch.setattr(files_cmd, 'get_context_path', lambda h: str(tmp_path))
+    monkeypatch.setattr('actions.filesystem._find_folder_anywhere', lambda *a, **k: None)
+    created = []
+    monkeypatch.setattr(files_cmd, 'create_folder_at',
+                         lambda base, name: created.append((base, name)) or (True, 'ok'))
+    handler = _FakeHandler()
+
+    files_cmd._create_folder(handler, 'create_folder', 'создай папку отчеты в папке несуществующая')
+
+    # Falls back to the context path but still tells the user it couldn't find it.
+    assert created == [(str(tmp_path), 'отчеты')]
+    assert any('несуществующая' in s for s in handler.spoken)
+
+
+def test_delete_folder_resolves_location_clause_to_base_path(monkeypatch, tmp_path):
+    downloads = tmp_path / 'downloads'
+    downloads.mkdir()
+    monkeypatch.setattr(files_cmd, 'get_context_path', lambda h: str(tmp_path))
+    deleted = []
+    monkeypatch.setattr(files_cmd, 'delete_folder_at',
+                         lambda base, name: deleted.append((base, name)) or (True, 'ok'))
+    handler = _FakeHandler()
+
+    files_cmd._delete_folder(handler, 'delete_folder', 'удали папку старое в папке downloads')
+
+    assert deleted == [(str(downloads.resolve()), 'старое')]
+    assert handler.play_response_calls
+
+
 # ── _cd_folder ────────────────────────────────────────────────────────────
 
 def test_cd_folder_navigates_when_name_present(monkeypatch, tmp_path):
@@ -208,6 +278,32 @@ def test_find_file_strips_known_prefix_and_searches(monkeypatch):
     files_cmd._find_file(handler, 'find_doc', 'найди документ отчёт за март')
 
     assert searched == [('отчёт за март', 'document')]
+
+
+def test_find_file_strips_surname_descriptor(monkeypatch):
+    # "открой файл фамилия манхольт" — "фамилия" is a descriptor, not part of
+    # the actual filename to search for; it must not pollute the query.
+    monkeypatch.setattr('threading.Thread', _ImmediateThread)
+    searched = []
+    monkeypatch.setattr('actions.recent.search_and_open_file',
+                         lambda q, t: searched.append((q, t)) or (True, 'found'))
+    handler = _FakeHandler()
+
+    files_cmd._find_file(handler, 'find_file', 'открой файл фамилия манхольт')
+
+    assert searched == [('манхольт', 'any')]
+
+
+def test_find_file_strips_name_descriptor(monkeypatch):
+    monkeypatch.setattr('threading.Thread', _ImmediateThread)
+    searched = []
+    monkeypatch.setattr('actions.recent.search_and_open_file',
+                         lambda q, t: searched.append((q, t)) or (True, 'found'))
+    handler = _FakeHandler()
+
+    files_cmd._find_file(handler, 'find_doc', 'найди документ название отчёт')
+
+    assert searched == [('отчёт', 'document')]
 
 
 def test_find_file_asks_when_query_empty(monkeypatch):

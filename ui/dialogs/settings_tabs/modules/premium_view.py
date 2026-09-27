@@ -67,9 +67,9 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             _profile_restart_f.pack(fill='x', pady=(6, 0))
         
         _feature_presets = {
-            'full': {'games': True, 'qa': True, 'llm_chat_fallback': True, 'cinema': True, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': True, 'morning_briefing': True, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': True},
-            'assistant': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': False},
-            'minimal': {'games': False, 'qa': False, 'llm_chat_fallback': True, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': False, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': False}
+            'full': {'games': True, 'qa': True, 'llm_chat_fallback': False, 'cinema': True, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': True, 'morning_briefing': True, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': True},
+            'assistant': {'games': False, 'qa': False, 'llm_chat_fallback': False, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': True, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': False},
+            'minimal': {'games': False, 'qa': False, 'llm_chat_fallback': False, 'cinema': False, 'system_monitoring': True, 'battery_monitor': True, 'lag_hunter': False, 'morning_briefing': False, 'updater': False, 'network_profiles': False, 'system_health': False, 'calendar_ics': False, 'inbox_digest': False, 'git_integration': True, 'translator': True, 'song_id': False}
         }
         _feature_desc_map = {
             'full': i18n.tr('premium.profile_full_desc'),
@@ -410,6 +410,11 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
         _custom_model_row = tk.Frame(ai_container, bg=_PANEL); _custom_model_row.pack(fill='x', pady=(0, 6), padx=2)
         _custom_model_ent = ctk.CTkEntry(_custom_model_row, placeholder_text=i18n.tr('premium.ai_custom_model_placeholder'), font=(hud._F, 11), height=32, fg_color=_BG, border_color=_blend(_CYAN, 0.25), corner_radius=8)
         _custom_model_ent.pack(side='left', fill='x', expand=True, padx=(0, 6))
+        try:
+            from ui.dialogs.extensions_common import _bind_ctk_entry_clipboard as _bind_clip
+            _bind_clip(win, _custom_model_ent, hud)
+        except Exception:
+            pass
 
         def _apply_custom_model():
             mid = _custom_model_ent.get().strip()
@@ -423,6 +428,29 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             _custom_model_ent.delete(0, 'end')
         ctk.CTkButton(_custom_model_row, text='✓', command=_apply_custom_model, width=32, height=32, font=(hud._F, hud._fsc(10), 'bold'), fg_color=_blend(_CYAN, 0.1), hover_color=_blend(_CYAN, 0.22), text_color=_CYAN, corner_radius=8).pack(side='right')
         _custom_model_ent.bind('<Return>', lambda e: _apply_custom_model())
+
+        def _paste_custom_model():
+            # A visible paste button here (mirroring the one for the API key
+            # below) instead of relying on Ctrl+V being discovered — the key
+            # field's "ВСТАВИТЬ" button is easy to reach for by mistake when
+            # what you actually meant to paste was a model id, overwriting
+            # a working key with a model name (see the Ctrl+V fix above).
+            text = ''
+            try:
+                import pyperclip
+                text = (pyperclip.paste() or '').strip()
+            except Exception:
+                pass
+            if not text:
+                try:
+                    text = win.clipboard_get().strip()
+                except Exception:
+                    text = ''
+            if not text:
+                return
+            _custom_model_ent.delete(0, 'end')
+            _custom_model_ent.insert(0, text.splitlines()[0].strip())
+        ctk.CTkButton(_custom_model_row, text='📋', command=_paste_custom_model, width=32, height=32, font=(hud._F, hud._fsc(10), 'bold'), fg_color=_blend(_CYAN, 0.1), hover_color=_blend(_CYAN, 0.22), text_color=_CYAN, corner_radius=8).pack(side='right', padx=(0, 4))
 
         # Local-server address — only shown for provider == 'local', since
         # it's the one provider without a fixed base_url (see
@@ -616,6 +644,23 @@ def build_modules_tab(inner, win, hud, _save_hud_settings):
             _debounced_setting_save(_topk_save_after, 'ai_top_k', val)
         _slider(_topk_frame, 1, 100, 99, _MAG, _cur_topk, _on_topk, hud)
         _hint(_topk_frame, i18n.tr('premium.ai_top_k_hint'), hud)
+
+        # Native provider web search — currently only OpenAI actually has one
+        # (gpt-4o(-mini)-search-preview run the search server-side, see
+        # llm_processor._ask_openai_compat's native_search branch). Groq's
+        # compound models that used to do this were decommissioned 2026-09-21
+        # with no replacement; other providers just don't have an equivalent
+        # flag. The switch silently does nothing for those — not worth a
+        # separate warning for a toggle that's still meaningful for OpenAI.
+        row_search = tk.Frame(ai_container, bg=_PANEL)
+        row_search.pack(fill='x', pady=(8, 0))
+        _ai_web_search_var = tk.BooleanVar(value=bool(_settings.get('ai_web_search_enabled', False)))
+        def _save_ai_web_search():
+            _settings['ai_web_search_enabled'] = bool(_ai_web_search_var.get())
+            _save_hud_settings(_settings)
+        ctk.CTkSwitch(row_search, text='', variable=_ai_web_search_var, fg_color=_BRD_I, progress_color=_CYAN, button_color=_WHITE, command=_save_ai_web_search, switch_width=40, switch_height=18, width=0).pack(side='left', padx=(0, 10))
+        tk.Label(row_search, text=i18n.tr('premium.ai_web_search'), bg=_PANEL, fg=_TEXT, font=(hud._F, hud._fsc(10)), anchor='w').pack(side='left')
+        _hint(ai_container, i18n.tr('premium.ai_web_search_hint'), hud)
 
         _on_ai_upd(); _refresh_load_summary()
         if _ai_prov_var.get() == 'local':

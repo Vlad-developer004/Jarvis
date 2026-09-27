@@ -232,11 +232,79 @@ def _get_project_root() -> str:
 _MODEL_PATH = os.path.join(_get_project_root(), 'models', 'jarvis_llm', 'model.gguf')
 
 
+def get_default_model_path() -> str:
+    """Where the default (non-custom) chat model lives on disk — used by
+    llm_downloader to know where to save it, without that module reaching
+    into this one's private _MODEL_PATH."""
+    return _MODEL_PATH
+
+
+def _get_model_path() -> str:
+    """Bundled Jarvis-persona model, unless the user picked their own GGUF in
+    Settings (voice tab) and it actually still exists on disk — a moved/
+    deleted custom file silently falls back to the bundled one rather than
+    erroring on every fallback chat turn."""
+    try:
+        from config_pack.config import get_settings_path
+        import json as _json
+        with open(get_settings_path(), encoding='utf-8') as f:
+            custom = str(_json.load(f).get('llm_chat_model_path') or '').strip()
+        if custom and os.path.isfile(custom):
+            return custom
+    except Exception:
+        pass
+    return _MODEL_PATH
+
+
+def validate_gguf_model(path: str, timeout: float = 90.0) -> tuple[bool, str]:
+    """Test-loads a candidate GGUF file in a throwaway subprocess before it's
+    ever trusted in the real Jarvis process.
+
+    llama.cpp loading an incompatible/corrupt/wrong-format file doesn't
+    reliably raise a catchable Python exception — it can hard-crash the
+    interpreter natively (the same class of access violation _infer_lock
+    guards against for concurrent decode calls, see LocalChatModel's
+    docstring). A user picking an arbitrary .gguf file from disk is exactly
+    the situation where that risk is real, so the load is attempted in a
+    disposable child process first: if IT crashes, only that child dies and
+    this function just reports failure — Jarvis itself never touched the
+    file in-process. Only a clean, verified load gets saved to settings.
+    """
+    if not path or not os.path.isfile(path):
+        return False, 'Файл не найден.'
+    if not path.lower().endswith('.gguf'):
+        return False, 'Ожидается файл формата .gguf.'
+    import subprocess
+    import sys
+    script = (
+        'import sys\n'
+        'from llama_cpp import Llama\n'
+        'Llama(model_path=sys.argv[1], n_ctx=256, n_threads=1, verbose=False)\n'
+        'print("JARVIS_GGUF_OK")\n'
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, '-c', script, path],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f'Загрузка не завершилась за {int(timeout)} с — файл, вероятно, не подходит.'
+    except Exception as e:
+        return False, f'Не удалось запустить проверку: {e}'
+    if proc.returncode == 0 and 'JARVIS_GGUF_OK' in proc.stdout:
+        return True, 'Модель успешно загружена и проверена.'
+    if proc.returncode < 0:
+        return False, f'Проверка аварийно завершилась (сигнал {-proc.returncode}) — файл несовместим.'
+    detail = (proc.stderr or proc.stdout or '').strip().splitlines()
+    return False, f'Ошибка загрузки: {detail[-1] if detail else f"код {proc.returncode}"}'
+
+
 class LocalChatModel:
     """Lazy-loaded llama.cpp wrapper with an inactivity unload timer."""
 
     def __init__(self) -> None:
         self._llm = None
+        self._loaded_path: Optional[str] = None
         self._load_lock = threading.Lock()
         self._async_mode = False
         self._unload_timer: Optional[threading.Timer] = None
@@ -246,25 +314,44 @@ class LocalChatModel:
         self._history: list[dict] = []
         self._history_lock = threading.Lock()
         self._last_turn_ts: float = 0.0
+        # Serializes every actual llama.cpp call (generate/classify_or_chat)
+        # against this single shared Llama() instance. handle_ai() in
+        # core/handler/commands/ai.py spawns a new thread per llm_chat
+        # invocation with no queueing, so two unmatched utterances arriving
+        # close together (e.g. an acoustic echo loop on a speaker setup
+        # without headphones/AEC, where Jarvis's own TTS gets picked back up
+        # by the mic as a "new" command) used to call llm.create_chat_completion()
+        # from two threads at once — llama.cpp's decode() is not reentrant on
+        # one context, and that produced a hard Windows access-violation
+        # crash (see logs/crash_dump.log), not a Python exception this file
+        # could catch.
+        self._infer_lock = threading.Lock()
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
     def _ensure_loaded(self) -> None:
-        if self._llm is not None:
+        model_path = _get_model_path()
+        if self._llm is not None and self._loaded_path == model_path:
             return
         with self._load_lock:
-            if self._llm is not None:
+            if self._llm is not None and self._loaded_path == model_path:
                 return
-            if not Path(_MODEL_PATH).exists():
-                raise RuntimeError(f'[LLM_CHAT] Model file not found: {_MODEL_PATH}')
+            if self._llm is not None:
+                # Path changed under us (user picked a different model) —
+                # drop the old instance before loading the new one instead
+                # of leaking it.
+                self._llm = None
+            if not Path(model_path).exists():
+                raise RuntimeError(f'[LLM_CHAT] Model file not found: {model_path}')
             from llama_cpp import Llama
             self._llm = Llama(
-                model_path=_MODEL_PATH,
+                model_path=model_path,
                 n_ctx=_N_CTX,
                 n_threads=max(1, (os.cpu_count() or 4) - 1),
                 verbose=False,
             )
-            _log.info('Local chat model loaded from %s', _MODEL_PATH)
+            self._loaded_path = model_path
+            _log.info('Local chat model loaded from %s', model_path)
             self._reset_unload_timer()
 
     def _unload(self) -> None:
@@ -272,6 +359,7 @@ class LocalChatModel:
             if self._llm is None:
                 return
             self._llm = None
+            self._loaded_path = None
         import gc
         gc.collect()
         _log.info('Local chat model unloaded to free RAM.')
@@ -383,21 +471,30 @@ class LocalChatModel:
             # time instead of letting it silently accumulate across calls,
             # which previously produced a llama.cpp logits-buffer index
             # error ("index N out of bounds for axis 0") under load.
-            llm.reset()
+            # The whole reset+decode span is serialized via _infer_lock —
+            # llama.cpp's decode() is not reentrant on one context, and two
+            # threads calling in concurrently (e.g. an acoustic echo loop
+            # re-triggering llm_chat while the previous call is still
+            # generating) crashes the process with a Windows access
+            # violation instead of raising a catchable Python exception.
+            with self._infer_lock:
+                llm.reset()
+                if on_chunk is not None:
+                    stream = llm.create_chat_completion(
+                        messages=messages, max_tokens=_MAX_TOKENS, temperature=0.3, stream=True,
+                    )
+                    reply = _consume_plain_stream(stream, on_chunk)
+                else:
+                    out = llm.create_chat_completion(
+                        messages=messages,
+                        max_tokens=_MAX_TOKENS,
+                        temperature=0.3,
+                    )
             if on_chunk is not None:
-                stream = llm.create_chat_completion(
-                    messages=messages, max_tokens=_MAX_TOKENS, temperature=0.3, stream=True,
-                )
-                reply = _consume_plain_stream(stream, on_chunk)
                 self._reset_unload_timer()
                 if reply:
                     self._append_turn(text, reply)
                 return reply or None
-            out = llm.create_chat_completion(
-                messages=messages,
-                max_tokens=_MAX_TOKENS,
-                temperature=0.3,
-            )
         except Exception as e:
             _log.error('Generation failed: %s', e, exc_info=True)
             return None
@@ -463,13 +560,30 @@ class LocalChatModel:
         ]
         try:
             grammar = _build_action_grammar(candidates)
-            llm.reset()  # see generate() — avoid state accumulating across calls
+            # See generate()'s _infer_lock comment — the whole reset+decode
+            # span (including consuming a streamed generator, which drives
+            # further decode() calls under the hood) must be serialized
+            # against this shared Llama() instance, not just the call that
+            # kicks generation off.
+            with self._infer_lock:
+                llm.reset()  # avoid state accumulating across calls
+                if on_chat_chunk is not None:
+                    stream = llm.create_chat_completion(
+                        messages=messages, max_tokens=_MAX_TOKENS, temperature=0.35,
+                        grammar=grammar, stream=True,
+                    )
+                    resolved, content = _consume_classify_stream(stream, on_chat_chunk)
+                else:
+                    out = llm.create_chat_completion(
+                        messages=messages,
+                        max_tokens=_MAX_TOKENS,
+                        # Low enough to keep ACTION-name selection stable, high enough
+                        # that CHAT replies don't just parrot the closest few-shot
+                        # example verbatim (observed at temperature=0.1).
+                        temperature=0.35,
+                        grammar=grammar,
+                    )
             if on_chat_chunk is not None:
-                stream = llm.create_chat_completion(
-                    messages=messages, max_tokens=_MAX_TOKENS, temperature=0.35,
-                    grammar=grammar, stream=True,
-                )
-                resolved, content = _consume_classify_stream(stream, on_chat_chunk)
                 self._reset_unload_timer()
                 if resolved == 'action':
                     name = content
@@ -484,15 +598,6 @@ class LocalChatModel:
                     return ('chat', content or None)
                 _log.warning('Unexpected grammar stream output (resolved=%r): %r', resolved, content)
                 return ('chat', None)
-            out = llm.create_chat_completion(
-                messages=messages,
-                max_tokens=_MAX_TOKENS,
-                # Low enough to keep ACTION-name selection stable, high enough
-                # that CHAT replies don't just parrot the closest few-shot
-                # example verbatim (observed at temperature=0.1).
-                temperature=0.35,
-                grammar=grammar,
-            )
         except Exception as e:
             _log.error('classify_or_chat generation failed: %s', e, exc_info=True)
             return ('chat', None)
@@ -544,3 +649,12 @@ def classify_or_chat(
 
 def warmup_async(on_done=None) -> None:
     _get_model().warmup_async(on_done)
+
+
+def invalidate_model() -> None:
+    """Drop the currently loaded model so the next call picks up a changed
+    'llm_chat_model_path' setting immediately, instead of waiting for
+    whichever model is already resident to naturally hit its unload timer
+    (or never unload, if the user set it to "always resident")."""
+    if _model is not None:
+        _model._unload()

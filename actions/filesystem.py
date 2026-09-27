@@ -121,7 +121,13 @@ def get_name_variants(s: str) -> list[str]:
     if not s0:
         return []
     v = {s0}
-    v.add(_translit_cyr_to_lat(s0))
+    translit = _translit_cyr_to_lat(s0)
+    v.add(translit)
+    # Foreign (e.g. German) names transliterated into Cyrillic render the
+    # "h" sound as "х", which our base table maps to "kh" — add a plain
+    # "h" variant too so "Манхольт" also matches a real file "Manholt".
+    if 'kh' in translit:
+        v.add(translit.replace('kh', 'h'))
     v.add(_translit_lat_to_cyr_simple(s0))
     v.add(s0.replace('дж', 'j').replace('ж', 'zh'))
     

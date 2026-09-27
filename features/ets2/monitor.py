@@ -412,7 +412,13 @@ def _check_speed_limit_and_cruise(state: _MonitorState, data: dict) -> float:
             limit_rise = limit_kmh - state.last_speed_limit
             now_lim = time.monotonic()
             if limit_drop >= 20:
-                _speak(event_speed_limit_drop(int(round(limit_kmh)), sharp=True))
+                # "Brake!" phrasing only makes sense if the driver is actually
+                # over the NEW limit right now — a big sign drop (e.g. 70->50)
+                # while already doing 15 needs no braking at all, so it must
+                # not get the urgent variant just because the drop itself was
+                # sharp (previously compared drop magnitude only, so it fired
+                # "тормозите!" even at speeds nowhere near the new limit).
+                _speak(event_speed_limit_drop(int(round(limit_kmh)), sharp=(speed_kmh > limit_kmh)))
             elif limit_drop >= 15:
                 _speak(event_speed_limit_drop(int(round(limit_kmh)), sharp=False))
             elif limit_rise >= 20 and (now_lim - state.last_limit_increase_ts) > 30.0:

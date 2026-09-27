@@ -39,3 +39,23 @@ def test_unrelated_preposition_does_not_trigger_inflection():
     # be affected by the fix.
     result = normalize_for_tts('выключу компьютер через 10 минут')
     assert result == 'выключу компьютер через десять минут'
+
+
+def test_okolo_with_hundred_inflects_to_genitive():
+    # Regression: pymorphy3 returns "сто" as an indeclinable abbreviation
+    # noun homonym (score-tied with its real NUMR reading) before the
+    # actual numeral reading — an unfiltered first match "successfully"
+    # inflects it to itself, so this used to come out as "около сто" instead
+    # of the genitive "около ста". See _inflect_last's prefer_pos.
+    result = normalize_for_tts('около 100 человек пришло')
+    assert 'около ста' in result
+    assert 'около сто ' not in result
+
+
+def test_chelovek_stays_invariant_after_cardinal():
+    # "человек" doesn't take its regular (suppletive) genitive plural
+    # "людей" after a cardinal number — Russian keeps the invariant
+    # counting form ("сто человек", never "сто людей").
+    result = normalize_for_tts('пришло 100 человек')
+    assert 'человек' in result
+    assert 'людей' not in result

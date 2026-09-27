@@ -15,6 +15,7 @@ import sys
 import subprocess
 import json
 from core import i18n
+from core.system.version import APP_VERSION
 
 def _log_monitor_msg(msg: str):
     try:
@@ -596,10 +597,10 @@ def clock_tick(hud) -> None:
         w = hud.root.winfo_width()
         if w < 900:
             hud._hdr_time.configure(text=f'{t_str}  ')
-            if hasattr(hud, '_hdr_os_lbl'): hud._hdr_os_lbl.configure(text='  OS v1.5')
+            if hasattr(hud, '_hdr_os_lbl'): hud._hdr_os_lbl.configure(text=f'  OS v{APP_VERSION}')
         else:
             hud._hdr_time.configure(text=f'{d_str}  {t_str}  ')
-            if hasattr(hud, '_hdr_os_lbl'): hud._hdr_os_lbl.configure(text='  JARVIS OS  v1.5')
+            if hasattr(hud, '_hdr_os_lbl'): hud._hdr_os_lbl.configure(text=f'  JARVIS OS  v{APP_VERSION}')
     except: pass
     hud.root.after(1000, lambda: clock_tick(hud))
 

@@ -237,11 +237,17 @@ def _query_shazam(wav_path: str) -> dict:
         all_actions.extend(opt.get('actions') or [])
     for provider in hub.get('providers') or []:
         all_actions.extend(provider.get('actions') or [])
+    from urllib.parse import urlparse
     for action in all_actions:
         uri = action.get('uri', '') or ''
+        host = urlparse(uri).netloc.lower()
         if 'spotify' in uri and not spotify_url:
             spotify_url = uri
-        elif ('music.apple.com' in uri or 'itunes.apple.com' in uri) and not apple_music_url:
+        elif host in ('music.apple.com', 'itunes.apple.com') and not apple_music_url:
+            # Plain substring match on 'itunes.apple.com' also caught
+            # audio-ssl.itunes.apple.com — Shazam's raw .m4a preview-clip
+            # CDN link, not the actual Apple Music page. Checking the exact
+            # host instead of substring keeps that preview link out.
             apple_music_url = uri
 
     return {

@@ -30,6 +30,58 @@ def show_hud() -> None:
     _hud._hud_queue.put(lambda: window.show_main_win(_hud))
     # Принудительно разворачиваем на весь экран
     _hud._hud_queue.put(lambda: _hud.root.state('zoomed'))
+_notices_lock = threading.Lock()
+_active_notices: dict[str, tuple[str, str]] = {}  # key -> (text, color)
+def _render_notices() -> None:
+    """UI-thread only: repaint the header from the current _active_notices.
+    Concurrent callers (e.g. TTS and STT both downloading their model on the
+    same fresh install) get joined into one line instead of one clobbering
+    the other's message."""
+    if _hud is None or not getattr(_hud, 'root', None):
+        return
+    with _notices_lock:
+        items = list(_active_notices.values())
+    try:
+        if not items:
+            _hud.hide_msg_stream()
+        else:
+            _hud.show_msg_stream('  •  '.join(t for t, _ in items), items[-1][1])
+    except Exception:
+        pass
+def notify(key: str, text: str, color: str = _CYAN, duration: Optional[int] = None) -> None:
+    """Thread-safe: show a transient message in the HUD header from any
+    thread (background model downloads, etc.) — same pattern as
+    core/speech/tts.py's _safe_hud_set_mode.
+
+    key identifies the source (e.g. 'tts_model', 'stt_model') — callers with
+    different keys are shown together rather than overwriting each other;
+    calling notify() again with the same key just updates that key's text
+    (e.g. progress). duration=None keeps the message up until clear_notify(key),
+    for an operation whose end time isn't known upfront (a download). An int
+    duration auto-clears just that key after that many ms.
+    No-op if the HUD isn't up yet (early startup) or has been torn down.
+    """
+    if _hud is None or not getattr(_hud, 'root', None):
+        return
+    with _notices_lock:
+        _active_notices[key] = (text, color)
+    try:
+        _hud.root.after(0, _render_notices)
+        if duration is not None:
+            _hud.root.after(duration, lambda: clear_notify(key))
+    except Exception:
+        pass
+def clear_notify(key: str) -> None:
+    """Ends a notify(key, ...) started earlier for that key. Other still-
+    active keys (if any) stay shown."""
+    with _notices_lock:
+        _active_notices.pop(key, None)
+    if _hud is None or not getattr(_hud, 'root', None):
+        return
+    try:
+        _hud.root.after(0, _render_notices)
+    except Exception:
+        pass
 class JarvisHUD:
     def __init__(self) -> None:
         self._settings = _load_hud_settings()
@@ -613,7 +665,7 @@ class JarvisHUD:
     def _rebuild_right(self): layout.rebuild_right(self)
     def _refresh_ui_text(self):
         try:
-            self.root.title(f'J.A.R.V.I.S. — HUD v1.5')
+            self.root.title(i18n.tr('hud.title'))
             monitoring.clock_tick(self)
             layout.rebuild_left(self)
             layout.rebuild_right(self)

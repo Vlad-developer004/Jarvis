@@ -461,7 +461,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
     _hint(c2, i18n.tr('modules.hint'))
     _vis_icons = {
         'sunrise': '☀', 'sysinfo': '◈', 'storage': '📊', 'network': '⟳', 'weather': '≋',
-        'clock': '🕐', 'camera': '📷', 'gamemode': '✦', 'meetings_btn': '🔗', 'videos_btn': '▶',
+        'clock': '🕐', 'camera': '📷', 'gamemode': '✦', 'meetings_btn': '🔗', 'videos_btn': '▶', 'songs_btn': '♪',
         'network_ip': '◈', 'network_ssid': '◈', 'network_traffic': '◈', 'network_ls': '◈', 'sysinfo_mic': '◈'
     }
     _vis_map = {
@@ -479,7 +479,8 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
         'camera': i18n.tr('modules.camera'),
         'gamemode': i18n.tr('modules.gamemode'),
         'meetings_btn': i18n.tr('modules.meetings_btn'),
-        'videos_btn': i18n.tr('modules.videos_btn')
+        'videos_btn': i18n.tr('modules.videos_btn'),
+        'songs_btn': i18n.tr('modules.songs_btn'),
     }
 
     c_mon = _card('▦', i18n.tr('modules.monitoring'), _GREEN)
@@ -558,7 +559,7 @@ def build_appearance_tab(inner, win, hud, _save_hud_settings):
             hud._settings['widget_vis'] = hud._widget_vis
             _save_hud_settings(hud._settings)
             
-            if k in ('camera', 'sysinfo', 'sysinfo_mic', 'gamemode', 'meetings_btn', 'videos_btn'):
+            if k in ('camera', 'sysinfo', 'sysinfo_mic', 'gamemode', 'meetings_btn', 'videos_btn', 'songs_btn'):
                 hud._rebuild_left()
             else:
                 hud._rebuild_right()

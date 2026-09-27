@@ -46,36 +46,45 @@ def test_module_gate_predicates_do_not_false_positive_on_unrelated_commands():
 # ── parse_folder_name ────────────────────────────────────────────────────
 
 def test_parse_folder_name_create_basic():
-    assert parse_folder_name('создай папку проекты', 'create') == 'проекты'
+    assert parse_folder_name('создай папку проекты', 'create') == ('проекты', None)
 
 
 def test_parse_folder_name_create_strips_leading_novuyu():
-    assert parse_folder_name('создай папку новую проекты', 'create') == 'проекты'
+    assert parse_folder_name('создай папку новую проекты', 'create') == ('проекты', None)
 
 
 def test_parse_folder_name_create_strips_zdes():
-    assert parse_folder_name('создай папку здесь проекты', 'create') == 'проекты'
+    assert parse_folder_name('создай папку здесь проекты', 'create') == ('проекты', None)
 
 
 def test_parse_folder_name_delete_basic():
-    assert parse_folder_name('удали папку старое', 'delete') == 'старое'
+    assert parse_folder_name('удали папку старое', 'delete') == ('старое', None)
 
 
 def test_parse_folder_name_multiword_name():
-    assert parse_folder_name('создай папку рабочие документы', 'create') == 'рабочие документы'
+    assert parse_folder_name('создай папку рабочие документы', 'create') == ('рабочие документы', None)
 
 
 def test_parse_folder_name_without_papku_keyword_falls_back_to_verb():
     # No 'папку' token — parses off the create/delete verb directly
-    assert parse_folder_name('создай проекты', 'create') == 'проекты'
+    assert parse_folder_name('создай проекты', 'create') == ('проекты', None)
 
 
 def test_parse_folder_name_returns_empty_when_nothing_after_keyword():
-    assert parse_folder_name('создай папку', 'create') == ''
+    assert parse_folder_name('создай папку', 'create') == ('', None)
 
 
 def test_parse_folder_name_returns_empty_for_unrelated_text():
-    assert parse_folder_name('включи музыку', 'create') == ''
+    assert parse_folder_name('включи музыку', 'create') == ('', None)
+
+
+def test_parse_folder_name_extracts_location_clause():
+    # "создай папку в папке Downloads" — no name given, target folder is the location
+    assert parse_folder_name('создай папку в папке downloads', 'create') == ('', 'downloads')
+
+
+def test_parse_folder_name_with_name_and_location_clause():
+    assert parse_folder_name('создай папку отчеты в папке downloads', 'create') == ('отчеты', 'downloads')
 
 
 # ── parse_cd_name ────────────────────────────────────────────────────────

@@ -103,9 +103,9 @@ class BaseHandler:
         except Exception:
             pass
         self.asr.reset()
-    def speak(self, text: str, wait: bool = False):
+    def speak(self, text: str, wait: bool = False, persist: bool = True):
         if self.silent_mode: return
         # REMOVED: stop_speaking() - now using natural TTS queue for smooth transitions
-        speak(text, wait=wait)
+        speak(text, wait=wait, persist=persist)
         if not self.interactive_state:
             self.asr.reset()

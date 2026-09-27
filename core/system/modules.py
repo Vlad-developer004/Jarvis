@@ -7,7 +7,7 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
     "full": {
         "games": True,
         "qa": True,
-        "llm_chat_fallback": True,
+        "llm_chat_fallback": False,
         "cinema": True,
         "system_monitoring": True,
         "battery_monitor": True,
@@ -29,7 +29,7 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
     "assistant": {
         "games": False,
         "qa": False,
-        "llm_chat_fallback": True,
+        "llm_chat_fallback": False,
         "cinema": False,
         "system_monitoring": True,
         "battery_monitor": True,
@@ -51,7 +51,7 @@ _PROFILE_PRESETS: dict[str, dict[str, bool]] = {
     "minimal": {
         "games": False,
         "qa": False,
-        "llm_chat_fallback": True,
+        "llm_chat_fallback": False,
         "cinema": False,
         "system_monitoring": True,
         "battery_monitor": True,

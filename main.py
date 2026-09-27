@@ -21,7 +21,7 @@ if 'pynvml' not in _sys.modules:
     class _NVMLError(Exception): pass
     _pynvml_stub.NVMLError = _NVMLError
     _pynvml_stub.NVMLError_DriverNotLoaded = _NVMLError
-    _pynvml_stub.nvmlInit = lambмda: None
+    _pynvml_stub.nvmlInit = lambda: None
     _pynvml_stub.nvmlShutdown = lambda: None
     _pynvml_stub.nvmlDeviceGetCount = lambda: 0
     _pynvml_stub.nvmlSystemGetDriverVersion = lambda: b'0.0'
@@ -67,7 +67,7 @@ from config_pack.config import (
     STT_ENGINE,
     TTS_WARMUP,
 )
-from core.audio_utils import open_input_stream
+from core.audio_utils import open_input_stream_resilient
 from core.system import (
     active_module_profile,
     app_state,
@@ -177,9 +177,22 @@ def _background_init():
         pa = _pyaudio.PyAudio()
         chunk = int(RATE * CHUNK_MS / 1000)
         try:
-            stream = open_input_stream(pa, RATE, chunk)
+            stream = open_input_stream_resilient(pa, RATE, chunk)
         except Exception as e:
-            _log.critical('Cannot open audio input stream: %s', e, exc_info=True)
+            _log.critical('Cannot open audio input stream after retries: %s', e, exc_info=True)
+            # Previously this just returned here — the whole background init
+            # (ASR, engine, everything) silently aborted with zero indication
+            # to the user, HUD stuck in LOADING forever, mutex still held so
+            # even relaunching just said "already running". At least tell
+            # them something is wrong instead of infinite silence.
+            try:
+                from ui import hud as _hud
+                from ui.hud_constants import _RED
+                _hud.notify('mic_open_failed',
+                             'Не удалось открыть микрофон — проверьте устройство в Настройках и перезапустите Jarvis',
+                             _RED)
+            except Exception:
+                pass
             return
         asr.ensure_initialized()
         from core.engine import JarvisEngine
@@ -188,6 +201,15 @@ def _background_init():
         engine = JarvisEngine(pa, asr, handler)
         # Signal all waiters that the engine is ready.
         _engine_ready.set()
+        # STT model/VAD are downloaded lazily on first load (core/speech/asr.py) —
+        # without this warmup that first load only starts on the user's first
+        # spoken command, hanging mid-conversation with zero feedback instead of
+        # during startup. warmup_stt() itself backgrounds the actual load/download,
+        # so this call returns immediately. Mirrors TTS's warmup above.
+        try:
+            asr.warmup_stt()
+        except Exception as e:
+            _log.error('STT warmup error: %s', e, exc_info=True)
         from core.mic_calibration import calibrate_noise_simple, run_calibration
         from core.mic_calibration import load_profile as _load_mic_profile
         mic_profile = _load_mic_profile()

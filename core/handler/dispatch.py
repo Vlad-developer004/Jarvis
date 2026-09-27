@@ -442,20 +442,30 @@ def _handle_work_session(handler) -> None:
     handler._set_interactive({'type': 'work_select'}, {}, timeout=20.0)
 
 
-def parse_folder_name(text_lower: str, mode: str) -> str:
-    tokens = text_lower.replace('—', ' ').split()
+_FOLDER_LOCATION_RE = re.compile(r'\bв\s+(?:папк(?:е|у)|каталоге|директории)\s+(.+)$', re.I)
+
+def parse_folder_name(text_lower: str, mode: str) -> tuple[str, str | None]:
+    text_lower = text_lower.replace('—', ' ').strip()
+    # Strip a trailing location clause ("... в папке Downloads") so it isn't
+    # swallowed into the new/target folder's name.
+    folder_hint = None
+    m = _FOLDER_LOCATION_RE.search(text_lower)
+    if m:
+        folder_hint = m.group(1).strip().strip('.,')
+        text_lower = text_lower[:m.start()].strip()
+    tokens = text_lower.split()
     keyword = 'создай' if mode == 'create' else 'удали'
+    name = ''
     if 'папку' in tokens:
         idx = tokens.index('папку')
         name = ' '.join([t for t in tokens[idx+1:] if t != 'здесь']).strip()
         for word in ['новую', 'новой', 'новый']:
             if name.lower().startswith(word):
                 name = name[len(word):].strip()
-        return name
     elif keyword in tokens:
         idx = tokens.index(keyword)
-        return ' '.join([t for t in tokens[idx+1:] if t not in ('здесь', 'папку')]).strip()
-    return ''
+        name = ' '.join([t for t in tokens[idx+1:] if t not in ('здесь', 'папку')]).strip()
+    return name, folder_hint
 def parse_cd_name(text_lower: str) -> str:
     tokens = text_lower.replace('—', ' ').split()
     if 'папку' in tokens:

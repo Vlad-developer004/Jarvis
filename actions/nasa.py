@@ -20,6 +20,8 @@ import hashlib
 import os
 import tempfile
 
+from core.system.version import APP_VERSION
+
 _APOD_URL = 'https://api.nasa.gov/planetary/apod'
 _apod_cache: dict[str, dict] = {}
 
@@ -33,7 +35,7 @@ def _download_file(url: str, prefix: str) -> str | None:
         ext = '.png' if '.png' in url.lower() else '.jpg'
         path = os.path.join(cache_dir, f'{prefix}_{h}{ext}')
         if not os.path.exists(path):
-            resp = requests.get(url, timeout=8.0, headers={'User-Agent': 'JarvisOS/1.5'})
+            resp = requests.get(url, timeout=8.0, headers={'User-Agent': f'JarvisOS/{APP_VERSION}'})
             if resp.status_code != 200:
                 return None
             with open(path, 'wb') as f:

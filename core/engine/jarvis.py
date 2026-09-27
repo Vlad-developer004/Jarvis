@@ -6,7 +6,7 @@ import collections as _collections
 import win32gui
 import ctypes
 import pyaudio
-from core.audio_utils import open_input_stream, rms_int16
+from core.audio_utils import open_input_stream, open_input_stream_resilient, rms_int16
 from core import audio_ring
 from core.system import app_state
 from core.voice_debug_log import voice_event
@@ -31,7 +31,7 @@ class JarvisEngine:
         self.silence_frames = max(1, VAD_SILENCE_MS // CHUNK_MS)
         self.game_silence_frames = max(1, GAME_SILENCE_MS // CHUNK_MS)
         self.transcribe_queue = _queue_mod.Queue(maxsize=64)
-        self.stream = open_input_stream(self.pa, RATE, self.chunk)
+        self.stream = open_input_stream_resilient(self.pa, RATE, self.chunk)
         audio_ring.configure(RATE)
         self.speaking = False
         self.had_voice = False
@@ -56,6 +56,7 @@ class JarvisEngine:
         self._ADAPT_MULT_OFF = 1.3
         self._ADAPT_MIN = float(MIN_THRESH)
         self._last_tts_skip_log = 0.0
+        self._last_tts_active_ts = 0.0
     def update_params(self, new_thresh: int, new_gain: float, new_vol: float):
         self.energy_thresh = new_thresh
         self.voice_on = self.energy_thresh
@@ -76,7 +77,11 @@ class JarvisEngine:
                 except Exception:
                     pass
                 time.sleep(1.0 + attempt * 0.5)
-                self.stream = open_input_stream(self.pa, RATE, self.chunk)
+                # After the first attempt, stop retrying whatever (possibly
+                # stale/unplugged) device is saved in settings and force the
+                # live system default instead — see open_input_stream_resilient's
+                # docstring in core/audio_utils.py for the same reasoning.
+                self.stream = open_input_stream(self.pa, RATE, self.chunk, force_default=(attempt > 0))
                 return True
             except Exception as _e:
                 _log.warning('Stream reopen attempt %d failed: %s', attempt + 1, _e)
@@ -140,7 +145,23 @@ class JarvisEngine:
                     if not self._reopen_stream(): break
                     continue
                 _tts_blocks = self.handler.is_tts_audio_playing
-                if _tts_blocks and (not self.handler.interactive_state):
+                if _tts_blocks:
+                    self._last_tts_active_ts = now_ts
+                # Extends the "TTS is playing" window by a short tail after
+                # is_tts_audio_playing itself drops — it's a thin wrapper
+                # around pygame's get_busy()/queue-empty check, which can
+                # read False for a brief moment between two chunks of a
+                # multi-sentence reply (each sentence is queued/generated
+                # somewhat independently), or before room echo/reverb from
+                # the speaker has actually died out. Either gap was enough
+                # for a speaker-only (no-AEC) setup to have the mic pick up
+                # Jarvis's own words as a "new" utterance right as it
+                # finished speaking — which is what fed a second concurrent
+                # call into the local model and crashed it (see
+                # core/speech/llm_chat.py's _infer_lock).
+                _ECHO_TAIL_SEC = 0.6
+                _tts_recently = _tts_blocks or (now_ts - self._last_tts_active_ts < _ECHO_TAIL_SEC)
+                if _tts_recently and (not self.handler.interactive_state):
                     from core.audio_utils import is_jarvis_output_headphones
                     if not is_jarvis_output_headphones() and not app_state.game_mode:
                         try:

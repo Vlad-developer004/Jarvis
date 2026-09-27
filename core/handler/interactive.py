@@ -458,6 +458,7 @@ def _state_qa_clarify(handler, text_lower, words, data, global_cmd):
     from features.qa import search_answer, is_real_question
     context = data.get('context', '')
     last_ans = data.get('last_ans', '')
+    history = data.get('history', [])
     if not is_real_question(text_clean):
         handler._set_interactive('qa_clarify', data, timeout=30.0)
         return {'new_state': 'qa_clarify', 'new_data': data, 'timeout': 30.0}
@@ -485,7 +486,7 @@ def _state_qa_clarify(handler, text_lower, words, data, global_cmd):
                 active_subject[0] = sub
                 show_ai_window(sub)
 
-            raw_gen = search_answer(text_clean, context=context, last_ans=last_ans, stream=True)
+            raw_gen = search_answer(text_clean, context=context, last_ans=last_ans, stream=True, history=history)
             gen = wrap_llm_stream(raw_gen, on_subject_found=_on_sub)
 
             full_ans = []
@@ -517,16 +518,17 @@ def _state_qa_clarify(handler, text_lower, words, data, global_cmd):
                     if last_mark_pos != -1:
                         sentence = buffer[:last_mark_pos+1].strip()
                         buffer = buffer[last_mark_pos+1:].strip()
-                        if sentence: handler.speak(sentence)
+                        if sentence: handler.speak(sentence, persist=False)
 
             if buffer.strip():
-                handler.speak(buffer.strip())
+                handler.speak(buffer.strip(), persist=False)
             final_ans = "".join(full_ans).strip()
             if final_ans:
                 if has_hud: hud._hud.root.after(2000, hud._hud.hide_msg_stream)
                 hide_ai_window(delay_ms=8000)
                 next_context = active_subject[0] if active_subject[0] else text_clean
-                handler._set_interactive('qa_clarify', {'context': next_context, 'last_ans': final_ans}, timeout=30.0)
+                new_history = history + [{'role': 'user', 'content': text_clean}, {'role': 'assistant', 'content': final_ans}]
+                handler._set_interactive('qa_clarify', {'context': next_context, 'last_ans': final_ans, 'history': new_history}, timeout=30.0)
             else:
                 speak('Извините, не удалось найти информацию.')
                 if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)

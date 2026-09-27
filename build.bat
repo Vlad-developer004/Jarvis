@@ -56,7 +56,13 @@ if not exist dist\Jarvis\models mkdir dist\Jarvis\models
 echo Copying assets...
 if exist audio    robocopy audio    dist\Jarvis\audio    /E /NFL /NDL /NJH /NJS /XD __pycache__
 if exist assets   robocopy assets   dist\Jarvis\assets   /E /NFL /NDL /NJH /NJS /XD __pycache__
-if exist models   robocopy models   dist\Jarvis\models   /E /NFL /NDL /NJH /NJS /XD __pycache__
+:: jarvis_llm (~870MB default chat model), the sherpa-onnx STT model (~215MB),
+:: silero_tts (~173MB) and the Vosk STT model (~88MB) are excluded — all four
+:: download lazily on first use instead of being bundled. See
+:: core/speech/llm_downloader.py (LLM) and core/speech/{tts,asr}.py's
+:: self-healing download logic (TTS/STT), warmed up in main.py's
+:: _background_init() right after the engine is ready.
+if exist models   robocopy models   dist\Jarvis\models   /E /NFL /NDL /NJH /NJS /XD __pycache__ jarvis_llm sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16 silero_tts vosk-model-small-ru-0.22
 if exist config_pack robocopy config_pack dist\Jarvis\config_pack /E /NFL /NDL /NJH /NJS /XD __pycache__ /XF .env secrets.env
 
 :: --- Copy selective data files (only static defaults) ---

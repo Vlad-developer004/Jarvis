@@ -21,6 +21,7 @@ from ui.hud_style import JStyle
 from ui.hud_constants import _BG, _PANEL, _CYAN, _TEXT, _DIM
 from ui.hud_utils import _blend, _set_dark_title_bar, _apply_window_icon, _center_window
 from core.logging_setup import get_logger as _get_logger
+from core.system.version import APP_VERSION
 
 _log = _get_logger('yt_picker')
 _CACHE_DIR = os.path.join(tempfile.gettempdir(), 'jarvis_ai_images')
@@ -44,7 +45,7 @@ def _download_thumb(url: str) -> str | None:
         path = os.path.join(_CACHE_DIR, f'ytpick_{h}.jpg')
         if not os.path.exists(path):
             print(f'[YT-PICKER] downloading thumbnail: {url}', flush=True)
-            resp = requests.get(url, timeout=6.0, headers={'User-Agent': 'JarvisOS/1.5'})
+            resp = requests.get(url, timeout=6.0, headers={'User-Agent': f'JarvisOS/{APP_VERSION}'})
             if resp.status_code != 200:
                 print(f'[YT-PICKER] thumbnail download HTTP {resp.status_code} for {url}', flush=True)
                 _log.warning('thumbnail download HTTP %s for %s', resp.status_code, url)

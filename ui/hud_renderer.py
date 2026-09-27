@@ -119,9 +119,22 @@ def init_anim_objects(hud) -> None:
         c.create_oval(cx - nr0, cy - nr0, cx + nr0, cy + nr0,
                       fill=_WHITE, outline='', tags=_DYN),
     ]
-    hud._mic_icon_id = c.create_text(
-        cx, cy, text='🎤', fill=_BG,
-        font=(hud._F, max(10, int(scale * 0.16)), 'normal'), tags=_DYN,
+    r_mic = max(5, scale * 0.075)
+    hud._mic_body_id = c.create_oval(
+        cx - r_mic, cy - r_mic * 2.0, cx + r_mic, cy + r_mic * 0.2,
+        outline=_WHITE, width=2, fill='', tags=_DYN,
+    )
+    hud._mic_stand_id = c.create_arc(
+        cx - r_mic * 1.6, cy - r_mic * 0.6, cx + r_mic * 1.6, cy + r_mic * 1.6,
+        start=200, extent=140, outline=_WHITE, width=2, style='arc', tags=_DYN,
+    )
+    hud._mic_stem_id = c.create_line(
+        cx, cy + r_mic * 1.5, cx, cy + r_mic * 2.2,
+        fill=_WHITE, width=2, tags=_DYN,
+    )
+    hud._mic_base_id = c.create_line(
+        cx - r_mic * 0.9, cy + r_mic * 2.2, cx + r_mic * 0.9, cy + r_mic * 2.2,
+        fill=_WHITE, width=2, tags=_DYN,
     )
     _title_fs = max(10, int(scale * 0.092))
     _state_fs = max(8,  int(scale * 0.062))
@@ -264,10 +277,18 @@ def draw_frame(hud) -> None:
              cx - nr * 1.4, cy - nr * 1.4, cx + nr * 1.4, cy + nr * 1.4)
     c.itemconfig(hud._core_ids[1], fill=cols['core1'])
     c.coords(hud._core_ids[2], cx - nr, cy - nr, cx + nr, cy + nr)
-    c.coords(hud._mic_icon_id, cx, cy)
+    r_mic = scale * 0.075 + pulse * 0.02
+    c.coords(hud._mic_body_id, cx - r_mic, cy - r_mic * 2.0, cx + r_mic, cy + r_mic * 0.2)
+    c.coords(hud._mic_stand_id, cx - r_mic * 1.6, cy - r_mic * 0.6, cx + r_mic * 1.6, cy + r_mic * 1.6)
+    c.coords(hud._mic_stem_id, cx, cy + r_mic * 1.5, cx, cy + r_mic * 2.2)
+    c.coords(hud._mic_base_id, cx - r_mic * 0.9, cy + r_mic * 2.2, cx + r_mic * 0.9, cy + r_mic * 2.2)
     if muted != getattr(hud, '_last_muted', None):
         hud._last_muted = muted
-        c.itemconfig(hud._mic_icon_id, text='🔇' if muted else '🎤', fill=_RED if muted else _BG)
+        mic_col = _RED if muted else _WHITE
+        c.itemconfig(hud._mic_body_id, outline=mic_col)
+        c.itemconfig(hud._mic_stand_id, outline=mic_col)
+        c.itemconfig(hud._mic_stem_id, fill=mic_col)
+        c.itemconfig(hud._mic_base_id, fill=mic_col)
     # status_col = _CYAN if mode == HudState.IDLE else core_col
     c.itemconfig(hud._status_id, text='') # Hidden to avoid duplication with bottom bar
     hud._tick += 1

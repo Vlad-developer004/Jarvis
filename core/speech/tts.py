@@ -54,7 +54,7 @@ _SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 _SPLIT_THRESHOLD = 90
 _MAX_CHUNK_CHARS = 250
 _CYR_LETTERS = {'А': 'а', 'Б': 'бэ', 'В': 'вэ', 'Г': 'гэ', 'Д': 'дэ', 'Е': 'е', 'Ё': 'ё', 'Ж': 'жэ', 'З': 'зэ', 'И': 'и', 'Й': 'й', 'К': 'ка', 'Л': 'эл', 'М': 'эм', 'Н': 'эн', 'О': 'о', 'П': 'пэ', 'Р': 'эр', 'С': 'эс', 'Т': 'тэ', 'У': 'у', 'Ф': 'эф', 'Х': 'ха', 'Ц': 'цэ', 'Ч': 'чэ', 'Ш': 'ша', 'Щ': 'ща', 'Э': 'э', 'Ю': 'ю', 'Я': 'я'}
-_CYR_ABBREV  = {'США': 'сешеа', 'РФ': 'эрэф', 'ООН': 'оон', 'НАТО': 'нато', 'ТАСС': 'тасс', 'МВД': 'эмвэдэ', 'ФСБ': 'эфэсбэ', 'КГБ': 'кэгэбэ', 'ЦРУ': 'цээру', 'ФБР': 'эфбэр', 'МИД': 'мид', 'ВВП': 'вэвэпэ', 'ВВС': 'вэвээс', 'ФНС': 'фээнэс', 'МЧС': 'эмчээс', 'ДТП': 'дэтэпэ', 'СМИ': 'сми', 'НЛО': 'энэло', 'ПК': 'пэка', 'ОС': 'оэс', 'ИП': 'ип', 'ООО': 'ооо', 'ЧС': 'чээс', 'ВМФ': 'вэмэ эф', 'ФСО': 'эфэсэ', 'ГРУ': 'гэрэу', 'СВР': 'эсвээр', 'МГУ': 'эм гэ у', 'РАН': 'ран', 'ВЦИОМ': 'вциом', 'ЦБ': 'цэ бэ', 'ЕС': 'е эс', 'СНГ': 'эс эн гэ', 'БРИКС': 'брикс', 'СССР': 'эс эс эс эр', 'ТВ': 'тэ вэ', 'ДНР': 'дэ эн эр', 'ЛНР': 'эл эн эр'}
+_CYR_ABBREV  = {'РФ': 'эрэф', 'ООН': 'оон', 'НАТО': 'нато', 'ТАСС': 'тасс', 'МВД': 'эмвэдэ', 'ФСБ': 'эфэсбэ', 'КГБ': 'кэгэбэ', 'ЦРУ': 'цээру', 'ФБР': 'эфбэр', 'МИД': 'мид', 'ВВП': 'вэвэпэ', 'ВВС': 'вэвээс', 'ФНС': 'фээнэс', 'МЧС': 'эмчээс', 'ДТП': 'дэтэпэ', 'СМИ': 'сми', 'НЛО': 'энэло', 'ПК': 'пэка', 'ОС': 'оэс', 'ИП': 'ип', 'ООО': 'ооо', 'ЧС': 'чээс', 'ВМФ': 'вэмэ эф', 'ФСО': 'эфэсэ', 'ГРУ': 'гэрэу', 'СВР': 'эсвээр', 'МГУ': 'эм гэ у', 'РАН': 'ран', 'ВЦИОМ': 'вциом', 'ЦБ': 'цэ бэ', 'ЕС': 'е эс', 'СНГ': 'эс эн гэ', 'БРИКС': 'брикс', 'СССР': 'эс эс эс эр', 'ТВ': 'тэ вэ', 'ДНР': 'дэ эн эр', 'ЛНР': 'эл эн эр'}
 _LETTER_NAMES = {'A': 'эй', 'B': 'би', 'C': 'си', 'D': 'ди', 'E': 'и', 'F': 'эф', 'G': 'джи', 'H': 'эйч', 'I': 'ай', 'J': 'джей', 'K': 'кей', 'L': 'эл', 'M': 'эм', 'N': 'эн', 'O': 'оу', 'P': 'пи', 'Q': 'кью', 'R': 'ар', 'S': 'эс', 'T': 'ти', 'U': 'ю', 'V': 'ви', 'W': 'дабл-ю', 'X': 'экс', 'Y': 'вай', 'Z': 'зет'}
 _PHONETIC_DRIVES = {k: _LETTER_NAMES.get(k, k).capitalize() for k in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'}
 _PHONETIC_DRIVES['C'] = 'Цэ'; _PHONETIC_DRIVES['K'] = 'Ка'; _PHONETIC_DRIVES['X'] = 'Икс'; _PHONETIC_DRIVES['Y'] = 'Игрек'
@@ -435,8 +435,11 @@ def _chunk_text(text: str) -> list[str]:
         s = s.strip()
         if not s:
             continue
-        # Skip chunks that are only punctuation (remnants of "..." separators)
-        if all(c in '.!?—- ' for c in s):
+        # Skip chunks that are only punctuation (remnants of "..." separators,
+        # or a lone ",..." left over from clause-splitting a streamed LLM
+        # answer) — Silero's normalizer raises a bare ValueError on these
+        # instead of just producing silence, so they must never reach it.
+        if all(c in '.,!?—-:; ' for c in s):
             continue
         if len(s) <= _MAX_CHUNK_CHARS:
             chunks.append(s)
@@ -473,13 +476,14 @@ class _OrderedBatch:
     """
     _BATCH_TIMEOUT = 15.0  # seconds before watchdog flushes stuck batch
 
-    __slots__ = ('_priority', '_base_ts', '_mgr', '_lock', '_buf', '_next', '_watchdog', '_epoch', '_pending')
+    __slots__ = ('_priority', '_base_ts', '_mgr', '_lock', '_buf', '_next', '_watchdog', '_epoch', '_pending', '_persist')
 
-    def __init__(self, priority: int, base_ts: float, mgr: 'TTSManager', epoch: int) -> None:
+    def __init__(self, priority: int, base_ts: float, mgr: 'TTSManager', epoch: int, persist: bool = True) -> None:
         self._priority = priority
         self._base_ts = base_ts
         self._mgr = mgr
         self._epoch = epoch
+        self._persist = persist
         self._lock = threading.Lock()
         self._buf: dict[int, str | None] = {}
         self._next = 0
@@ -537,6 +541,21 @@ class _OrderedBatch:
                             self._mgr.put_item(self._priority, self._base_ts + idx * 0.001, item)
         if not self._buf:
             self._watchdog.cancel()
+
+
+# pygame raises a plain pygame.error with only a message (no distinct
+# exception subclass) when the output device dies mid-playback — e.g. the
+# device was unplugged or the default output changed in Windows. Centralised
+# here so both call sites in TTSManager._worker recognise the same set of
+# messages instead of drifting out of sync (one used to check a different,
+# narrower substring set than the other).
+_MIXER_DEAD_MARKERS = ("device hasn't been opened", "not initialized")
+
+
+def _recover_mixer_if_dead(err_str: str) -> None:
+    if any(m in err_str.lower() for m in _MIXER_DEAD_MARKERS):
+        try: pygame.mixer.quit()
+        except Exception: pass
 
 
 class TTSManager:
@@ -604,6 +623,7 @@ class TTSManager:
         print("[TTS] Starting Worker thread...", flush=True)
         self.worker_thread = _spawn_with_big_stack(self._worker, name='TTS-Worker')
         self.unload_timer = None
+        self._unload_timer_lock = threading.Lock()
         try:
             from core.i18n import register_refresh
             register_refresh(self._on_language_change)
@@ -716,8 +736,9 @@ class TTSManager:
                             self.queue.task_done()
                             continue
 
-                        duck_volume(True)
-                        _is_ducked = True
+                        if not _is_ducked:
+                            duck_volume(True)
+                            _is_ducked = True
                         _pending_unduck_retry[0] = None  # cancel any stale retry from a previous idle cycle
                         audio_path = str(item)
                         if not os.path.exists(audio_path):
@@ -753,12 +774,18 @@ class TTSManager:
                             _sound = pygame.mixer.Sound(audio_path)
                         except Exception as e:
                             print(f"[TTS-WORKER] Sound creation error: {e}", flush=True)
-                            if "device hasn't been opened" in str(e).lower():
-                                try: pygame.mixer.quit()
-                                except: pass
+                            _recover_mixer_if_dead(str(e))
                             self.active_playback = False
                             self.queue.task_done()
                             continue
+
+                        # Ephemeral (non-cached) file — Sound() already read the
+                        # whole WAV into memory above, so the file on disk is no
+                        # longer needed for playback and can be freed right away
+                        # instead of sitting in the cache dir until eviction.
+                        if os.path.basename(audio_path).startswith('silero_tmp_'):
+                            try: os.remove(audio_path)
+                            except OSError: pass
 
                         if self.channel.get_busy():
                             _need_queue = True  # Queue after releasing lock
@@ -768,9 +795,7 @@ class TTSManager:
                     except Exception as e:
                         err_str = str(e)
                         print(f"TTS-WORKER: EXCEPTION inside lock: {err_str}", flush=True)
-                        if "Audio device hasn't been opened" in err_str or "not initialized" in err_str:
-                            try: pygame.mixer.quit()
-                            except: pass
+                        _recover_mixer_if_dead(err_str)
                         self.active_playback = False
                         self.queue.task_done()
                         continue
@@ -807,7 +832,7 @@ class TTSManager:
         while (not self.queue.empty() or self.active_playback) and (time.time() - start < timeout):
             time.sleep(0.05)
 
-    def speak(self, text: str, priority: int = 10, wait: bool = False):
+    def speak(self, text: str, priority: int = 10, wait: bool = False, persist: bool = True):
         # Chunk on the calling thread (cheap, just regex splitting) but defer
         # normalize_for_tts() to the executor pool (see _gen_sentence). The
         # calling thread is often itself a streaming/UI-updating thread (e.g.
@@ -824,7 +849,7 @@ class TTSManager:
             self.active_playback = False
             return
         with self._gen_lock: self._gen_count += len(sentences)
-        batch = _OrderedBatch(priority, time.time(), self, self.gen_epoch)
+        batch = _OrderedBatch(priority, time.time(), self, self.gen_epoch, persist=persist)
         indexed = list(enumerate(sentences))
         batch._pending = indexed[self._MAX_INFLIGHT:]
         for i, s in indexed[:self._MAX_INFLIGHT]:
@@ -833,11 +858,13 @@ class TTSManager:
         if wait: self.wait_until_finished()
 
     def put_item(self, priority: int, ts: float, item: str):
-        if not hasattr(self, '_last_items_lock'):
-            with self._lock:
-                if not hasattr(self, '_last_items_lock'):
-                    self._last_items = {}
-                    self._last_items_lock = threading.Lock()
+        # Defensive dedup, not a symptom fix for a known bug: two independent
+        # callers (e.g. a racing dispatch path and a retry, or two feature
+        # modules reacting to the same event) can enqueue the identical
+        # already-generated wav path within the same instant. A 0.8s window
+        # only ever collapses genuine near-simultaneous repeats — normal
+        # speech (even fast replies) doesn't reuse the exact same audio path
+        # that quickly, so this never swallows a legitimate repeat.
         now = time.time()
         with self._last_items_lock:
             self._last_items = {k: v for k, v in self._last_items.items() if now - v < 5.0}
@@ -856,7 +883,7 @@ class TTSManager:
                 batch.finished(index, None)
                 return
             speed_pct = int(round(_get_tts_speed() * 100))
-            path = _generate_cached(text, speed_pct)
+            path = _generate_cached(text, speed_pct, persist=batch._persist)
             batch.finished(index, path)
         finally:
             # _gen_count was already incremented for every sentence in the
@@ -919,7 +946,7 @@ class TTSManager:
         except Exception:
             pass
     def _reset_unload_timer(self):
-        with TTSManager._lock:
+        with self._unload_timer_lock:
             if self.unload_timer:
                 self.unload_timer.cancel()
                 self.unload_timer = None
@@ -992,6 +1019,53 @@ def _get_tts():
         _tts_models[lang] = model
         return model
 _MODEL_MIN_BYTES = 30 * 1024 * 1024  # Silero models are >30 MB; smaller = corrupt download
+_MODEL_RETRY_SECONDS = 120  # background retry interval while the model is missing
+
+def _notify_model_download(active: bool, failed: bool = False) -> None:
+    """Best-effort HUD notice while the TTS model downloads — without this,
+    a silent download failure (no internet on first launch, since the model
+    isn't bundled in the installer anymore) leaves Jarvis mute with zero
+    indication why. Never raises: must not affect warmup/synthesis if the
+    HUD isn't up yet or notify() itself has a problem."""
+    try:
+        from ui import hud as _hud
+        from ui.hud_constants import _AMBER, _RED
+        if failed:
+            _hud.notify('tts_model',
+                         f'Не удалось скачать голосовую модель — повторю через {_MODEL_RETRY_SECONDS // 60} мин',
+                         _RED, duration=6000)
+        elif active:
+            _hud.notify('tts_model', 'Скачиваю голосовую модель Jarvis...', _AMBER)
+        else:
+            _hud.clear_notify('tts_model')
+    except Exception:
+        pass
+
+_retry_lock = threading.Lock()
+_retry_scheduled: set[str] = set()
+
+def _schedule_model_retry(lang: str) -> None:
+    """Actually makes good on _notify_model_download's 'повторю через N мин'
+    instead of just leaving it to the next real synthesis call — that call
+    would otherwise re-hit the same multi-second download timeout inline,
+    delaying Jarvis's actual spoken reply. One retry chain per language at a
+    time (dedup'd via _retry_scheduled); _ensure_model reschedules itself
+    again on repeat failure, so this keeps retrying at a fixed interval for
+    as long as the app runs, not just once."""
+    with _retry_lock:
+        if lang in _retry_scheduled:
+            return
+        _retry_scheduled.add(lang)
+    def _retry():
+        with _retry_lock:
+            _retry_scheduled.discard(lang)
+        try:
+            _ensure_model(lang)
+        except Exception:
+            pass  # already notified + rescheduled inside _ensure_model
+    t = threading.Timer(_MODEL_RETRY_SECONDS, _retry)
+    t.daemon = True
+    t.start()
 
 def _ensure_model(lang: str = None) -> None:
     if lang is None:
@@ -1008,6 +1082,7 @@ def _ensure_model(lang: str = None) -> None:
     import torch
     os.makedirs(_MODEL_DIR, exist_ok=True)
     tmp_file = model_file + '.tmp'
+    _notify_model_download(active=True)
     try:
         torch.hub.download_url_to_file(_get_model_url(lang), tmp_file)
         if not os.path.exists(tmp_file):
@@ -1019,12 +1094,15 @@ def _ensure_model(lang: str = None) -> None:
             )
         os.replace(tmp_file, model_file)
         print(f'[TTS] Model {lang} downloaded OK ({os.path.getsize(model_file) // 1024 // 1024} MB).', flush=True)
+        _notify_model_download(active=False)
     except Exception:
         if os.path.exists(tmp_file):
             try:
                 os.remove(tmp_file)
             except OSError:
                 pass
+        _notify_model_download(active=False, failed=True)
+        _schedule_model_retry(lang)
         raise
 def _save_wav_native_speed(model, tmp_path: str, speaker: str, speed: float,
                             want_native_speed: bool, *, text: str = None, ssml_text: str = None) -> None:
@@ -1044,7 +1122,7 @@ def _save_wav_native_speed(model, tmp_path: str, speaker: str, speed: float,
     model.save_wav(**kwargs)
 
 
-def _generate_cached(text: str, _speed_pct: int = 100) -> str | None:
+def _generate_cached(text: str, _speed_pct: int = 100, persist: bool = True) -> str | None:
     global _silero_supports_speech_rate
     speed = _speed_pct / 100.0
     lang = _get_lang()
@@ -1053,7 +1131,12 @@ def _generate_cached(text: str, _speed_pct: int = 100) -> str | None:
     # Cache key includes speed so each rate has its own file
     cache_key = f'{text}|{speaker}|{lang}|{_SAMPLE_RATE}|{_speed_pct}'
     h = hashlib.md5(cache_key.encode('utf-8')).hexdigest()[:12]
-    path = os.path.join(CACHE_DIR, f'silero_{h}.wav')
+    # persist=False (one-off AI/LLM answer text, unlikely to repeat verbatim)
+    # gets a distinct filename prefix so the worker frees it right after
+    # playback instead of leaving it in the cache dir until eviction — see
+    # the silero_tmp_ cleanup in TTSManager._worker.
+    prefix = 'silero' if persist else 'silero_tmp'
+    path = os.path.join(CACHE_DIR, f'{prefix}_{h}.wav')
     if not os.path.exists(path):
         try:
             model = _get_tts()
@@ -1177,7 +1260,7 @@ def ensure_mixer_init() -> None:
                     # Device might be "init" but not actually open
                     try: pygame.mixer.quit()
                     except: pass
-            
+
             def _try_init(dname=None, freq=48000):
                 try:
                     # buffer=4096 (~85ms @ 48kHz) avoids underrun crackle while
@@ -1190,21 +1273,31 @@ def ensure_mixer_init() -> None:
                     except: pass
                     return False
 
-            # NOTE: deliberately not resolving/passing the user's configured output
-            # device here. Doing so previously called _resolve_sdl_device_name(),
-            # which talks to SDL2 directly via ctypes — racing with pygame's own
-            # SDL audio subsystem on this hot reinit path crashed the process
-            # (0xC0000005) immediately on the very first chunk. The configured
-            # device is still applied correctly via apply_audio_devices(), which
-            # does a single controlled quit+reinit instead of this fast path.
+            # Deliberately always dname=None (system default), never the
+            # user's configured device. A true-cold-start attempt at
+            # resolving and applying it (_resolve_sdl_device_name, one-shot,
+            # before anything else touches the mixer) was tried here and made
+            # things WORSE, not better: pygame reported a successful init and
+            # a successful channel.play() for the full duration of every
+            # reply (HUD showed "ГОВОРЮ" the whole time), but no audio
+            # actually reached the speaker — SDL resolved the configured name
+            # to a device that accepts writes but produces no sound. That
+            # silent-failure mode is strictly worse than the original hot-
+            # reinit crash this comment used to warn about (0xC0000005 on the
+            # very first chunk after a live device switch). Three different
+            # failure modes across three attempts on this exact machine —
+            # staying off. Change the output device in Windows itself
+            # instead; 'audio_output_device_name' in settings is still used
+            # for the (separate) echo-suppression check in
+            # core/audio_utils.py, just not for what mixer.init() opens.
             success = False
             if _try_init(None, 48000): success = True
             elif _try_init(None, 44100): success = True
-            
+
             if not success:
                 print("[TTS] CRITICAL: All mixer init attempts failed.", flush=True)
 
-        except Exception as e: 
+        except Exception as e:
             print(f"[TTS] ensure_mixer_init crash: {e}", flush=True)
 
 def apply_audio_devices(output_device_name: str | None = None, input_device_index: int | None = None) -> tuple[bool, str]:
@@ -1216,54 +1309,24 @@ def apply_audio_devices(output_device_name: str | None = None, input_device_inde
     ok = True
 
     # --- Output (TTS) ---
-    with _mixer_lock:
-        try:
-            mgr = TTSManager()
-            mgr.stop()
-            time.sleep(0.15)
-            try:
-                pygame.mixer.quit()
-            except Exception: pass
-            time.sleep(0.1)
-            
-            sdl_dev = _resolve_sdl_device_name(output_device_name)
-            
-            def _try_init_local(dname=None):
-                try:
-                    if dname:
-                        pygame.mixer.init(frequency=_SAMPLE_RATE, devicename=dname, buffer=4096)
-                    else:
-                        pygame.mixer.init(frequency=_SAMPLE_RATE, buffer=4096)
-                    pygame.mixer.set_num_channels(24)
-                    return True
-                except Exception:
-                    return False
-
-            if sdl_dev:
-                if _try_init_local(sdl_dev):
-                    msgs.append(f'✓ Вывод переключён → {sdl_dev}')
-                else:
-                    if _try_init_local(None):
-                        msgs.append(f'⚠ Устройство {sdl_dev!r} недоступно — сброшено на по умолчанию')
-                        ok = False
-                    else:
-                        msgs.append('⚠ Критическая ошибка вывода')
-                        ok = False
-            else:
-                if _try_init_local(None):
-                    msgs.append('✓ Вывод сброшен на системный')
-                else:
-                    msgs.append('⚠ Не удалось инициализировать вывод')
-                    ok = False
-
-            mgr.channel = None
-            try:
-                import core.audio_utils as _au
-                _au._last_jarvis_hp_check = 0.0
-            except Exception: pass
-        except Exception as e:
-            msgs.append(f'⚠ Ошибка вывода: {e}')
-            ok = False
+    # No live pygame.mixer.quit()+reinit here on purpose — that dance (still
+    # needed for ensure_mixer_init's very first startup init) crashes this
+    # machine with a native Windows access violation on mixer.quit() itself,
+    # reproduced twice in a row even after adding a get_busy() wait beforehand
+    # (see logs/crash_dump.log) — this is a real SDL2/WASAPI-level fault, not
+    # a Python-catchable race the busy-check could paper over. The caller
+    # (settings_tabs/voice.py's _apply_audio_settings) already persisted
+    # output_device_name to disk before calling this — ensure_mixer_init()
+    # picks it up on the next TTS engine startup, so just tell the user a
+    # restart is needed instead of risking the crash for an instant switch.
+    try:
+        import core.audio_utils as _au
+        _au._last_jarvis_hp_check = 0.0
+    except Exception: pass
+    if output_device_name:
+        msgs.append(f'✓ Вывод сохранён ({output_device_name}) — применится после перезапуска Jarvis')
+    else:
+        msgs.append('✓ Вывод сброшен на системный — применится после перезапуска Jarvis')
 
     # --- Input (Microphone) ---
     try:
@@ -1274,21 +1337,36 @@ def apply_audio_devices(output_device_name: str | None = None, input_device_inde
             from config_pack.config import RATE, CHUNK_MS
             from core.audio_utils import open_input_stream
             chunk = int(RATE * CHUNK_MS / 1000)
+            # eng.stream is read continuously by JarvisEngine.run()'s own
+            # thread (self.stream.read(...) in a tight loop) — closing and
+            # reassigning it from this (caller's) thread with no coordination
+            # raced against an in-flight read() and corrupted the process
+            # heap (Windows STATUS_HEAP_CORRUPTION, 0xc0000374 — see
+            # logs/crash_dump.log). _calibrating is the same flag
+            # run_calibration_ui already uses to keep that loop from touching
+            # the stream while it's mid-swap; the brief sleep after setting
+            # it gives a read() already in progress (bounded by one chunk's
+            # duration, tens of ms) time to actually return before close().
+            eng._calibrating = True
             try:
-                eng.stream.close()
-            except Exception:
-                pass
-            try:
-                eng.stream = open_input_stream(eng.pa, RATE, chunk, device_index=input_device_index)
-                msgs.append('✓ Микрофон переключён (активен немедленно)')
-            except Exception as e:
-                # Try fallback to default
+                time.sleep(0.1)
                 try:
-                    eng.stream = open_input_stream(eng.pa, RATE, chunk)
-                    msgs.append('⚠ Не удалось переключить микрофон, восстановлен системный')
-                except Exception as e2:
-                    msgs.append(f'⚠ Критическая ошибка микрофона: {e2}')
-                    ok = False
+                    eng.stream.close()
+                except Exception:
+                    pass
+                try:
+                    eng.stream = open_input_stream(eng.pa, RATE, chunk, device_index=input_device_index)
+                    msgs.append('✓ Микрофон переключён (активен немедленно)')
+                except Exception as e:
+                    # Try fallback to default
+                    try:
+                        eng.stream = open_input_stream(eng.pa, RATE, chunk)
+                        msgs.append('⚠ Не удалось переключить микрофон, восстановлен системный')
+                    except Exception as e2:
+                        msgs.append(f'⚠ Критическая ошибка микрофона: {e2}')
+                        ok = False
+            finally:
+                eng._calibrating = False
         else:
             msgs.append('ℹ Движок не запущен — микрофон применится при следующем старте')
     except Exception as e:
@@ -1360,6 +1438,14 @@ _STRESS_PAT = re.compile(
     re.IGNORECASE,
 )
 
+# Nouns whose dictionary genitive-plural is a regular/suppletive form that
+# sounds wrong specifically in the after-a-cardinal counting context, where
+# Russian keeps an older invariant form instead ("сто человек", not "сто
+# людей"). Keyed by nominative singular as typed; see _fix_noun.
+_COUNTING_NOUN_EXCEPTIONS = {
+    'человек': 'человек',
+}
+
 def _apply_stress(text: str) -> str:
     """Replace known mis-stressed words with stress-marked variants."""
     def _repl(m: re.Match) -> str:
@@ -1373,6 +1459,344 @@ def _apply_stress(text: str) -> str:
     return _STRESS_PAT.sub(_repl, text)
 
 
+# --- normalize_for_tts pipeline -----------------------------------------
+#
+# Each _expand_*/_fix_* function below is one independent text->text step
+# of the pipeline, run in sequence by normalize_for_tts() at the bottom.
+# They're pure functions of their arguments (no shared mutable state besides
+# the `text` threaded through), so each is independently readable and
+# testable instead of being one 280-line function body full of closures
+# capturing shared local state.
+
+_normalize_nlp_deps = None
+
+
+def _get_normalize_nlp_deps():
+    """Lazily import+cache the (get_russian_plural, num2words) pair used by
+    several pipeline steps — done once, not on every normalize_for_tts() call."""
+    global _normalize_nlp_deps
+    if _normalize_nlp_deps is None:
+        from core.nlp import get_russian_plural
+        from num2words import num2words
+        _normalize_nlp_deps = (get_russian_plural, num2words)
+    return _normalize_nlp_deps
+
+
+_CASE_TAG = {'gen': 'gent', 'prep': 'loct', 'nom': 'nomn', 'dat': 'datv', 'acc': 'accs'}
+
+
+def _inflect_last(morph, phrase: str, tags: set, prefer_pos: tuple = ('ADJF',)) -> str:
+    """Inflect the last word of a phrase to given morphological tags.
+
+    prefer_pos restricts the first pass to parses of that part of speech.
+    This matters because pymorphy3 returns every homonym reading for a
+    spelling, sorted by corpus frequency, not by which reading actually
+    fits here — e.g. "сто" also parses as an indeclinable abbreviation noun
+    (score-tied with its real NUMR reading), and that noun reading
+    "successfully" inflects to itself unchanged, so an unfiltered first
+    pass silently returns "сто" instead of the genitive "ста". Ordinal
+    callers want ADJF ("пятый" is grammatically an adjective);
+    _expand_standalone_numbers passes prefer_pos=('NUMR',) for cardinals.
+    """
+    if morph is None: return phrase
+    words = phrase.strip().split()
+    if not words: return phrase
+    last = words[-1]
+    parses = morph.parse(last)
+    # Build fallback tag sets: try most-specific first, then relax constraints
+    tag_variants = []
+    for drop in (set(), {'sing'}, {'masc', 'femn', 'neut'}, {'masc', 'femn', 'neut', 'sing'}):
+        t = tags - drop
+        if t and t not in tag_variants:
+            tag_variants.append(t)
+    for strict in (True, False):
+        for p in parses:
+            if strict and p.tag.POS not in prefer_pos:
+                continue
+            for tv in tag_variants:
+                infl = p.inflect(tv)
+                if infl:
+                    return (' '.join(words[:-1]) + ' ' + infl.word).strip()
+    return phrase
+
+
+def _ordinal_case(morph, nw_lang: str, phrase: str, case: str, gender: str = 'masc') -> str:
+    """Inflect ordinal phrase to requested case and gender."""
+    if case == 'nom': return phrase
+    ct = _CASE_TAG.get(case, 'gent')
+    # Ukrainian loct: prefer dative form — same meaning, more common than archaic '-ім'
+    if nw_lang == 'uk' and ct == 'loct':
+        r = _inflect_last(morph, phrase, {'datv', gender, 'sing'})
+        if r != phrase: return r
+    return _inflect_last(morph, phrase, {ct, gender, 'sing'})
+
+
+def _expand_drive_letters(text: str) -> str:
+    return re.sub(
+        r'\b([A-Za-z]):\\',
+        lambda m: f'диск {_PHONETIC_DRIVES.get(m.group(1).upper(), m.group(1).upper())} ',
+        text)
+
+
+def _expand_units_and_currency(text: str, lang: str) -> str:
+    km_word = 'кілометрів' if lang == 'uk' else 'километров'
+    gb_word = 'гігабайт' if lang == 'uk' else 'гигабайт'
+    kb_word = 'кілобайт' if lang == 'uk' else 'килобайт'
+    all_units = {**_UNIT_EXPANSIONS, 'км': km_word, 'гб': gb_word, 'мб': 'мегабайт', 'кб': kb_word}
+    text = re.sub(
+        r'\b(ГБ|МБ|КБ|км/ч|км/час|кг|см|мм|км)\b',
+        lambda m: all_units.get(m.group(0).lower(), m.group(0)),
+        text, flags=re.IGNORECASE)
+    return text.replace('€', 'євро' if lang == 'uk' else 'евро')
+
+
+def _expand_minus_sign(text: str, nw_lang: str) -> str:
+    # -5 → минус 5 (before any number conversion)
+    minus = 'мінус ' if nw_lang == 'uk' else 'минус '
+    return re.sub(r'(?<!\d)(?<!\w)-(\d)', lambda m: minus + m.group(1), text)
+
+
+def _expand_degrees(text: str, nw_lang: str) -> str:
+    # 20°C, -5°, 20° → spoken form with proper pluralization
+    minus = 'мінус ' if nw_lang == 'uk' else 'минус '
+
+    def _degree_repl(m: re.Match) -> str:
+        n = int(m.group(1))
+        abs_n = abs(n)
+        sign = minus if n < 0 else ''
+        last2, last1 = abs_n % 100, abs_n % 10
+        if 11 <= last2 <= 19:   form = 'градусів' if nw_lang == 'uk' else 'градусов'
+        elif last1 == 1:         form = 'градус'
+        elif 2 <= last1 <= 4:   form = 'градуси' if nw_lang == 'uk' else 'градуса'
+        else:                    form = 'градусів' if nw_lang == 'uk' else 'градусов'
+        return f"{sign}{abs_n} {form}"
+    return re.sub(r'(-?\d+)\s*°[CcFfСс]?', _degree_repl, text)
+
+
+def _expand_percentages(text: str, lang: str, num2words, get_russian_plural) -> str:
+    def _uk_pct_word(n: int) -> str:
+        last2, last1 = n % 100, n % 10
+        if 11 <= last2 <= 19: return 'відсотків'
+        if last1 == 1: return 'відсоток'
+        if 2 <= last1 <= 4: return 'відсотки'
+        return 'відсотків'
+    if lang == 'uk':
+        return re.sub(
+            r'(\d+)\s*%',
+            lambda m: f"{num2words(int(m.group(1)), lang='uk')} {_uk_pct_word(int(m.group(1)))}",
+            text)
+    return re.sub(
+        r'(\d+)\s*%',
+        lambda m: f"{num2words(int(m.group(1)), lang='ru')} {get_russian_plural(int(m.group(1)), ['процент', 'процента', 'процентов'])}",
+        text)
+
+
+def _expand_years(text: str, lang: str, nw_lang: str, morph, num2words) -> str:
+    if lang == 'uk':
+        # Ukrainian: рік (nom), року (gen/date), році (prep), -го, -му, -й
+        def _year_uk(m: re.Match) -> str:
+            try:
+                y = int(m.group('year'))
+                suf = (m.group('suf') or '').strip().rstrip('.').lower()
+                ordy = num2words(y, lang='uk', to='ordinal')
+                if suf in ('року', 'р'):    return _ordinal_case(morph, nw_lang, ordy, 'gen') + ' року'
+                if suf == 'році':           return _ordinal_case(morph, nw_lang, ordy, 'prep') + ' році'
+                if suf in ('рік', 'р.'):    return ordy + ' рік'
+                if suf == '-го':            return _ordinal_case(morph, nw_lang, ordy, 'gen')
+                if suf in ('-му', '-м'):    return _ordinal_case(morph, nw_lang, ordy, 'prep')
+                return num2words(y, lang='uk')
+            except Exception: return m.group(0)
+        text = re.sub(
+            r'\b(?P<year>19\d{2}|20\d{2})\s*(?P<suf>року|році|рік|р\.|р\b|-го|-му|-м\b)',
+            _year_uk, text, flags=re.IGNORECASE)
+        # Standalone years in Ukrainian year range "2020-2023" → cardinal both
+        return re.sub(
+            r'\b(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})\b',
+            lambda m: f"{num2words(int(m.group(1)), lang='uk')} — {num2words(int(m.group(2)), lang='uk')}",
+            text)
+
+    # Russian: год (nom), года (gen), году (prep), -го, -м, -й
+    def _year_ru(m: re.Match) -> str:
+        try:
+            y = int(m.group('year'))
+            suf = (m.group('suf') or '').strip().rstrip('.').lower()
+            ordy = num2words(y, lang='ru', to='ordinal')
+            if suf == 'года':           return _ordinal_case(morph, nw_lang, ordy, 'gen') + ' года'
+            if suf == 'году':           return _ordinal_case(morph, nw_lang, ordy, 'prep') + ' году'
+            if suf in ('год', 'г'):     return ordy + ' год'
+            if suf in ('-го', 'го'):    return _ordinal_case(morph, nw_lang, ordy, 'gen')
+            if suf in ('-м', 'м', '-й'): return _ordinal_case(morph, nw_lang, ordy, 'prep')
+            return num2words(y, lang='ru')
+        except Exception: return m.group(0)
+    text = re.sub(
+        r'\b(?P<year>19\d{2}|20\d{2})\s*(?P<suf>года\b|году\b|год\b|г\.|г\b|-го\b|(?<!\w)го\b|-м\b|-й\b)',
+        _year_ru, text, flags=re.IGNORECASE)
+    # Year range "2020-2023"
+    return re.sub(
+        r'\b(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})\b',
+        lambda m: f"{num2words(int(m.group(1)), lang='ru')} — {num2words(int(m.group(2)), lang='ru')}",
+        text)
+
+
+def _expand_dates(text: str, lang: str, nw_lang: str, morph, num2words) -> str:
+    # Day + month, e.g. "5 марта" → "пятого марта"
+    if lang == 'uk':
+        return re.sub(
+            r'\b(\d{1,2})\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня)\b',
+            lambda m: _ordinal_case(morph, nw_lang, num2words(int(m.group(1)), lang='uk', to='ordinal'), 'gen') + ' ' + m.group(2),
+            text, flags=re.IGNORECASE)
+    return re.sub(
+        r'\b(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b',
+        lambda m: _ordinal_case(morph, nw_lang, num2words(int(m.group(1)), lang='ru', to='ordinal'), 'gen') + ' ' + m.group(2),
+        text, flags=re.IGNORECASE)
+
+
+def _expand_ordinal_shorthand(text: str, nw_lang: str, morph, num2words) -> str:
+    # 1-й, 2-й, 3-го, 2-му etc. Optional capture of following Cyrillic word
+    # for gender/case agreement.
+    def _ordinal_short(m: re.Match) -> str:
+        try:
+            n = int(m.group(1))
+            suf = m.group(2).lower().lstrip('-')
+            following_ws = m.group(3) or ''
+            following = following_ws.strip()
+            ordy = num2words(n, lang=nw_lang, to='ordinal')
+            if suf in ('го', 'ого', 'його', 'его'):
+                return _ordinal_case(morph, nw_lang, ordy, 'gen') + following_ws
+            if suf in ('м', 'ом', 'ем', 'му', 'ому'):
+                return _ordinal_case(morph, nw_lang, ordy, 'prep') + following_ws
+            # Ambiguous suffix (-й/-ій/-я/-е/-є): agree with following noun
+            if following and morph is not None:
+                parses = morph.parse(following.lower())
+                if parses:
+                    cmap = {'nomn': 'nom', 'gent': 'gen', 'datv': 'dat',
+                            'accs': 'acc', 'ablt': 'prep', 'loct': 'prep'}
+                    # Prefer loct > datv > gent > ablt over nomn/accs (ordinals
+                    # before nouns are usually in oblique context, not nom-plural)
+                    oblique_pref = ('loct', 'datv', 'gent', 'ablt')
+                    best = next(
+                        (p for pref in oblique_pref
+                         for p in parses if str(p.tag.case) == pref),
+                        parses[0]
+                    )
+                    gender = str(best.tag.gender) if best.tag.gender else 'masc'
+                    case = cmap.get(str(best.tag.case) if best.tag.case else 'nomn', 'nom')
+                    return _ordinal_case(morph, nw_lang, ordy, case, gender) + following_ws
+            return ordy + following_ws
+        except Exception:
+            return m.group(0)
+    return re.sub(
+        r'\b(\d+)(-?(?:й|ій|я|є|е|го|ого|його|его|му|ому|м|ом|ем))(\s+[А-Яа-яЁёІіЇїЄє]+)?',
+        _ordinal_short, text, flags=re.IGNORECASE)
+
+
+def _expand_year_ranges_with_prep(text: str, nw_lang: str, morph, num2words) -> str:
+    # "с 1939 по 1945" / "від 1939 до 1945" — no digit suffix to key off, so
+    # this runs separately from _expand_years, keyed on the governing prepositions.
+    prep_start = r'(?:с|от|із|з|від|за)\s+'
+    prep_end = r'\s+(?:по|до|—|-)\s+'
+
+    def _year_range_repl(m: re.Match) -> str:
+        try:
+            y = int(m.group('ry'))
+            return m.group('pre') + _ordinal_case(morph, nw_lang, num2words(y, lang=nw_lang, to='ordinal'), 'gen') + m.group('sep')
+        except Exception: return m.group(0)
+    return re.sub(
+        r'(?P<pre>' + prep_start + r')(?P<ry>19\d{2}|20\d{2})(?P<sep>' + prep_end + r')',
+        _year_range_repl, text, flags=re.IGNORECASE)
+
+
+def _fix_number_noun_agreement(text: str, nw_lang: str, morph) -> str:
+    # "5 метр" → "5 метров" etc.
+    if morph is None:
+        return text
+
+    def _fix_noun(m: re.Match) -> str:
+        try:
+            n = int(m.group(1))
+            noun = m.group(2)
+            parses = morph.parse(noun.lower())
+            noun_p = next((p for p in parses if 'NOUN' in str(p.tag)), None)
+            if noun_p is None: return m.group(0)
+            abs_n = abs(n)
+            last2, last1 = abs_n % 100, abs_n % 10
+            if 11 <= last2 <= 19:   req = ('gent', 'plur')
+            elif last1 == 1:         req = ('nomn', 'sing')
+            elif 2 <= last1 <= 4:   req = ('gent', 'sing')
+            else:                    req = ('gent', 'plur')
+            cur_case = str(noun_p.tag.case) if noun_p.tag.case else ''
+            cur_num = str(noun_p.tag.number) if noun_p.tag.number else ''
+            if cur_case == req[0] and cur_num == req[1]:
+                return m.group(0)  # already correct
+            # pymorphy3's dictionary genitive-plural for these nouns is the
+            # regular declined form ("человек" -> "людей"), but after a
+            # cardinal number Russian keeps the invariant counting form
+            # ("сто человек", never "сто людей") — a lexical exception,
+            # not something the inflector can derive from tags alone.
+            if nw_lang == 'ru' and req == ('gent', 'plur'):
+                exc = _COUNTING_NOUN_EXCEPTIONS.get(noun.lower())
+                if exc:
+                    return m.group(1) + ' ' + exc
+            infl = noun_p.inflect({req[0], req[1]})
+            if infl:
+                return m.group(1) + ' ' + infl.word
+        except Exception:
+            pass
+        return m.group(0)
+    return re.sub(r'\b(\d+)\s+([А-Яа-яЁёІіЇїЄє]{3,})\b', _fix_noun, text)
+
+
+def _expand_abbreviations_and_latin(text: str) -> str:
+    text = re.sub(
+        r'(?<![А-ЯЁа-яёa-zA-Z])[А-ЯЁ]{2,6}(?![А-ЯЁа-яёa-zA-Z])',
+        lambda m: _CYR_ABBREV.get(m.group(0), ' '.join(_CYR_LETTERS.get(c, c) for c in m.group(0))),
+        text)
+    return re.sub(r"[a-zA-Z]+(?:['-][a-zA-Z]+)*", _transliterate_word, text)
+
+
+_GEN_GOV_PREPS = {
+    'ru': ('до', 'от', 'с', 'около', 'свыше', 'выше', 'ниже'),
+    'uk': ('до', 'від', 'з', 'близько', 'понад', 'вище', 'нижче'),
+}
+
+
+def _expand_standalone_numbers(text: str, nw_lang: str, morph, num2words) -> str:
+    # Remaining standalone numbers, with genitive agreement after
+    # case-governing prepositions ("до 19 градусов" → "до девятнадцати
+    # градусов", not the bare nominative "до девятнадцать").
+    def _standalone_number(m: re.Match) -> str:
+        word = num2words(int(m.group('num')), lang=nw_lang)
+        prep = (m.group('prep') or '').lower()
+        if morph is not None and prep in _GEN_GOV_PREPS.get(nw_lang, ()):
+            infl = _inflect_last(morph, word, {'gent'}, prefer_pos=('NUMR',))
+            if infl != word:
+                word = infl
+        return (m.group('prep') + ' ' if m.group('prep') else '') + word
+    preps_alt = '|'.join(_GEN_GOV_PREPS.get(nw_lang, ()))
+    return re.sub(
+        rf'(?:\b(?P<prep>{preps_alt})\s+)?(?<!\w)(?P<num>\d+)(?!\w)',
+        _standalone_number, text, flags=re.IGNORECASE)
+
+
+def _apply_address_form(text: str) -> str:
+    # Replace hardcoded "сэр"/"сер" with the user-configured address form,
+    # then add a comma after it (Сэр/Джарвис/Леди/custom) for TTS prosody.
+    # Both steps need the same configured value, fetched once.
+    try:
+        from core.address import get_address
+        addr_value = get_address()
+        if addr_value.lower() not in ('сэр', 'сер'):
+            text = re.sub(r'\bсэр\b', addr_value, text, flags=re.IGNORECASE)
+            text = re.sub(r'\bсер\b', addr_value, text, flags=re.IGNORECASE)
+        addr_esc = re.escape(addr_value)
+        cyr = r'[а-яёА-ЯЁіїєІЇЄ]'
+        text = re.sub(rf'^({addr_esc})\s+({cyr})', r'\1, \2', text, flags=re.IGNORECASE)
+        text = re.sub(rf'([.!?])\s+({addr_esc})\s+({cyr})', r'\1 \2, \3', text, flags=re.IGNORECASE)
+    except Exception:
+        pass
+    return text
+
+
 def normalize_for_tts(text: str) -> str:
     if not text:
         return ''
@@ -1383,272 +1807,32 @@ def normalize_for_tts(text: str) -> str:
         if cached is not None:
             _normalize_cache.move_to_end(key)
             return cached
-    text, _ssml_tags = _protect_ssml_tags(text)
+
+    text, ssml_tags = _protect_ssml_tags(text)
     text = _apply_stress(text)
     # Convert phrase pause markers to sentence boundaries so Silero pauses naturally
     text = re.sub(r'\s+\.\.\.\s+', '. ', text)
-    if not hasattr(normalize_for_tts, '_nlp_cache'):
-        from core.nlp import format_time_russian, get_russian_plural
-        from num2words import num2words
-        normalize_for_tts._nlp_cache = (format_time_russian, get_russian_plural, num2words)
-    format_time_russian, get_russian_plural, num2words = normalize_for_tts._nlp_cache
-    text = re.sub(r'\b([A-Za-z]):\\', lambda m: f'диск {_PHONETIC_DRIVES.get(m.group(1).upper(), m.group(1).upper())} ', text)
+
+    get_russian_plural, num2words = _get_normalize_nlp_deps()
     nw_lang = 'uk' if lang == 'uk' else 'ru'
-    _km_word = 'кілометрів' if lang == 'uk' else 'километров'
-    _gb_word = 'гігабайт' if lang == 'uk' else 'гигабайт'
-    _kb_word = 'кілобайт' if lang == 'uk' else 'килобайт'
-    _all_units = {**_UNIT_EXPANSIONS, 'км': _km_word, 'гб': _gb_word, 'мб': 'мегабайт', 'кб': _kb_word}
-    text = re.sub(r'\b(ГБ|МБ|КБ|км/ч|км/час|кг|см|мм|км)\b', lambda m: _all_units.get(m.group(0).lower(), m.group(0)), text, flags=re.IGNORECASE)
-    text = text.replace('€', 'євро' if lang == 'uk' else 'евро')
-
-    # --- Minus sign: -5 → минус 5 (before any number conversion) ---
-    _minus = 'мінус ' if nw_lang == 'uk' else 'минус '
-    text = re.sub(r'(?<!\d)(?<!\w)-(\d)', lambda m: _minus + m.group(1), text)
-
-    # --- Degree symbols: 20°C, -5°, 20° → spoken form with proper pluralization ---
-    def _degree_repl(m: re.Match) -> str:
-        n = int(m.group(1))
-        abs_n = abs(n)
-        sign = _minus if n < 0 else ''
-        last2, last1 = abs_n % 100, abs_n % 10
-        if 11 <= last2 <= 19:   form = 'градусів' if nw_lang == 'uk' else 'градусов'
-        elif last1 == 1:         form = 'градус'
-        elif 2 <= last1 <= 4:   form = 'градуси' if nw_lang == 'uk' else 'градуса'
-        else:                    form = 'градусів' if nw_lang == 'uk' else 'градусов'
-        return f"{sign}{abs_n} {form}"
-    text = re.sub(r'(-?\d+)\s*°[CcFfСс]?', _degree_repl, text)
-
-    # --- Percentages ---
-    def _uk_pct_word(n: int) -> str:
-        last2, last1 = n % 100, n % 10
-        if 11 <= last2 <= 19: return 'відсотків'
-        if last1 == 1: return 'відсоток'
-        if 2 <= last1 <= 4: return 'відсотки'
-        return 'відсотків'
-    if lang == 'uk':
-        text = re.sub(r'(\d+)\s*%', lambda m: f"{num2words(int(m.group(1)), lang='uk')} {_uk_pct_word(int(m.group(1)))}", text)
-    else:
-        text = re.sub(r'(\d+)\s*%', lambda m: f"{num2words(int(m.group(1)), lang='ru')} {get_russian_plural(int(m.group(1)), ['процент', 'процента', 'процентов'])}", text)
-
-    # --- Ordinal case helpers (pymorphy3-powered) ---
     morph = _get_morph(nw_lang)
-    _CASE_TAG = {'gen': 'gent', 'prep': 'loct', 'nom': 'nomn', 'dat': 'datv', 'acc': 'accs'}
 
-    def _inflect_last(phrase: str, tags: set) -> str:
-        """Inflect the last word of a phrase to given morphological tags."""
-        if morph is None: return phrase
-        words = phrase.strip().split()
-        if not words: return phrase
-        last = words[-1]
-        parses = morph.parse(last)
-        # Build fallback tag sets: try most-specific first, then relax constraints
-        tag_variants = []
-        for drop in (set(), {'sing'}, {'masc','femn','neut'}, {'masc','femn','neut','sing'}):
-            t = tags - drop
-            if t and t not in tag_variants:
-                tag_variants.append(t)
-        for strict in (True, False):
-            for p in parses:
-                ts = str(p.tag)
-                if strict and 'Anum' not in ts and 'ADJF' not in ts:
-                    continue
-                for tv in tag_variants:
-                    infl = p.inflect(tv)
-                    if infl:
-                        return (' '.join(words[:-1]) + ' ' + infl.word).strip()
-        return phrase
+    text = _expand_drive_letters(text)
+    text = _expand_units_and_currency(text, lang)
+    text = _expand_minus_sign(text, nw_lang)
+    text = _expand_degrees(text, nw_lang)
+    text = _expand_percentages(text, lang, num2words, get_russian_plural)
+    text = _expand_years(text, lang, nw_lang, morph, num2words)
+    text = _expand_dates(text, lang, nw_lang, morph, num2words)
+    text = _expand_ordinal_shorthand(text, nw_lang, morph, num2words)
+    text = _expand_year_ranges_with_prep(text, nw_lang, morph, num2words)
+    text = _fix_number_noun_agreement(text, nw_lang, morph)
+    text = _expand_abbreviations_and_latin(text)
+    text = _expand_standalone_numbers(text, nw_lang, morph, num2words)
+    text = _apply_address_form(text)
 
-    def _ordinal_case(phrase: str, case: str, gender: str = 'masc') -> str:
-        """Inflect ordinal phrase to requested case and gender."""
-        if case == 'nom': return phrase
-        ct = _CASE_TAG.get(case, 'gent')
-        # Ukrainian loct: prefer dative form — same meaning, more common than archaic '-ім'
-        if nw_lang == 'uk' and ct == 'loct':
-            r = _inflect_last(phrase, {'datv', gender, 'sing'})
-            if r != phrase: return r
-        return _inflect_last(phrase, {ct, gender, 'sing'})
-
-    # --- Year patterns ---
-    _YEAR_PAT = r'\b(?P<y1>19\d{2}|20\d{2})'
-    if lang == 'uk':
-        # Ukrainian: рік (nom), року (gen/date), році (prep), -го, -му, -й
-        def _year_uk(m: re.Match) -> str:
-            try:
-                y = int(m.group('year'))
-                suf = (m.group('suf') or '').strip().rstrip('.').lower()
-                ordy = num2words(y, lang='uk', to='ordinal')
-                if suf in ('року', 'р'):    return _ordinal_case(ordy, 'gen') + ' року'
-                if suf == 'році':           return _ordinal_case(ordy, 'prep') + ' році'
-                if suf in ('рік', 'р.'):    return ordy + ' рік'
-                if suf == '-го':            return _ordinal_case(ordy, 'gen')
-                if suf in ('-му', '-м'):    return _ordinal_case(ordy, 'prep')
-                return num2words(y, lang='uk')
-            except Exception: return m.group(0)
-        text = re.sub(
-            r'\b(?P<year>19\d{2}|20\d{2})\s*(?P<suf>року|році|рік|р\.|р\b|-го|-му|-м\b)',
-            _year_uk, text, flags=re.IGNORECASE)
-        # Standalone years in Ukrainian year range "2020-2023" → cardinal both
-        text = re.sub(
-            r'\b(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})\b',
-            lambda m: f"{num2words(int(m.group(1)), lang='uk')} — {num2words(int(m.group(2)), lang='uk')}",
-            text)
-    else:
-        # Russian: год (nom), года (gen), году (prep), -го, -м, -й
-        def _year_ru(m: re.Match) -> str:
-            try:
-                y = int(m.group('year'))
-                suf = (m.group('suf') or '').strip().rstrip('.').lower()
-                ordy = num2words(y, lang='ru', to='ordinal')
-                if suf == 'года':           return _ordinal_case(ordy, 'gen') + ' года'
-                if suf == 'году':           return _ordinal_case(ordy, 'prep') + ' году'
-                if suf in ('год', 'г'):     return ordy + ' год'
-                if suf in ('-го', 'го'):    return _ordinal_case(ordy, 'gen')
-                if suf in ('-м', 'м', '-й'): return _ordinal_case(ordy, 'prep')
-                return num2words(y, lang='ru')
-            except Exception: return m.group(0)
-        text = re.sub(
-            r'\b(?P<year>19\d{2}|20\d{2})\s*(?P<suf>года\b|году\b|год\b|г\.|г\b|-го\b|(?<!\w)го\b|-м\b|-й\b)',
-            _year_ru, text, flags=re.IGNORECASE)
-        # Year range "2020-2023"
-        text = re.sub(
-            r'\b(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})\b',
-            lambda m: f"{num2words(int(m.group(1)), lang='ru')} — {num2words(int(m.group(2)), lang='ru')}",
-            text)
-
-    # --- Dates (day + month) ---
-    if lang == 'uk':
-        text = re.sub(
-            r'\b(\d{1,2})\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня)\b',
-            lambda m: _ordinal_case(num2words(int(m.group(1)), lang='uk', to='ordinal'), 'gen') + ' ' + m.group(2),
-            text, flags=re.IGNORECASE)
-    else:
-        text = re.sub(
-            r'\b(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b',
-            lambda m: _ordinal_case(num2words(int(m.group(1)), lang='ru', to='ordinal'), 'gen') + ' ' + m.group(2),
-            text, flags=re.IGNORECASE)
-
-    # --- Ordinal shorthand: 1-й, 2-й, 3-го, 2-му etc. ---
-    # Optional capture of following Cyrillic word for gender/case agreement
-    def _ordinal_short(m: re.Match) -> str:
-        try:
-            n = int(m.group(1))
-            suf = m.group(2).lower().lstrip('-')
-            following_ws = m.group(3) or ''
-            following = following_ws.strip()
-            ordy = num2words(n, lang=nw_lang, to='ordinal')
-            if suf in ('го', 'ого', 'його', 'его'):
-                return _ordinal_case(ordy, 'gen') + following_ws
-            if suf in ('м', 'ом', 'ем', 'му', 'ому'):
-                return _ordinal_case(ordy, 'prep') + following_ws
-            # Ambiguous suffix (-й/-ій/-я/-е/-є): agree with following noun
-            if following and morph is not None:
-                parses = morph.parse(following.lower())
-                if parses:
-                    cmap = {'nomn': 'nom', 'gent': 'gen', 'datv': 'dat',
-                            'accs': 'acc', 'ablt': 'prep', 'loct': 'prep'}
-                    # Prefer loct > datv > gent > ablt over nomn/accs (ordinals
-                    # before nouns are usually in oblique context, not nom-plural)
-                    _OBLIQUE_PREF = ('loct', 'datv', 'gent', 'ablt')
-                    best = next(
-                        (p for pref in _OBLIQUE_PREF
-                         for p in parses if str(p.tag.case) == pref),
-                        parses[0]
-                    )
-                    gender = str(best.tag.gender) if best.tag.gender else 'masc'
-                    case = cmap.get(str(best.tag.case) if best.tag.case else 'nomn', 'nom')
-                    return _ordinal_case(ordy, case, gender) + following_ws
-            return ordy + following_ws
-        except Exception:
-            return m.group(0)
-    text = re.sub(
-        r'\b(\d+)(-?(?:й|ій|я|є|е|го|ого|його|его|му|ому|м|ом|ем))(\s+[А-Яа-яЁёІіЇїЄє]+)?',
-        _ordinal_short, text, flags=re.IGNORECASE)
-
-    # --- Year ranges without suffix: "с 1939 по 1945" / "від 1939 до 1945" ---
-    _prep_start = r'(?:с|от|із|з|від|за)\s+'
-    _prep_end   = r'\s+(?:по|до|—|-)\s+'
-    def _year_range_repl(m: re.Match) -> str:
-        try:
-            y = int(m.group('ry'))
-            return m.group('pre') + _ordinal_case(num2words(y, lang=nw_lang, to='ordinal'), 'gen') + m.group('sep')
-        except Exception: return m.group(0)
-    text = re.sub(
-        r'(?P<pre>' + _prep_start + r')(?P<ry>19\d{2}|20\d{2})(?P<sep>' + _prep_end + r')',
-        _year_range_repl, text, flags=re.IGNORECASE)
-
-    # --- Number-noun agreement: fix "5 метр" → "5 метров" etc. using pymorphy3 ---
-    if morph is not None:
-        def _fix_noun(m: re.Match) -> str:
-            try:
-                n = int(m.group(1))
-                noun = m.group(2)
-                parses = morph.parse(noun.lower())
-                noun_p = next((p for p in parses if 'NOUN' in str(p.tag)), None)
-                if noun_p is None: return m.group(0)
-                abs_n = abs(n)
-                last2, last1 = abs_n % 100, abs_n % 10
-                if 11 <= last2 <= 19:   req = ('gent', 'plur')
-                elif last1 == 1:         req = ('nomn', 'sing')
-                elif 2 <= last1 <= 4:   req = ('gent', 'sing')
-                else:                    req = ('gent', 'plur')
-                cur_case = str(noun_p.tag.case) if noun_p.tag.case else ''
-                cur_num  = str(noun_p.tag.number) if noun_p.tag.number else ''
-                if cur_case == req[0] and cur_num == req[1]:
-                    return m.group(0)  # already correct
-                infl = noun_p.inflect({req[0], req[1]})
-                if infl:
-                    return m.group(1) + ' ' + infl.word
-            except Exception:
-                pass
-            return m.group(0)
-        text = re.sub(r'\b(\d+)\s+([А-Яа-яЁёІіЇїЄє]{3,})\b', _fix_noun, text)
-
-    # --- Abbreviations and transliteration ---
-    text = re.sub(r'(?<![А-ЯЁа-яёa-zA-Z])[А-ЯЁ]{2,6}(?![А-ЯЁа-яёa-zA-Z])', lambda m: _CYR_ABBREV.get(m.group(0), ' '.join((_CYR_LETTERS.get(c, c) for c in m.group(0)))), text)
-    text = re.sub(r"[a-zA-Z]+(?:['-][a-zA-Z]+)*", _transliterate_word, text)
-
-    # --- Remaining standalone numbers, with genitive agreement after
-    # case-governing prepositions ("до 19 градусов" → "до девятнадцати
-    # градусов", not the bare nominative "до девятнадцать") ---
-    _GEN_GOV_PREPS = {
-        'ru': ('до', 'от', 'с', 'около', 'свыше', 'выше', 'ниже'),
-        'uk': ('до', 'від', 'з', 'близько', 'понад', 'вище', 'нижче'),
-    }
-    def _standalone_number(m: re.Match) -> str:
-        word = num2words(int(m.group('num')), lang=nw_lang)
-        prep = (m.group('prep') or '').lower()
-        if morph is not None and prep in _GEN_GOV_PREPS.get(nw_lang, ()):
-            infl = _inflect_last(word, {'gent'})
-            if infl != word:
-                word = infl
-        return (m.group('prep') + ' ' if m.group('prep') else '') + word
-    _preps_alt = '|'.join(_GEN_GOV_PREPS.get(nw_lang, ()))
-    text = re.sub(
-        rf'(?:\b(?P<prep>{_preps_alt})\s+)?(?<!\w)(?P<num>\d+)(?!\w)',
-        _standalone_number, text, flags=re.IGNORECASE)
-
-    # --- Replace hardcoded "сэр"/"сер" with the user-configured address form ---
-    try:
-        from core.address import get_address as _ga
-        _addr_value = _ga()
-        if _addr_value.lower() not in ('сэр', 'сер'):
-            text = re.sub(r'\bсэр\b', _addr_value, text, flags=re.IGNORECASE)
-            text = re.sub(r'\bсер\b', _addr_value, text, flags=re.IGNORECASE)
-    except Exception:
-        pass
-
-    # --- Comma after address form (Сэр/Джарвис/Леди/custom) for TTS prosody ---
-    try:
-        from core.address import get_address as _ga
-        _addr_esc = re.escape(_ga())
-        _cyr = r'[а-яёА-ЯЁіїєІЇЄ]'
-        text = re.sub(rf'^({_addr_esc})\s+({_cyr})', r'\1, \2', text, flags=re.IGNORECASE)
-        text = re.sub(rf'([.!?])\s+({_addr_esc})\s+({_cyr})', r'\1 \2, \3', text, flags=re.IGNORECASE)
-    except Exception:
-        pass
-
-    if _ssml_tags:
-        text = _restore_ssml_tags(text, _ssml_tags)
+    if ssml_tags:
+        text = _restore_ssml_tags(text, ssml_tags)
     result = text.strip()
     with _normalize_cache_lock:
         _normalize_cache[key] = result
@@ -1681,8 +1865,8 @@ def _transliterate_word(m: re.Match) -> str:
     # would otherwise mis-read a Russian name that happens to also be a
     # CMUdict entry.
     return (word.islower() and _g2p_word(word)) or _reverse_translit_cyrillic(word)
-def speak(text: str, priority: int = 10, wait: bool = False) -> None:
-    TTSManager().speak(text, priority, wait)
+def speak(text: str, priority: int = 10, wait: bool = False, persist: bool = True) -> None:
+    TTSManager().speak(text, priority, wait, persist=persist)
 
 def speak_async(text: str) -> threading.Thread:
     """Enqueue text for TTS and return a daemon Thread that exits when playback finishes.

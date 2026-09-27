@@ -928,6 +928,189 @@ def build_voice_tab(inner, win, hud, _save_hud_settings):
 
     _slider(c_llm, 0, len(_llm_tout_vals)-1, len(_llm_tout_vals)-1, _CYAN, _llm_init_idx, _on_llm_slider)
 
+    # --- Enable/disable the local fallback entirely, and pick a custom
+    # model. Lives here (not only under Модули) since this is where the
+    # user actually looks for local-LLM-related controls. ---
+    tk.Frame(c_llm, bg=_BRD, height=1).pack(fill='x', pady=(10, 6))
+
+    def _llm_fallback_enabled() -> bool:
+        s = _load_settings_json()
+        fm = s.get('feature_modules', {})
+        if isinstance(fm, dict) and 'llm_chat_fallback' in fm:
+            return bool(fm['llm_chat_fallback'])
+        try:
+            from core.system.modules import _PROFILE_PRESETS
+            profile = str(s.get('feature_profile', 'minimal')).strip().lower()
+            return bool(_PROFILE_PRESETS.get(profile, {}).get('llm_chat_fallback', True))
+        except Exception:
+            return True
+
+    _row_llm_on = tk.Frame(c_llm, bg=_PANEL)
+    _row_llm_on.pack(fill='x')
+    _llm_on_var = tk.BooleanVar(value=_llm_fallback_enabled())
+
+    def _on_llm_fallback_toggle():
+        s = _load_settings_json()
+        fm = s.get('feature_modules', {})
+        if not isinstance(fm, dict):
+            fm = {}
+        fm['llm_chat_fallback'] = bool(_llm_on_var.get())
+        s['feature_modules'] = fm
+        _save_settings_json(s)
+        try:
+            from core.system import refresh_module_flags
+            refresh_module_flags()
+        except Exception:
+            pass
+        if _llm_on_var.get():
+            _maybe_start_default_download()
+
+    ctk.CTkSwitch(_row_llm_on, text='', variable=_llm_on_var, command=_on_llm_fallback_toggle,
+                  fg_color=_BRD_I, progress_color=_CYAN, button_color=_WHITE,
+                  switch_width=40, switch_height=18, width=0).pack(side='left', padx=(0, 10))
+    tk.Label(_row_llm_on, text=i18n.tr('voice.llm_fallback_enable'), bg=_PANEL, fg=_TEXT,
+             font=(hud._F, _sf(10)), anchor='w').pack(side='left')
+    _hint(c_llm, i18n.tr('voice.llm_fallback_enable_hint'))
+
+    tk.Frame(c_llm, bg=_BRD, height=1).pack(fill='x', pady=(8, 6))
+
+    _s0_model = _load_settings_json()
+    _custom_model_var = tk.StringVar(value=_s0_model.get('llm_chat_model_path') or '')
+    _model_status_var = tk.StringVar(value=(
+        i18n.tr('voice.llm_model_custom').format(name=os.path.basename(_custom_model_var.get()))
+        if _custom_model_var.get() else i18n.tr('voice.llm_model_default')
+    ))
+    _model_status_lbl = tk.Label(c_llm, textvariable=_model_status_var, bg=_PANEL, fg=_DIM, font=(hud._F, _sf(9)),
+                                  anchor='w', justify='left')
+    _model_status_lbl.pack(fill='x', pady=(0, 6))
+    c_llm.bind('<Configure>', lambda e: _model_status_lbl.configure(wraplength=max(hud._px(100), e.width - hud._px(8))), add='+')
+
+    _row_llm_model = tk.Frame(c_llm, bg=_PANEL)
+    _row_llm_model.pack(fill='x')
+
+    def _pick_and_validate_model():
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            parent=win, title=i18n.tr('voice.llm_model_pick_title'),
+            filetypes=[('GGUF model', '*.gguf'), ('All files', '*.*')],
+        )
+        if not path:
+            return
+        _model_status_var.set(i18n.tr('voice.llm_model_validating'))
+        pick_btn.configure(state='disabled')
+        reset_btn.configure(state='disabled')
+
+        def _worker():
+            from core.speech.llm_chat import validate_gguf_model, invalidate_model
+            ok, msg = validate_gguf_model(path)
+            def _apply():
+                pick_btn.configure(state='normal')
+                reset_btn.configure(state='normal')
+                if ok:
+                    s = _load_settings_json()
+                    s['llm_chat_model_path'] = path
+                    _save_settings_json(s)
+                    invalidate_model()
+                    _custom_model_var.set(path)
+                    _model_status_var.set(f'✓ {msg}  •  {os.path.basename(path)}')
+                else:
+                    _model_status_var.set(f'⚠ {msg}')
+            if win.winfo_exists():
+                win.after(0, _apply)
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _reset_to_default_model():
+        s = _load_settings_json()
+        s.pop('llm_chat_model_path', None)
+        _save_settings_json(s)
+        try:
+            from core.speech.llm_chat import invalidate_model
+            invalidate_model()
+        except Exception:
+            pass
+        _custom_model_var.set('')
+        _model_status_var.set(i18n.tr('voice.llm_model_default'))
+        if _llm_on_var.get():
+            _maybe_start_default_download()
+
+    pick_btn = ctk.CTkButton(_row_llm_model, text=i18n.tr('voice.llm_model_pick'), command=_pick_and_validate_model,
+                              height=32, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color='transparent',
+                              hover_color=_blend(_CYAN, 0.12), text_color=_CYAN, border_color=_CYAN, border_width=2,
+                              corner_radius=JStyle.RAD_PANEL)
+    pick_btn.pack(side='left', padx=(0, 8))
+    reset_btn = ctk.CTkButton(_row_llm_model, text=i18n.tr('voice.llm_model_reset'), command=_reset_to_default_model,
+                               height=32, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color='transparent',
+                               hover_color=_blend(_AMBER, 0.12), text_color=_AMBER, border_color=_AMBER, border_width=2,
+                               corner_radius=JStyle.RAD_PANEL)
+    reset_btn.pack(side='left')
+
+    # Cancel while downloading / retry after a failed or cancelled download —
+    # hidden (unpacked) whenever no download is in flight and nothing needs
+    # retrying, so it doesn't take up a slot in the idle state.
+    dl_btn = ctk.CTkButton(_row_llm_model, text='', command=lambda: None,
+                            height=32, font=(hud._F, JStyle.TEXT_BODY, 'bold'), fg_color='transparent',
+                            border_width=2, corner_radius=JStyle.RAD_PANEL)
+    _hint(c_llm, i18n.tr('voice.llm_model_hint'))
+
+    # --- Default model isn't bundled in the installer anymore (~870MB) —
+    # fetch it lazily the first time it's actually needed, instead of every
+    # install paying for it upfront. See core/speech/llm_downloader.py. ---
+    def _start_default_model_download():
+        from core.speech.llm_downloader import download_default_model, cancel_download
+        pick_btn.configure(state='disabled')
+        reset_btn.configure(state='disabled')
+        _model_status_var.set(i18n.tr('voice.llm_model_downloading').format(pct=0))
+        _cancelled_by_user = {'v': False}
+
+        def _do_cancel():
+            _cancelled_by_user['v'] = True
+            dl_btn.configure(state='disabled')
+            cancel_download()
+
+        dl_btn.configure(text=i18n.tr('voice.llm_model_cancel'), command=_do_cancel, state='normal',
+                          text_color=_RED, border_color=_RED, hover_color=_blend(_RED, 0.12))
+        dl_btn.pack(side='left', padx=(8, 0))
+
+        def _on_progress(done, total):
+            if total:
+                text = i18n.tr('voice.llm_model_downloading').format(pct=int(done * 100 / total))
+            else:
+                text = i18n.tr('voice.llm_model_downloading_unknown').format(mb=done // (1 << 20))
+            if win.winfo_exists():
+                win.after(0, lambda: _model_status_var.set(text))
+
+        def _on_done(ok, msg):
+            def _apply():
+                pick_btn.configure(state='normal')
+                reset_btn.configure(state='normal')
+                if ok:
+                    from core.speech.llm_chat import invalidate_model
+                    invalidate_model()
+                    _model_status_var.set(i18n.tr('voice.llm_model_default'))
+                    dl_btn.pack_forget()
+                else:
+                    status = (i18n.tr('voice.llm_model_cancelled') if _cancelled_by_user['v']
+                               else i18n.tr('voice.llm_model_download_failed').format(error=msg))
+                    _model_status_var.set(status)
+                    dl_btn.configure(text=i18n.tr('voice.llm_model_retry'), command=_start_default_model_download,
+                                      state='normal', text_color=_AMBER, border_color=_AMBER,
+                                      hover_color=_blend(_AMBER, 0.12))
+            if win.winfo_exists():
+                win.after(0, _apply)
+
+        download_default_model(on_progress=_on_progress, on_done=_on_done)
+
+    def _maybe_start_default_download():
+        if _custom_model_var.get():
+            return
+        from core.speech.llm_downloader import is_default_model_present, is_downloading
+        if is_default_model_present() or is_downloading():
+            return
+        _start_default_model_download()
+
+    if _llm_on_var.get():
+        _maybe_start_default_download()
+
     # --- TTS Speed ---
     tk.Frame(c_tts, bg=_BRD, height=1).pack(fill='x', pady=(10, 0))
     _speed_lbl = _label_row(c_tts, i18n.tr('voice.tts_speed'), _CYAN)

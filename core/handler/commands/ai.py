@@ -25,7 +25,8 @@ def handle_ai(handler, cmd, text_lower, amount):
                 # playback starts. Action names are never streamed — see
                 # classify_or_chat's docstring — so this callback only ever
                 # fires for genuine conversational replies.
-                kind, value = classify_or_chat(text_lower, on_chat_chunk=handler.speak)
+                kind, value = classify_or_chat(
+                    text_lower, on_chat_chunk=lambda s: handler.speak(s, persist=False))
             except Exception as e:
                 _log.error(f"[LLM_CHAT] Error: {e}")
                 return
@@ -125,11 +126,11 @@ def handle_ai(handler, cmd, text_lower, amount):
                             sentence = buffer[:last_mark_pos+1].strip()
                             buffer = buffer[last_mark_pos+1:].strip()
                             if sentence:
-                                handler.speak(sentence)
-                
+                                handler.speak(sentence, persist=False)
+
                 # Send remaining buffer
                 if buffer.strip():
-                    handler.speak(buffer.strip())
+                    handler.speak(buffer.strip(), persist=False)
                 
                 final_ans = "".join(full_ans).strip()
                 if final_ans:
@@ -137,9 +138,13 @@ def handle_ai(handler, cmd, text_lower, amount):
                     if has_hud:
                         hud._hud.root.after(2000, hud._hud.hide_msg_stream)
                     hide_ai_window(delay_ms=5000)
-                    # Set up interactive follow-up
+                    # Set up interactive follow-up. 'history' carries the
+                    # real (question, answer) turns for this topic — grown
+                    # by _state_qa_clarify on each further follow-up, trimmed
+                    # to the model's own context window in llm_processor.
                     next_context = active_subject[0] if active_subject[0] else q
-                    handler._set_interactive('qa_clarify', {'context': next_context, 'last_ans': final_ans}, timeout=30.0)
+                    history = [{'role': 'user', 'content': q}, {'role': 'assistant', 'content': final_ans}]
+                    handler._set_interactive('qa_clarify', {'context': next_context, 'last_ans': final_ans, 'history': history}, timeout=30.0)
                 else:
                     handler.speak(spk('ai.no_answer'))
                     if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)
