@@ -431,6 +431,7 @@ def _chunk_text(text: str) -> list[str]:
     """Split text into chunks safe for Silero: first by sentence, then by word boundary."""
     raw = _SENTENCE_SPLIT_RE.split(text) if len(text) > _SPLIT_THRESHOLD else [text]
     chunks: list[str] = []
+    pending_markup = ''  # markup-only fragment with no chunk to attach to yet
     for s in raw:
         s = s.strip()
         if not s:
@@ -441,6 +442,20 @@ def _chunk_text(text: str) -> list[str]:
         # instead of just producing silence, so they must never reach it.
         if all(c in '.,!?—-:; ' for c in s):
             continue
+        # A sentence boundary can land right after a lone <break .../> tag
+        # (or *emphasis* marker), leaving a chunk with no speakable text of
+        # its own. Generated alone it's a real audio clip of pure silence —
+        # the HUD shows "speaking" for its full duration with nothing
+        # audible. Fold it into an adjacent real chunk instead.
+        if not _SSML_TAG_RE.sub('', s).replace('*', '').strip():
+            if chunks:
+                chunks[-1] = chunks[-1] + ' ' + s
+            else:
+                pending_markup = (pending_markup + ' ' + s).strip()
+            continue
+        if pending_markup:
+            s = pending_markup + ' ' + s
+            pending_markup = ''
         if len(s) <= _MAX_CHUNK_CHARS:
             chunks.append(s)
             continue
@@ -653,6 +668,22 @@ class TTSManager:
         # rapid-fire AI-streaming TTS even with locking around each call.
         _pending_unduck_retry: list[float | None] = [None]
         _is_ducked = False
+        # Safety net for a pygame/SDL Channel.get_busy() that latches True and
+        # never reports False again (seen on at least one WASAPI headset setup
+        # — see conversation history). When that happens, gen_count and the
+        # queue are both already empty/drained, but ch_busy alone blocks
+        # idle-cleanup forever, leaving the HUD stuck on "speaking" with no
+        # audio actually playing.
+        # Primary signal: each Sound's own get_length() gives its real
+        # duration, so _expected_done_at is when playback (or the last queued
+        # chunk) should genuinely finish — far more precise than a fixed
+        # guess, so a stuck "Да, сэр." (~1s) clears in ~1s, not several
+        # seconds. _CH_BUSY_STUCK_TIMEOUT is only a fallback for the rare case
+        # a Sound's length couldn't be read.
+        _SOUND_DONE_MARGIN = 0.8  # buffer/scheduling slack past the raw WAV length
+        _CH_BUSY_STUCK_TIMEOUT = 6.0
+        _ch_busy_stuck_since: list[float | None] = [None]
+        _expected_done_at: list[float | None] = [None]
 
         def _do_idle_cleanup():
             nonlocal _is_ducked
@@ -686,8 +717,33 @@ class TTSManager:
                             if pygame.mixer.get_init() and self.channel:
                                 ch_busy = bool(self.channel.get_busy() or self.channel.get_queue() is not None)
                         except: pass
-                    if not ch_busy and self._gen_count == 0 and self.queue.empty():
+                    _drained = self._gen_count == 0 and self.queue.empty()
+                    if not ch_busy and _drained:
+                        _ch_busy_stuck_since[0] = None
+                        _expected_done_at[0] = None
                         _do_idle_cleanup()
+                    elif ch_busy and _drained:
+                        now = time.time()
+                        if _ch_busy_stuck_since[0] is None:
+                            _ch_busy_stuck_since[0] = now
+                        _deadline = _expected_done_at[0]
+                        _overdue = (
+                            (_deadline is not None and now > _deadline)
+                            or (now - _ch_busy_stuck_since[0] > _CH_BUSY_STUCK_TIMEOUT)
+                        )
+                        if _overdue:
+                            print("[TTS-WORKER] Channel still reports busy past its "
+                                  "expected finish time with nothing queued/generating "
+                                  "— forcing idle cleanup.", flush=True)
+                            _ch_busy_stuck_since[0] = None
+                            _expected_done_at[0] = None
+                            with _mixer_lock:
+                                try:
+                                    if self.channel: self.channel.stop()
+                                except Exception: pass
+                            _do_idle_cleanup()
+                    else:
+                        _ch_busy_stuck_since[0] = None
                     if _pending_unduck_retry[0] is not None and time.time() >= _pending_unduck_retry[0]:
                         _pending_unduck_retry[0] = None
                         try: force_unduck()
@@ -705,6 +761,7 @@ class TTSManager:
                 # Prepare audio file and acquire channel inside mixer lock
                 # ---------------------------------------------------------------
                 _sound = None
+                _sound_len = None
                 _need_queue = False  # True when channel is busy → use channel.queue()
                 with _mixer_lock:
                     try:
@@ -787,10 +844,15 @@ class TTSManager:
                             try: os.remove(audio_path)
                             except OSError: pass
 
+                        try: _sound_len = _sound.get_length()
+                        except Exception: _sound_len = None
+
                         if self.channel.get_busy():
                             _need_queue = True  # Queue after releasing lock
                         else:
                             self.channel.play(_sound)
+                            if _sound_len is not None:
+                                _expected_done_at[0] = time.time() + _sound_len + _SOUND_DONE_MARGIN
 
                     except Exception as e:
                         err_str = str(e)
@@ -810,10 +872,16 @@ class TTSManager:
                             ch = self.channel
                             if ch is None: break
                             if ch.get_queue() is None:
+                                _now_q = time.time()
                                 if ch.get_busy():
                                     ch.queue(_sound)
+                                    if _sound_len is not None:
+                                        _base = _expected_done_at[0] if (_expected_done_at[0] and _expected_done_at[0] > _now_q) else _now_q
+                                        _expected_done_at[0] = _base + _sound_len + _SOUND_DONE_MARGIN
                                 else:
                                     ch.play(_sound)
+                                    if _sound_len is not None:
+                                        _expected_done_at[0] = _now_q + _sound_len + _SOUND_DONE_MARGIN
                                 break
                         time.sleep(0.005)
 
@@ -1415,6 +1483,7 @@ _STRESS_MAP: dict[str, str] = {
     'поищи':        'поищ+и',
     'покажи':       'покаж+и',
     'сорок':        'с+орок',
+    'сорока':       'сорок+а',
     # Ukrainian
     'джарвіс':      'Дж+арвіс',
     'інтерфейс':    'інтерф+ейс',
@@ -1589,6 +1658,26 @@ def _expand_percentages(text: str, lang: str, num2words, get_russian_plural) -> 
         r'(\d+)\s*%',
         lambda m: f"{num2words(int(m.group(1)), lang='ru')} {get_russian_plural(int(m.group(1)), ['процент', 'процента', 'процентов'])}",
         text)
+
+
+_RATIO_PREP = {'ru': 'из', 'uk': 'із'}
+
+
+def _expand_fractions(text: str, nw_lang: str, morph, num2words) -> str:
+    # "10/10" (a rating/score) read as bare digits was coming out as
+    # "десять десять" — no separator — because _expand_standalone_numbers
+    # matches each side of the "/" independently. Say it as "N из M"
+    # (genitive on M) instead, before the standalone-number pass ever sees
+    # the digits.
+    def _ratio(m: re.Match) -> str:
+        word_a = num2words(int(m.group(1)), lang=nw_lang)
+        word_b = num2words(int(m.group(2)), lang=nw_lang)
+        if morph is not None:
+            infl = _inflect_last(morph, word_b, {'gent'}, prefer_pos=('NUMR',))
+            if infl != word_b:
+                word_b = infl
+        return f'{word_a} {_RATIO_PREP[nw_lang]} {word_b}'
+    return re.sub(r'(?<!\w)(\d+)\s*/\s*(\d+)(?!\w)', _ratio, text)
 
 
 def _expand_years(text: str, lang: str, nw_lang: str, morph, num2words) -> str:
@@ -1809,7 +1898,6 @@ def normalize_for_tts(text: str) -> str:
             return cached
 
     text, ssml_tags = _protect_ssml_tags(text)
-    text = _apply_stress(text)
     # Convert phrase pause markers to sentence boundaries so Silero pauses naturally
     text = re.sub(r'\s+\.\.\.\s+', '. ', text)
 
@@ -1828,7 +1916,13 @@ def normalize_for_tts(text: str) -> str:
     text = _expand_year_ranges_with_prep(text, nw_lang, morph, num2words)
     text = _fix_number_noun_agreement(text, nw_lang, morph)
     text = _expand_abbreviations_and_latin(text)
+    text = _expand_fractions(text, nw_lang, morph, num2words)
     text = _expand_standalone_numbers(text, nw_lang, morph, num2words)
+    # Runs after number expansion (not before, as originally), so dictionary
+    # entries for number-words themselves (e.g. "сорок") actually match —
+    # num2words only produces that Cyrillic text on this line, and matching
+    # it before expansion was a no-op since the source text still held "40".
+    text = _apply_stress(text)
     text = _apply_address_form(text)
 
     if ssml_tags:

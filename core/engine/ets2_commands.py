@@ -140,9 +140,10 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
     elif action == 'fuel_status':
         if data:
             f_range = int(round(float(data.get('fuelRange', 0))))
+            fuel_l = float(data.get('fuel', 0))
             cap = float(data.get('fuelCapacity') or 1)
-            f_pct = int(round(float(data.get('fuel', 0)) / cap * 100))
-            _speak(f'Запас хода {f_range} километров, топлива в баке {f_pct} процентов.')
+            f_pct = int(round(fuel_l / cap * 100))
+            _speak(f'Запас хода {f_range} километров, топлива в баке {int(round(fuel_l))} литров — это {f_pct} процентов.')
         else: _speak('Телеметрия недоступна.')
     elif action == 'truck_status':
         if data:

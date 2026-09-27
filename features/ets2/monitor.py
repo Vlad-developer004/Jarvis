@@ -407,6 +407,15 @@ def _check_speed_limit_and_cruise(state: _MonitorState, data: dict) -> float:
     state.last_speed_for_brake = speed_kmh
 
     if speed_kmh >= 5.0:
+        # Cruise Control Support (Selective) — computed up front so the plain
+        # limit-change announcements below can be skipped when cruise is about
+        # to auto-adjust and announce the new speed itself (previously both
+        # fired back to back: "новый лимit X" immediately followed by "круиз
+        # выставлен на X", which is the same fact said twice).
+        cruise_active = False
+        if _auto_cruise and not _cruise_user_explicitly_disabled and speed_kmh >= 30.0:
+            cruise_active = True
+
         if limit_kmh > 0 and state.last_speed_limit > 0:
             limit_drop = state.last_speed_limit - limit_kmh
             limit_rise = limit_kmh - state.last_speed_limit
@@ -418,22 +427,20 @@ def _check_speed_limit_and_cruise(state: _MonitorState, data: dict) -> float:
                 # not get the urgent variant just because the drop itself was
                 # sharp (previously compared drop magnitude only, so it fired
                 # "тормозите!" even at speeds nowhere near the new limit).
-                _speak(event_speed_limit_drop(int(round(limit_kmh)), sharp=(speed_kmh > limit_kmh)))
+                if not cruise_active:
+                    _speak(event_speed_limit_drop(int(round(limit_kmh)), sharp=(speed_kmh > limit_kmh)))
             elif limit_drop >= 15:
-                _speak(event_speed_limit_drop(int(round(limit_kmh)), sharp=False))
+                if not cruise_active:
+                    _speak(event_speed_limit_drop(int(round(limit_kmh)), sharp=False))
             elif limit_rise >= 20 and (now_lim - state.last_limit_increase_ts) > 30.0:
                 state.last_limit_increase_ts = now_lim
-                _speak(event_speed_limit_rise(int(round(limit_kmh))))
+                if not cruise_active:
+                    _speak(event_speed_limit_rise(int(round(limit_kmh))))
         if limit_kmh > 0:
             state.last_speed_limit = limit_kmh
         if limit_kmh > 0:
             over = speed_kmh - limit_kmh
             now = time.monotonic()
-
-            # Cruise Control Support (Selective)
-            cruise_active = False
-            if _auto_cruise and not _cruise_user_explicitly_disabled and speed_kmh >= 30.0:
-                cruise_active = True
 
             # Over speed warning
             if over >= SPEED_OVER_LIMIT:

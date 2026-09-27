@@ -161,6 +161,21 @@ class JarvisEngine:
                 # core/speech/llm_chat.py's _infer_lock).
                 _ECHO_TAIL_SEC = 0.6
                 _tts_recently = _tts_blocks or (now_ts - self._last_tts_active_ts < _ECHO_TAIL_SEC)
+                # General safety net: whichever code path spoke (TTSManager's
+                # own queue, or a one-off core.speech.speak() call like the
+                # early-greeting on startup), once TTS has genuinely finished
+                # the HUD should reflect that right away — not sit on
+                # "speaking" until a new sound arrives or the (up to 30s)
+                # inactivity timeout below happens to fire. Runs every loop
+                # iteration (cheap: just a mode comparison) whenever TTS isn't
+                # actually active, so recovery is bounded by the audio chunk
+                # interval, not by unrelated timers.
+                if not _tts_recently:
+                    try:
+                        from ui import hud as _hud
+                        if _hud.STATE and _hud.STATE.mode == _hud.HudState.SPEAKING:
+                            _hud.STATE.mode = _hud.HudState.IDLE
+                    except Exception: pass
                 if _tts_recently and (not self.handler.interactive_state):
                     from core.audio_utils import is_jarvis_output_headphones
                     if not is_jarvis_output_headphones() and not app_state.game_mode:

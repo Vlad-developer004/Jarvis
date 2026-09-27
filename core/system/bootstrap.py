@@ -128,9 +128,13 @@ def play_early_greeting(volume=1.0):
             from core.address import get_address
             addr = get_address(lang)
             if lang == 'uk':
-                speak(f"Джарвіс до вашої уваги, {addr}. Всі системи готові.")
+                greeting = f"Джарвіс до вашої уваги, {addr}. Всі системи готові."
             else:
-                speak(f"Приветствую, {addr}. Я запущен и готов к работе.")
+                greeting = f"Приветствую, {addr}. Я запущен и готов к работе."
+            # TEMP DIAGNOSTIC: pin down the early greeting's exact timing
+            # relative to the HUD-flicker reports. Remove once confirmed.
+            print(f"[EARLY-GREETING] speak() called: {greeting!r}", flush=True)
+            speak(greeting)
         except Exception as e:
             _log.error('Early greeting TTS error: %s', e, exc_info=True)
     threading.Thread(target=_task, daemon=True).start()
