@@ -138,8 +138,14 @@ def _cooldown_ok(key: str) -> bool:
 
 def _speak(text: str):
     try:
+        from features.planetbase import journal
+        journal.log(text)
+    except Exception:
+        pass
+    try:
         from core.speech.tts import speak
-        speak(text)
+        from core.speech.pacing import add_pauses
+        speak(add_pauses(text))
     except Exception as e:
         _log.debug("TTS error: %s", e)
 
@@ -282,6 +288,8 @@ def _check(data: dict):
     blizzard    = data.get("blizzard", False)
 
     alert_fired = False
+    from features.planetbase import planet
+    reserve = planet.reserve_bonus(data)  # higher 'low' floor on storm-prone planets
 
     # ── Энергия ─────────────────────────────────────────────
     if power_pct <= _POWER_CRIT_PCT and _cooldown_ok("power_critical"):
@@ -290,7 +298,7 @@ def _check(data: dict):
         if eta is not None:
             _speak(f"При текущем расходе энергии хватит примерно на {int(round(eta))} минут.")
         alert_fired = True
-    elif power_pct <= _POWER_LOW_PCT and _cooldown_ok("power_low"):
+    elif power_pct <= _POWER_LOW_PCT + reserve and _cooldown_ok("power_low"):
         _alert(_phrases_power_low(power_pct), tone="warn")
         alert_fired = True
 
@@ -302,7 +310,7 @@ def _check(data: dict):
             if eta is not None:
                 _speak(f"При текущем расходе воды хватит примерно на {int(round(eta))} минут.")
             alert_fired = True
-        elif water_pct <= _WATER_LOW_PCT and _cooldown_ok("water_low"):
+        elif water_pct <= _WATER_LOW_PCT + reserve and _cooldown_ok("water_low"):
             _alert(_phrases_water_low(water_pct), tone="warn")
             alert_fired = True
         elif 0 < water_bal <= _WATER_BALANCE_MARGIN and _cooldown_ok("water_marginal"):
@@ -425,6 +433,8 @@ def _monitor_loop():
         try:
             data = telemetry.get()
             _check(data)
+            from features.planetbase import extras
+            extras.tick(data)
         except Exception as e:
             _log.debug("Monitor error: %s", e)
         time.sleep(5)
@@ -444,6 +454,13 @@ def get_session_report() -> str:
                 parts.append(f"В прошлой сессии пик был выше — {prev_peak} колони́стов.")
             else:
                 parts.append("Ровно как в прошлой сессии.")
+    try:
+        from features.planetbase import history
+        trend = history.session_summary()
+        if trend:
+            parts.append(trend)
+    except Exception:
+        pass
     text = " ".join(parts)
     a = _addr()
     return f"{a}, {text[0].lower()}{text[1:]}" if a else text
@@ -469,6 +486,9 @@ def start():
 
     if _thread and _thread.is_alive():
         return
+
+    from features.planetbase import extras
+    extras.start()
 
     _first_tick           = True
     _prev                 = {}

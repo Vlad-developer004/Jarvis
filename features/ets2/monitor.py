@@ -67,7 +67,8 @@ def _resolve_addr(text: str) -> str:
 def _speak(text: str) -> None:
     try:
         from core.speech import speak_async
-        speak_async(_resolve_addr(text))
+        from core.speech.pacing import add_pauses
+        speak_async(add_pauses(_resolve_addr(text)))
     except Exception:
         pass
 def get_session_report() -> str:

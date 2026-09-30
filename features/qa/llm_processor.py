@@ -141,7 +141,12 @@ def get_sys_prompt() -> str:
     except Exception:
         lang = 'ru'
     lang_name = 'украинский' if lang == 'uk' else 'русский'
-    return (
+    try:
+        from features.planetbase.knowledge import prompt_context
+        game_ctx = prompt_context()
+    except Exception:
+        game_ctx = ''
+    return game_ctx + (
         f'Ты — J.A.R.V.I.S., лаконичный и остроумный ИИ-ассистент Тони Старка. '
         f'Отвечай на языке: {lang_name}, кратко (1-3 предложения), по существу, вежливо и уверенно. '
         f'Если новый вопрос не связан с прошлой темой разговора — игнорируй прошлый контекст.\n'

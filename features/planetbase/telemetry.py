@@ -55,9 +55,62 @@ def _default() -> dict:
         "res_ore": 0,
         "res_bioplastic": 0,
         "res_medical": 0,
+        # v2 fields (mod collects them on the Unity main thread)
+        "res_spares": 0,
+        "res_coins": 0,
+        "disaster_intensity": 0.0,
+        "prestige": 0.0,
+        "prestige_level": -1,
+        "welfare": 0.0,
+        "welfare_level": -1,
+        "techs_acquired": 0,
+        "alert_state": -1,  # 0 green, 1 yellow, 2 red
+        "outside_allowed": True,
+        "land_colonists": True,
+        "land_visitors": True,
+        "land_merchants": True,
+        "planet": "",
+        "difficulty": "",
+        "risk_sandstorm": "",
+        "risk_solar_flare": "",
+        "risk_blizzard": "",
+        "risk_meteor": "",
+        "risk_thunderstorm": "",
+        "n_anti_meteor": 0,
+        "n_lightning_rod": 0,
+        "n_workers": 0,
+        "n_biologists": 0,
+        "n_engineers": 0,
+        "n_medics": 0,
+        "n_guards": 0,
+        "n_bots": 0,
+        "n_intruders": 0,
+        "n_visitors": 0,
+        "n_sick": 0,
+        "n_ko": 0,
+        "n_low_status": 0,
+        "n_fighting": 0,
+        "mod_damaged": 0,
+        "mod_unpowered": 0,
+        "mod_unoperated": 0,
+        "mod_vital_down": 0,
+        "storage_modules": 0,
+        "storage_space_avg": 0.0,
+        "err": "",
         "ts": 0,
         "_valid": False,
+        "_stale": False,
     }
+
+
+def _apply_freshness(parsed: dict) -> None:
+    """Sets _valid (mod is alive: recent heartbeat) and _stale (the snapshot is
+    older than the heartbeat: the game isn't rendering, e.g. minimised)."""
+    now = time.time()
+    heartbeat_age = now - parsed.get("ts", 0)
+    parsed["_valid"] = bool(parsed.get("valid", False)) and heartbeat_age < _STALE_THRESHOLD
+    collected = parsed.get("collected_ts", parsed.get("ts", 0))
+    parsed["_stale"] = parsed.get("ts", 0) - collected > _STALE_THRESHOLD
 
 
 def _poll_loop():
@@ -67,13 +120,15 @@ def _poll_loop():
             if _TELEMETRY_FILE.exists():
                 mtime = _TELEMETRY_FILE.stat().st_mtime
                 if mtime != _last_mtime:
-                    raw = _TELEMETRY_FILE.read_text(encoding="utf-8")
-                    parsed = json.loads(raw)
-                    age = time.time() - parsed.get("ts", 0)
-                    parsed["_valid"] = bool(parsed.get("valid", False)) and age < _STALE_THRESHOLD
+                    parsed = json.loads(_TELEMETRY_FILE.read_text(encoding="utf-8"))
                     with _lock:
                         _data = parsed
                         _last_mtime = mtime
+                # Re-evaluate every poll: a closed game stops touching the file,
+                # so freshness must not depend on the file changing.
+                with _lock:
+                    if _data:
+                        _apply_freshness(_data)
             else:
                 with _lock:
                     _data = _default()

@@ -69,7 +69,13 @@ def _install_mod(managed: Path) -> bool:
         _log.debug("Mod DLL already up to date")
         return True
 
-    shutil.copy2(src, dst)
+    try:
+        shutil.copy2(src, dst)
+    except OSError as e:
+        # The DLL is locked while the game runs. Keep the installed one instead of
+        # aborting monitor startup; the update lands on the next start with the game closed.
+        _log.warning("Could not update %s (game running?): %s", _MOD_DLL, e)
+        return dst.exists()
     _log.info("Installed %s to %s", _MOD_DLL, managed)
     return True
 

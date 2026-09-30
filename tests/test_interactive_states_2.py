@@ -349,3 +349,100 @@ def test_qa_clarify_non_question_keeps_waiting_without_calling_llm(monkeypatch):
     interactive.handle_interactive(handler, 'угу ладно')
 
     assert handler.interactive_state == 'qa_clarify'
+
+
+# ── game_launcher_choice / game_specific ──────────────────────────────────
+
+_LAUNCHERS = {'Steam': 'C:/steam.exe', 'Epic Games': 'C:/epic.exe'}
+
+
+def _spy_open_launcher(monkeypatch):
+    opened = []
+    monkeypatch.setattr('core.handler.commands.game.open_launcher_and_suggest',
+                        lambda handler, name, path: opened.append((name, path)))
+    return opened
+
+
+def test_launcher_choice_recognizes_steam_from_stt_spelling(monkeypatch):
+    _no_semantic(monkeypatch)
+    opened = _spy_open_launcher(monkeypatch)
+    handler = _FakeHandler('game_launcher_choice', {'launchers': _LAUNCHERS})
+
+    interactive.handle_interactive(handler, 'стим')
+
+    assert opened == [('Steam', 'C:/steam.exe')]
+    assert handler.interactive_state is None
+
+
+def test_launcher_choice_recognizes_epic(monkeypatch):
+    _no_semantic(monkeypatch)
+    opened = _spy_open_launcher(monkeypatch)
+    handler = _FakeHandler('game_launcher_choice', {'launchers': _LAUNCHERS})
+
+    interactive.handle_interactive(handler, 'эпик геймс')
+
+    assert opened == [('Epic Games', 'C:/epic.exe')]
+
+
+def test_launcher_choice_accepts_a_game_name_instead(monkeypatch):
+    from features.gaming import GameInfo
+    _no_semantic(monkeypatch)
+    opened = _spy_open_launcher(monkeypatch)
+    game = GameInfo(name='Planetbase', launcher='', launch_uri='', install_dir='')
+    monkeypatch.setattr('features.gaming.scan_all_games', lambda: [game])
+    monkeypatch.setattr('features.gaming.fuzzy_find_game', lambda games, text: game)
+    handler = _FakeHandler('game_launcher_choice', {'launchers': _LAUNCHERS})
+
+    interactive.handle_interactive(handler, 'планетбейс')
+
+    assert opened == []
+    assert [g.name for g in handler.launched_games] == ['Planetbase']
+
+
+def test_launcher_choice_unrecognized_keeps_waiting(monkeypatch):
+    _no_semantic(monkeypatch)
+    opened = _spy_open_launcher(monkeypatch)
+    monkeypatch.setattr('features.gaming.scan_all_games', lambda: [])
+    monkeypatch.setattr('features.gaming.fuzzy_find_game', lambda games, text: None)
+    spoken = []
+    monkeypatch.setattr(interactive, 'speak', spoken.append)
+    handler = _FakeHandler('game_launcher_choice', {'launchers': _LAUNCHERS})
+
+    interactive.handle_interactive(handler, 'бла бла')
+
+    assert opened == [] and handler.launched_games == []
+    assert handler.interactive_state == 'game_launcher_choice'
+    assert spoken and 'платформ' in spoken[0]
+
+
+def test_launcher_choice_cancel_clears_state(monkeypatch):
+    _no_semantic(monkeypatch)
+    opened = _spy_open_launcher(monkeypatch)
+    handler = _FakeHandler('game_launcher_choice', {'launchers': _LAUNCHERS})
+
+    interactive.handle_interactive(handler, 'отмена')
+
+    assert opened == [] and handler.interactive_state is None
+
+
+def test_game_specific_launches_named_game(monkeypatch):
+    from features.gaming import GameInfo
+    _no_semantic(monkeypatch)
+    game = GameInfo(name='Planetbase', launcher='', launch_uri='', install_dir='')
+    monkeypatch.setattr('features.gaming.fuzzy_find_game', lambda games, text: game)
+    handler = _FakeHandler('game_specific', {'games': [game]})
+
+    interactive.handle_interactive(handler, 'планетбейс')
+
+    assert [g.name for g in handler.launched_games] == ['Planetbase']
+    assert handler.interactive_state is None
+
+
+def test_game_specific_unknown_game_clears_state(monkeypatch):
+    _no_semantic(monkeypatch)
+    monkeypatch.setattr('features.gaming.fuzzy_find_game', lambda games, text: None)
+    handler = _FakeHandler('game_specific', {'games': []})
+
+    interactive.handle_interactive(handler, 'что-то другое')
+
+    assert handler.launched_games == [] and handler.interactive_state is None

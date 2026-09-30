@@ -9,7 +9,7 @@ try:
     _input.PAUSE = 0
 except ImportError:
     import pyautogui as _input
-from config_pack.config import get_data_dir
+from config_pack.config import get_data_dir, get_project_root
 PROFILES_DIR = Path(get_data_dir('game_profiles'))
 _profile_name: str = ''
 _loaded_stem: str = ''
@@ -67,6 +67,40 @@ def _telem_lights_high() -> bool | None:
         return bool(data.get("lightsBeamHigh"))
     except Exception:
         return None
+# The AppData copy of a profile is seeded once from data/game_profiles and never
+# refreshed, so commands added to the bundled profile later would never reach an
+# existing install. For these profiles, missing bundled spells are appended to
+# the user's copy (user edits are never changed or removed).
+_AUTO_MERGE_PROFILES = frozenset({'planetbase'})
+def merge_bundled_spells(user_path: Path, bundled_path: Path) -> int:
+    """Append spells, and spoken variants of existing spells, that the bundled
+    profile has and the user's copy lacks (matched by spell name). Returns the
+    number of additions; keeps a .bak of the original file."""
+    if not user_path.exists() or not bundled_path.exists():
+        return 0
+    user_data = json.loads(_strip_json_comments(user_path.read_text(encoding='utf-8')))
+    bundled = json.loads(_strip_json_comments(bundled_path.read_text(encoding='utf-8')))
+    spells = user_data.setdefault('spells', [])
+    by_name = {sp.get('name'): sp for sp in spells}
+    added = 0
+    for sp in bundled.get('spells', []):
+        mine = by_name.get(sp.get('name'))
+        if mine is None:
+            spells.append(sp)
+            added += 1
+            continue
+        known = set(mine.get('variants', []))
+        extra = [v for v in sp.get('variants', []) if v not in known]
+        if extra:
+            mine['variants'] = list(mine.get('variants', [])) + extra
+            added += len(extra)
+    if not added:
+        return 0
+    backup = user_path.with_suffix('.json.bak')
+    if not backup.exists():
+        backup.write_text(user_path.read_text(encoding='utf-8'), encoding='utf-8')
+    user_path.write_text(json.dumps(user_data, ensure_ascii=False, indent=2), encoding='utf-8')
+    return added
 def _installed_profile_stems() -> set[str]:
     try:
         from core.extensions import ExtensionManager
@@ -98,6 +132,12 @@ def load_profile(profile_name: str) -> tuple[bool, str]:
     if not path.exists():
         available = get_available_profiles()
         return (False, f"Профиль '{profile_name}' не найден. Доступны: {', '.join(available)}")
+    if profile_name in _AUTO_MERGE_PROFILES:
+        try:
+            bundled = Path(get_project_root()) / 'data' / 'game_profiles' / f'{profile_name}.json'
+            merge_bundled_spells(path, bundled)
+        except Exception:
+            pass
     try:
         raw_text = path.read_text(encoding='utf-8')
         clean_text = _strip_json_comments(raw_text)

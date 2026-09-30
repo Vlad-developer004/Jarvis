@@ -47,7 +47,8 @@ def _execute_sequence(steps: list[dict]):
 def _speak_response(text: str):
     try:
         from core.speech import speak
-        speak(text)
+        from core.speech.pacing import add_pauses
+        speak(add_pauses(text))
     except Exception:
         pass
 
@@ -68,6 +69,19 @@ def _handle_telemetry_action(action: str):
     try:
         from features.planetbase import telemetry as pb_tel
         if profile != 'planetbase':
+            return
+        if action.startswith("build:"):
+            from features.planetbase import commands as pb_cmd
+            _speak_response(pb_cmd.build(action.split(":", 1)[1]))
+            return
+        from features.planetbase import extras as pb_extras
+        extra_reply = pb_extras.handle(action)
+        if extra_reply is not None:
+            _speak_response(extra_reply)
+            return
+        if action.startswith("cmd:"):
+            from features.planetbase import commands as pb_cmd
+            _speak_response(pb_cmd.run(action.split(":", 1)[1]))
             return
         data = pb_tel.get()
         if not data.get("_valid"):

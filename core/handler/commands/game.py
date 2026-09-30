@@ -67,6 +67,23 @@ def apply_game_profile(handler, profile, msg_name):
                 _log.debug(f"[GAME_MODE] Failed to start FS22 Monitor: {e}")
     else:
         speak(msg)
+def open_launcher_and_suggest(handler, name, lp):
+    """Open a game launcher, then propose the most recently played game."""
+    from features.gaming import wait_for_launcher_window, scan_all_games, get_most_recently_played
+    speak(f'Открываю {normalize_for_tts(name)}...')
+    if lp.startswith('shell:'): subprocess.Popen(['explorer.exe', lp])
+    else: subprocess.Popen([lp], creationflags=8)
+    def _suggest_delayed():
+        wait_for_launcher_window(name, timeout=15.0)
+        time.sleep(1.5)
+        speak('Приступаю к анализу вашей библиотеки...')
+        all_games = scan_all_games()
+        best = get_most_recently_played(all_games)
+        if best:
+            handler.speak(spk('game.confirm', game=normalize_for_tts(best.name)), wait=True)
+            handler._set_interactive('game_confirm', {'game_uri': best.launch_uri, 'game_name': best.name, 'install_dir': best.install_dir, 'games': all_games})
+        else: speak('У вас пока нет установленных игр.')
+    threading.Thread(target=_suggest_delayed, daemon=True).start()
 def start_game_selection_flow(handler, query=None):
     from features.gaming import get_available_launchers, scan_all_games, get_most_recently_played, fuzzy_find_game
     from core.system import get_foreground_process_name
@@ -128,22 +145,7 @@ def start_game_selection_flow(handler, query=None):
         handler._set_interactive('game_launcher_choice', {'launchers': launchers})
     elif len(launchers) == 1:
         name = list(launchers.keys())[0]
-        speak(f'Открываю {normalize_for_tts(name)}...')
-        lp = launchers[name]
-        if lp.startswith('shell:'): subprocess.Popen(['explorer.exe', lp])
-        else: subprocess.Popen([lp], creationflags=8)
-        def _suggest_delayed():
-            from features.gaming import wait_for_launcher_window
-            wait_for_launcher_window(name, timeout=15.0)
-            time.sleep(1.5)
-            speak('Приступаю к анализу вашей библиотеки...')
-            all_games = scan_all_games()
-            best = get_most_recently_played(all_games)
-            if best:
-                handler.speak(spk('game.confirm', game=normalize_for_tts(best.name)), wait=True)
-                handler._set_interactive('game_confirm', {'game_uri': best.launch_uri, 'game_name': best.name, 'install_dir': best.install_dir, 'games': all_games})
-            else: speak('У вас пока нет установленных игр.')
-        threading.Thread(target=_suggest_delayed, daemon=True).start()
+        open_launcher_and_suggest(handler, name, launchers[name])
     else:
         games = scan_all_games()
         best = get_most_recently_played(games)

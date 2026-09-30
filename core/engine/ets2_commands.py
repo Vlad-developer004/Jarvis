@@ -34,7 +34,8 @@ def _confirm_rest_duration(hours: int) -> None:
             time.sleep(0.2)
         start_minutes = get_game_time()
         press_robust(get_binding('action', 'enter'))
-        speak_async(f'Принято — отдыхаем {format_duration_russian(hours * 60)}. Спокойной ночи.')
+        from core.speech.pacing import add_pauses
+        speak_async(add_pauses(f'Принято — отдыхаем {format_duration_russian(hours * 60)}. Спокойной ночи.'))
         _threading_mod.Thread(target=_wait_and_wake, args=(start_minutes, hours), daemon=True).start()
     except Exception:
         try:
@@ -108,7 +109,8 @@ def _wake_up_truck(slept_hours: int | None, wake_minutes: int | None = None) -> 
         if slept_hours is not None:
             from core.nlp.russian import format_duration_russian
             greeting = _greeting_for_game_minutes(wake_minutes)
-            speak_async(f'{greeting} Отдохнули знатно — спали {format_duration_russian(slept_hours * 60)}. Заводим тягач и трогаемся.')
+            from core.speech.pacing import add_pauses
+            speak_async(add_pauses(f'{greeting} Отдохнули знатно — спали {format_duration_russian(slept_hours * 60)}. Заводим тягач и трогаемся.'))
         cast_command('подготовь тягач', fuzzy_threshold=0.9)
     except Exception:
         pass
@@ -116,7 +118,8 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
     def _speak(msg: str):
         try:
             from core.speech import speak_async
-            speak_async(msg)
+            from core.speech.pacing import add_pauses
+            speak_async(add_pauses(msg))
         except Exception as _e:
             _log.warning('_speak failed in telemetry action: %s', _e)
     try:

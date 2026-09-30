@@ -476,6 +476,17 @@ def _chunk_text(text: str) -> list[str]:
     return chunks
 
 
+def _channel_overdue(now: float, deadline: float | None, stuck_since: float, stuck_timeout: float) -> bool:
+    """True when a channel that still reports busy, with nothing queued or being
+    generated, should be force-cleared. A known playback deadline (sound length
+    + margin) is authoritative. The blind stuck-timeout is only for a Sound whose
+    length couldn't be read: applying it always cut off every sentence longer
+    than the timeout right after the last chunk was handed to the channel."""
+    if deadline is not None:
+        return now > deadline
+    return now - stuck_since > stuck_timeout
+
+
 class _OrderedBatch:
     """Parallel generation with guaranteed in-order release to the playback queue.
 
@@ -726,10 +737,8 @@ class TTSManager:
                         now = time.time()
                         if _ch_busy_stuck_since[0] is None:
                             _ch_busy_stuck_since[0] = now
-                        _deadline = _expected_done_at[0]
-                        _overdue = (
-                            (_deadline is not None and now > _deadline)
-                            or (now - _ch_busy_stuck_since[0] > _CH_BUSY_STUCK_TIMEOUT)
+                        _overdue = _channel_overdue(
+                            now, _expected_done_at[0], _ch_busy_stuck_since[0], _CH_BUSY_STUCK_TIMEOUT
                         )
                         if _overdue:
                             print("[TTS-WORKER] Channel still reports busy past its "

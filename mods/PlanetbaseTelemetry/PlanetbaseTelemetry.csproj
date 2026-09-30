@@ -24,5 +24,9 @@
       <HintPath>$(PB)\UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(PB)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 </Project>

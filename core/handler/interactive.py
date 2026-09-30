@@ -161,6 +161,65 @@ def _state_game_confirm(handler, text_lower, words, data, global_cmd):
             handler._set_interactive(None)
             return {'clear_state': True}
 
+# Spoken names for launcher choice: launcher key (lowercase substring of its
+# display name) -> words the user may say. STT often renders "Steam" as "стим".
+_LAUNCHER_ALIASES = {
+    'steam': ['steam', 'стим', 'стем'],
+    'epic': ['epic', 'эпик', 'епик'],
+    'ubisoft': ['ubisoft', 'юбисофт', 'юбик', 'uplay'],
+    'gog': ['gog', 'гог'],
+    'xbox': ['xbox', 'иксбокс', 'хбокс'],
+}
+
+def _match_launcher(text_lower, launchers):
+    for name, path in launchers.items():
+        name_l = name.lower()
+        words = [name_l]
+        for key, aliases in _LAUNCHER_ALIASES.items():
+            if key in name_l:
+                words += aliases
+        if any(w in text_lower for w in words):
+            return name, path
+    return None
+
+def _state_game_launcher_choice(handler, text_lower, words, data, global_cmd):
+    if _check_cancel(handler, text_lower):
+        return {'clear_state': True}
+    launchers = (data or {}).get('launchers', {})
+    picked = _match_launcher(text_lower, launchers)
+    if picked:
+        handler._set_interactive(None)
+        from .commands.game import open_launcher_and_suggest
+        open_launcher_and_suggest(handler, picked[0], picked[1])
+        return {'clear_state': True}
+    # The answer may be a game rather than a platform ("го в планетбейс").
+    try:
+        from features.gaming import scan_all_games, fuzzy_find_game
+        found = fuzzy_find_game(scan_all_games(), text_lower)
+    except Exception:
+        found = None
+    if found:
+        handler._set_interactive(None)
+        speak(f'Принято, {_ga()}. Запускаю {normalize_for_tts(found.name)}.')
+        handler._launch_game_engine(found)
+        return {'clear_state': True}
+    speak(f'Не расслышал платформу, {_ga()}. Назовите её ещё раз или скажите отмена.')
+    handler._set_interactive('game_launcher_choice', data, timeout=30.0)
+    return {'new_state': 'game_launcher_choice', 'new_data': data, 'timeout': 30.0}
+
+def _state_game_specific(handler, text_lower, words, data, global_cmd):
+    if _check_cancel(handler, text_lower):
+        return {'clear_state': True}
+    from features.gaming import fuzzy_find_game
+    found = fuzzy_find_game((data or {}).get('games', []), text_lower)
+    handler._set_interactive(None)
+    if found:
+        speak(f'Принято, {_ga()}. Запускаю {normalize_for_tts(found.name)}.')
+        handler._launch_game_engine(found)
+    else:
+        speak('К сожалению, я не смог найти такую игру среди установленных.')
+    return {'clear_state': True}
+
 def _state_play_yt_ask(handler, text_lower, words, data, global_cmd):
     from core.nlp.commands import _WAKE_WORDS_STRICT
     if _check_cancel(handler, text_lower, _CANCEL_WORDS_EXT):
@@ -566,6 +625,8 @@ _STATE_HANDLERS = {
     'video_monitor_select': _state_video_monitor_select,
     'game_watcher_suggest': _state_game_watcher_suggest,
     'game_confirm': _state_game_confirm,
+    'game_launcher_choice': _state_game_launcher_choice,
+    'game_specific': _state_game_specific,
     'play_yt_ask': _state_play_yt_ask,
     'yt_channel_ask': _state_yt_channel_ask,
     'yt_pick_ask': _state_yt_pick_ask,
