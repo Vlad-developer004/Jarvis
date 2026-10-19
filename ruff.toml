@@ -1,0 +1,18 @@
+# Lint gate: rules that find real defects (undefined names, syntax errors, shadowed definitions, late-bound loop variables,
+# unsafe calls). Style rules are not enforced. Known old findings are listed per file so the gate fails only on new ones.
+line-length = 200
+target-version = "py312"
+extend-exclude = ["build", "dist", "models", "scratch", "mods", "ui_next/shell"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F632", "F811", "B006", "B015", "B018", "B023", "B033", "S102", "S307", "S301", "S506", "S602", "S324", "S501"]
+
+[lint.per-file-ignores]
+"ui/dialogs/keybind_editor.py" = ["F811", "B023"]
+"ui/dialogs/spell_editor.py" = ["F811"]
+"ui/dialogs/settings_tabs/appearance.py" = ["F811"]
+"ui/dialogs/settings_tabs/dev.py" = ["F811"]
+"ui/dialogs/settings_tabs/voice.py" = ["B023"]
+"actions/youtube.py" = ["F811"]
+"core/handler/commands/files.py" = ["F811"]
+"features/guard.py" = ["F811"]

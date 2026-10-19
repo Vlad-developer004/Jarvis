@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: lint and security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff==0.15.* bandit==1.9.*
+      - name: ruff (defect rules)
+        run: ruff check .
+      - name: bandit (medium and above)
+        run: bandit -c bandit.yaml -r core actions features ui_next config_pack main.py tools -ll -q
+
+  tests:
+    name: pytest
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  audit:
+    name: dependency audit (report)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pip-audit
+      - run: pip-audit --no-deps --disable-pip -r requirements-audit.txt

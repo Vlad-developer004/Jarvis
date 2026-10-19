@@ -4,3 +4,7 @@ winrt-Windows.Devices.Radios>=3.2.1
 # listen to this PC's own audio output instead of the microphone. Optional —
 # song.py falls back to mic-only recording if this isn't installed.
 PyAudioWPatch>=0.2.12.post1
+winrt-Windows.Media.Control>=3.2.1
+winrt-Windows.Foundation>=3.2.1
+winrt-Windows.Foundation.Collections>=3.2.1
+winrt-Windows.Storage.Streams>=3.2.1

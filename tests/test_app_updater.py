@@ -54,7 +54,7 @@ def test_check_for_update_records_newer_version_without_downloading_when_disable
         lambda: {"tag_name": "v999.0.0", "assets": [{"name": "Jarvis.zip", "browser_download_url": "http://x"}]},
     )
     staged = []
-    monkeypatch.setattr(app_updater, "_stage_update", lambda asset, tag: staged.append(tag) or True)
+    monkeypatch.setattr(app_updater, "_stage_update", lambda asset, tag, assets=None: staged.append(tag) or True)
 
     app_updater.check_for_update()
 
@@ -69,7 +69,7 @@ def test_check_for_update_downloads_when_enabled(monkeypatch):
         lambda: {"tag_name": "v999.0.0", "assets": [{"name": "Jarvis.zip", "browser_download_url": "http://x"}]},
     )
     staged = []
-    monkeypatch.setattr(app_updater, "_stage_update", lambda asset, tag: staged.append(tag) or True)
+    monkeypatch.setattr(app_updater, "_stage_update", lambda asset, tag, assets=None: staged.append(tag) or True)
 
     app_updater.check_for_update()
 
@@ -83,7 +83,7 @@ def test_check_for_update_skips_when_no_zip_asset(monkeypatch):
         lambda: {"tag_name": "v999.0.0", "assets": [{"name": "Jarvis.exe", "browser_download_url": "http://x"}]},
     )
     called = []
-    monkeypatch.setattr(app_updater, "_stage_update", lambda asset, tag: called.append(1) or True)
+    monkeypatch.setattr(app_updater, "_stage_update", lambda asset, tag, assets=None: called.append(1) or True)
 
     app_updater.check_for_update()
 

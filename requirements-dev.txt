@@ -2,3 +2,6 @@
 pytest
 pytest-timeout
 pyflakes
+ruff
+bandit
+pip-audit

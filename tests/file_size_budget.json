@@ -1,0 +1,13 @@
+{
+ "core/speech/tts.py": 2084,
+ "ui_next/web/app.html": 758,
+ "features/qa/llm_processor.py": 734,
+ "actions/calendar_hub.py": 717,
+ "core/speech/llm_chat.py": 661,
+ "core/nlp/commands.py": 659,
+ "core/handler/interactive.py": 656,
+ "actions/dev_projects.py": 636,
+ "actions/youtube.py": 614,
+ "core/engine/ets2_commands.py": 613,
+ "features/ets2/phrases_job.py": 608
+}

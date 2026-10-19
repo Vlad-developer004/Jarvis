@@ -1,0 +1,4 @@
+# CI runs: bandit -c bandit.yaml -r core actions features ui_next/bridge config_pack main.py tools -ll
+# B310 (urlopen): every call site uses a fixed https URL or checks the scheme first (calendar_ics, core/download.require_https).
+skips: ['B310']
+exclude_dirs: ['tests', 'build', 'dist', 'scratch', 'devtools', 'shell']
