@@ -1,5 +1,6 @@
 from actions.notes import save_note, cancel_reminders
 from core.responses import spk
+from core.safe import swallow as _swallow
 def handle_notes(handler, cmd, text_lower, amount):
     if cmd == 'note_save':
         note = text_lower.replace('запиши', '').replace('запомни', '').replace('заметку', '').replace('идею', '').strip()
@@ -18,12 +19,3 @@ def handle_notes(handler, cmd, text_lower, amount):
             handler.play_response()
         else:
             handler.speak(msg)
-        # Also hide HUD reminder widget if one is active
-        try:
-            from core.system import app_state
-            hud = getattr(app_state, 'hud', None)
-            if hud is not None:
-                from ui.hud_timer_widget import hide_reminder_widget
-                hud._hud_queue.put(lambda: hide_reminder_widget(hud))
-        except Exception:
-            pass

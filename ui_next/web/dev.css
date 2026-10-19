@@ -1,0 +1,7 @@
+/* Settings > Developer (dev.js): the editor picker; cards, chips, rows and forms reuse the Tools tab classes (look.css). */
+.dv-eds { display: flex; flex-wrap: wrap; gap: .5rem; padding: .3rem 0 .4rem; }
+.dv-ed { display: inline-flex; align-items: stretch; border: 1px solid hsl(var(--h) 50% 50% / .35); border-radius: 99px; overflow: hidden; background: transparent; transition: border-color .15s, background .15s; }
+.dv-ed > button { padding: .35rem .95rem; border: 0; background: transparent; color: #cfe6f7; font: 600 .82rem Onest; cursor: pointer; }
+.dv-ed > .dv-x { padding: .35rem .6rem .35rem .2rem; color: var(--dim); font-size: 1rem; line-height: 1; } .dv-ed > .dv-x:hover { color: var(--red); }
+.dv-ed:hover { border-color: var(--cyan); }
+.dv-ed.on { border-color: var(--green); background: hsl(150 60% 30% / .35); } .dv-ed.on > button:first-child { color: #fff; }

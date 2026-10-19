@@ -143,7 +143,7 @@ def _download_cover(url: str) -> str | None:
         import requests
         cache_dir = os.path.join(tempfile.gettempdir(), 'jarvis_ai_images')
         os.makedirs(cache_dir, exist_ok=True)
-        h = hashlib.md5(url.encode('utf-8')).hexdigest()
+        h = hashlib.md5(url.encode('utf-8'), usedforsecurity=False).hexdigest()
         ext = '.png' if '.png' in url.lower() else '.jpg'
         path = os.path.join(cache_dir, f'song_{h}{ext}')
         if not os.path.exists(path):

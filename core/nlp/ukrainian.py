@@ -1,4 +1,5 @@
 import re
+from core.safe import swallow as _swallow
 try:
     from num2words import num2words
 except ImportError:
@@ -24,7 +25,7 @@ def format_time_ukrainian(hours: int, minutes: int) -> str:
             m_text = num2words(minutes, lang='uk', gender='feminine')
             m_form = get_ukrainian_plural(minutes, m_titles)
             return f"{h_text} {h_form} {m_text} {m_form}"
-        except Exception: pass
+        except Exception: _swallow()
     h_form = get_ukrainian_plural(hours, h_titles)
     if minutes == 0: return f"{hours} {h_form}"
     m_form = get_ukrainian_plural(minutes, m_titles)

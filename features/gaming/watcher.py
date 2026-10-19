@@ -2,6 +2,7 @@ import threading
 import time
 from typing import Optional
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 _log = _get_logger('gaming')
 _GAME_EXE_MAP: dict[str, tuple[str, str, str]] = {
     'eurotrucks2.exe': ('euro_truck_simulator_2', 'Евро Трак Симулятор два', 'евро трак'),
@@ -62,7 +63,7 @@ def is_profile_installed(profile_stem: str) -> bool:
             if e.get('file', '') == f'{profile_stem}.json':
                 return True
     except Exception:
-        pass
+        _swallow()
     from config_pack.config import get_data_dir
     from pathlib import Path
     return (Path(get_data_dir('game_profiles')) / f'{profile_stem}.json').exists()
@@ -75,11 +76,9 @@ def start_game_watcher(handler=None):
             # Continuous tracking of detected game
             if fg_name in _GAME_EXE_MAP:
                 profile_stem = _GAME_EXE_MAP[fg_name][0]
-                app_state.detected_game = profile_stem
-                app_state.detected_exe = fg_name
+                app_state.set_detected(profile_stem, fg_name)
             else:
-                app_state.detected_game = ''
-                app_state.detected_exe = ''
+                app_state.set_detected()
 
             if app_state.game_mode:
                 if _watcher_stop.wait(timeout=5): break

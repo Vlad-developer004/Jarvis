@@ -13,6 +13,7 @@ from actions.game_input_parts.profile import (
     get_loaded_profile_stem,
     get_binding,
 )
+from core.safe import swallow as _swallow
 _wiper_state: int = 0
 _held_keys: dict[str, bool] = {}   # клавиши зажатые командой hold_start
 def _switch_panel(target: int):
@@ -50,7 +51,7 @@ def _speak_response(text: str):
         from core.speech.pacing import add_pauses
         speak(add_pauses(text))
     except Exception:
-        pass
+        _swallow()
 
 
 def _handle_telemetry_action(action: str):
@@ -252,7 +253,7 @@ def _is_lights_recommended(data: dict | None = None) -> bool:
             if hour >= 18.5 or hour <= 7.5:
                 return True
     except Exception:
-        pass
+        _swallow()
     return False
 def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool, str, str | None]:
     """Returns (matched, entry_name, telemetry_action). telemetry_action lets callers
@@ -282,7 +283,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
             from core.speech.sound import play_alert_sound
             play_alert_sound('red_alert')
         except Exception:
-            pass
+            _swallow()
 
     # Common response handler (before we might return early)
     def _trigger_response():

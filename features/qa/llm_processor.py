@@ -5,6 +5,7 @@ import threading
 import time
 
 from core.logging_setup import get_logger
+from core.safe import swallow as _swallow
 
 _log = get_logger('qa')
 
@@ -68,7 +69,7 @@ def _load_api_key_uncached(provider: str) -> str:
                         if line.startswith(f'{key_name}='):
                             return line[len(f'{key_name}='):].strip().strip('"').strip("'")
         except Exception:
-            pass
+            _swallow()
     return ''
 
 
@@ -111,7 +112,7 @@ _FILLER = {
 _QUESTION_WORDS = {
     'кто такой', 'зачем', 'как', 'когда', 'где', 'кто', 'что', 'куда', 'откуда',
     'какой', 'какая', 'какие', 'какое', 'чем', 'кем', 'чего', 'сколько',
-    'найди', 'объясни', 'поищи', 'расскажи', 'подробнее', 'почему', 'зачем',
+    'найди', 'объясни', 'поищи', 'расскажи', 'подробнее', 'почему',
 }
 _QUESTION_PHRASES = (
     'кто такой', 'что такое', 'расскажи о', 'расскажи про',
@@ -262,7 +263,7 @@ def _get_model_ctx_tokens(provider: str, model: str) -> int:
             if m.get('id') == model:
                 return _parse_ctx_tokens(m.get('ctx', '')) or _DEFAULT_CTX_TOKENS
     except Exception:
-        pass
+        _swallow()
     return _DEFAULT_CTX_TOKENS
 
 
@@ -299,8 +300,18 @@ def _max_tokens(question: str) -> int:
 # Universal entry point
 # ---------------------------------------------------------------------------
 
-def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', stream: bool = False, sys_prompt: str = '', max_tokens: int = 0, history: list[dict] = None):
-    """Route a QA request to the configured LLM provider.
+def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', stream: bool = False, sys_prompt: str = '', max_tokens: int = 0, history: list[dict] = None, announce: bool = False):
+    """Answer a question through the chosen provider, with a backup provider and the daily budget (features/qa/ai_router.py).
+
+    `announce=True` (the voice assistant's own questions) lets Jarvis say aloud that another provider answered."""
+    from . import ai_router
+    kwargs = dict(topic=topic, question=question, timeout=timeout, last_ans=last_ans, stream=stream, sys_prompt=sys_prompt, max_tokens=max_tokens, history=history)
+    return ai_router.ask(_ask_llm_single, announce, stream, kwargs)
+
+
+def _ask_llm_single(topic: str, question: str, timeout: int = 10, last_ans: str = '', stream: bool = False, sys_prompt: str = '', max_tokens: int = 0, history: list[dict] = None, _force: tuple = None):
+    """Route a QA request to the configured LLM provider (`_force` = (provider, model) replaces the configured one).
+
 
     If stream=True, returns a generator of text chunks.
 
@@ -323,6 +334,8 @@ def ask_llm(topic: str, question: str, timeout: int = 10, last_ans: str = '', st
 
     provider = settings.get('ai_provider', 'groq').lower()
     model = settings.get('ai_model', '')
+    if _force:
+        provider, model = _force[0].lower(), _force[1]
     # 0/None means "use this provider's own default" everywhere below —
     # only overridden once the user actually touches the sliders in
     # settings_tabs/modules/premium_view.py.
@@ -586,7 +599,7 @@ def _ask_openai_compat(
                         try:
                             _capture_rate_limit_headers(provider, model, raw.headers)
                         except Exception:
-                            pass
+                            _swallow()
                         for chunk in raw.parse():
                             delta = chunk.choices[0].delta.content
                             if delta:
@@ -599,7 +612,7 @@ def _ask_openai_compat(
         try:
             _capture_rate_limit_headers(provider, model, raw.headers)
         except Exception:
-            pass
+            _swallow()
         completion = raw.parse()
         text = completion.choices[0].message.content.strip()
         return _clean(text) if text else ''

@@ -919,6 +919,11 @@ class TTSManager:
         # (text AND speech) on the very first AI answer of a session.
         text = text.strip()
         if not text: return
+        try:  # the window's feed (no-op while the bridge is not running)
+            from ui_next import bridge as _ui_bridge
+            _ui_bridge.reply(text)
+        except Exception:
+            pass
         self.active_playback = True
         self.stop_event.clear()
         sentences = _chunk_text(text)
@@ -1010,16 +1015,8 @@ class TTSManager:
 
     def _safe_hud_set_mode(self, mode_name: str):
         try:
-            from ui import hud as _hud
-            # Thread-safe access to HUD root
-            if not _hud or not hasattr(_hud, '_hud') or not _hud._hud or not _hud._hud.root: 
-                return
-            def _apply():
-                try:
-                    target = _hud.HudState.IDLE if mode_name == 'idle' else _hud.HudState.SPEAKING
-                    if _hud.STATE: _hud.STATE.mode = target
-                except: pass
-            _hud._hud.root.after(0, _apply)
+            from ui_next import host as _hud
+            _hud.STATE.mode = _hud.HudState.IDLE if mode_name == 'idle' else _hud.HudState.SPEAKING     # the state has its own lock
         except Exception:
             pass
     def _reset_unload_timer(self):
@@ -1105,8 +1102,8 @@ def _notify_model_download(active: bool, failed: bool = False) -> None:
     indication why. Never raises: must not affect warmup/synthesis if the
     HUD isn't up yet or notify() itself has a problem."""
     try:
-        from ui import hud as _hud
-        from ui.hud_constants import _AMBER, _RED
+        from ui_next import host as _hud
+        from ui_next.host import AMBER as _AMBER, RED as _RED
         if failed:
             _hud.notify('tts_model',
                          f'Не удалось скачать голосовую модель — повторю через {_MODEL_RETRY_SECONDS // 60} мин',
@@ -1207,7 +1204,7 @@ def _generate_cached(text: str, _speed_pct: int = 100, persist: bool = True) -> 
     use_ssml = _needs_ssml_route(text)
     # Cache key includes speed so each rate has its own file
     cache_key = f'{text}|{speaker}|{lang}|{_SAMPLE_RATE}|{_speed_pct}'
-    h = hashlib.md5(cache_key.encode('utf-8')).hexdigest()[:12]
+    h = hashlib.md5(cache_key.encode('utf-8'), usedforsecurity=False).hexdigest()[:12]
     # persist=False (one-off AI/LLM answer text, unlikely to repeat verbatim)
     # gets a distinct filename prefix so the worker frees it right after
     # playback instead of leaving it in the cache dir until eviction — see

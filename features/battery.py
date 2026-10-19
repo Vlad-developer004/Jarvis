@@ -1,5 +1,6 @@
 import time
 import threading
+from core.safe import swallow as _swallow
 try:
     import psutil as _psutil
 except ImportError:
@@ -80,7 +81,7 @@ def check_battery_alerts():
                 else:
                     last_alert_percent = None
         except Exception:
-            pass
+            _swallow()
         time.sleep(5)
 
 

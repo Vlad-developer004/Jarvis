@@ -11,6 +11,7 @@ from .phrases import (
     event_deadline_warning, event_almost_there, event_destination, event_idle, event_eta,
 )
 from .phrases_warnings import event_real_break_reminder
+from core.safe import swallow as _swallow
 
 def _check_engine_transition(state: _MonitorState, data: dict) -> bool:
     from .monitor import _speak
@@ -145,7 +146,7 @@ def _check_route_progress(state: _MonitorState, data: dict, engine_on: bool) -> 
             key = _gb('action', 'enter')
             press_robust(key)
         except Exception:
-            pass
+            _swallow()
         _speak(event_destination())
     return on_job
 

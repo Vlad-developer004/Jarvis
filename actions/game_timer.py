@@ -5,6 +5,7 @@ One active timer at a time; new timer cancels the previous one.
 import threading
 import time
 from typing import Optional
+from core.safe import swallow as _swallow
 
 _lock = threading.Lock()
 _active_timer: Optional['_Timer'] = None
@@ -18,7 +19,7 @@ def _beep(freq: int, duration_ms: int):
         import winsound
         winsound.Beep(freq, duration_ms)
     except Exception:
-        pass
+        _swallow()
 
 
 def _alert(speak_fn, message: str, loud: bool = False):
@@ -41,10 +42,9 @@ def _alert(speak_fn, message: str, loud: bool = False):
 
 
 class _Timer:
-    def __init__(self, total_sec: int, label: str, speak_fn, hud=None):
+    def __init__(self, total_sec: int, label: str, speak_fn):
         self.label = label
         self._speak = speak_fn
-        self._hud = hud
         self._start = time.monotonic()
         self._total_sec = total_sec
         self._cancelled = threading.Event()
@@ -63,12 +63,6 @@ class _Timer:
 
     def extend(self, extra_sec: int):
         self._total_sec += extra_sec
-        if self._hud is not None:
-            try:
-                from ui.hud_timer_widget import update_timer_total
-                self._hud._hud_queue.put(lambda t=self._total_sec: update_timer_total(self._hud, t))
-            except Exception:
-                pass
 
     def _run(self):
         fired: set[int] = set()
@@ -104,18 +98,16 @@ class _Timer:
             msg = f'Сэр, таймер{label_part} завершён.'
             _alert(self._speak, msg, loud=True)
             _clear_active()
-            _on_timer_done(self.label, self._hud)
+            _on_timer_done(self.label)
 
 
-def _on_timer_done(label: str, hud) -> None:
-    if hud is None:
-        return
+def _on_timer_done(label: str) -> None:
+    """The timer ran out: a pop-up in the window (the voice alert already played)."""
     try:
-        from ui.hud_timer_widget import hide_timer_widget, show_timer_done_popup
-        hud._hud_queue.put(lambda: hide_timer_widget(hud))
-        hud._hud_queue.put(lambda: show_timer_done_popup(label, hud.root))
+        from ui_next import host
+        host.show_timer_done(label)
     except Exception:
-        pass
+        _swallow()
 
 
 def _clear_active():
@@ -124,27 +116,14 @@ def _clear_active():
         _active_timer = None
 
 
-def set_timer(seconds: int, label: str, speak_fn, hud=None) -> str:
+def set_timer(seconds: int, label: str, speak_fn) -> str:
     """Start a new timer. Returns human-readable duration string."""
     global _active_timer
     from core.nlp import format_duration_russian
     with _lock:
         if _active_timer is not None:
             _active_timer.cancel()
-            if hud is not None:
-                try:
-                    from ui.hud_timer_widget import hide_timer_widget
-                    hud._hud_queue.put(lambda: hide_timer_widget(hud))
-                except Exception:
-                    pass
-        _active_timer = _Timer(seconds, label, speak_fn, hud)
-
-    if hud is not None:
-        try:
-            from ui.hud_timer_widget import show_timer_widget
-            hud._hud_queue.put(lambda: show_timer_widget(hud, seconds, label))
-        except Exception:
-            pass
+        _active_timer = _Timer(seconds, label, speak_fn)
 
     mins = seconds // 60
     return format_duration_russian(mins) if mins >= 1 else f'{seconds} секунд'
@@ -159,21 +138,23 @@ def add_time(extra_sec: int) -> bool:
         return True
 
 
+def sub_time(less_sec: int) -> bool:
+    """Take time off the running timer. False if none is active or it has no more than that left (cancel it instead)."""
+    with _lock:
+        if _active_timer is None or _active_timer.remaining_sec() <= less_sec:
+            return False
+        _active_timer.extend(-less_sec)
+        return True
+
+
 def cancel_timer() -> bool:
     """Cancel active timer. Returns True if one was running."""
     global _active_timer
     with _lock:
         if _active_timer is None:
             return False
-        hud = _active_timer._hud
         _active_timer.cancel()
         _active_timer = None
-    if hud is not None:
-        try:
-            from ui.hud_timer_widget import hide_timer_widget
-            hud._hud_queue.put(lambda: hide_timer_widget(hud))
-        except Exception:
-            pass
     return True
 
 

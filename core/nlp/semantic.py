@@ -47,6 +47,7 @@ from typing import Optional
 
 import numpy as np
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 
 _log = _get_logger('semantic')
 
@@ -122,7 +123,7 @@ class SemanticIntentClassifier:
             from core.system.bootstrap import trim_memory
             trim_memory()
         except Exception:
-            pass
+            _swallow()
         _log.info('Model unloaded to free RAM.')
 
     def _reset_unload_timer(self) -> None:
@@ -324,7 +325,7 @@ class SemanticIntentClassifier:
                 try:
                     on_done()
                 except Exception:
-                    pass
+                    _swallow()
         threading.Thread(target=_bg, daemon=True).start()
 
     def classify_intent(

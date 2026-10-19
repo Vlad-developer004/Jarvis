@@ -1,0 +1,17 @@
+/* "Кино" screen (cinema.js). Same card language as the Voice and Settings screens; the player controls reuse the capsule styles of nowplaying.css. */
+#cinema { grid-area: view; display: none; padding: 0; min-height: 0; position: relative; }
+#app[data-view=cinema] { grid-template-columns: var(--navw) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "nav top" "nav view"; }
+#app[data-view=cinema] #hero, #app[data-view=cinema] #bottom, #app[data-view=cinema] #side { display: none; }
+#app[data-view=cinema] #cinema { display: flex; flex-direction: column; }
+html[data-tier=mini] #app[data-view=cinema] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top" "view" "nav"; }
+#ci-body .vc-grid { align-items: stretch; } #ci-body .vc-col > .vc-card:last-child { flex: 1; } #ci-body .vc-card { display: flex; flex-direction: column; }
+
+.ci-s { padding: .6rem 0 .5rem; border-top: 1px solid hsl(var(--h) 50% 50% / .14); } .ci-s:first-child { border-top: 0; padding-top: .2rem; }
+.ci-s .np-eq i { background: var(--cyan); } .ci-s.paused .np-eq i { background: var(--amber); }
+html:not([data-fx=lite]) .ci-s.playing .np-eq i { animation: np-eq .9s ease-in-out infinite; } .ci-s .np-eq i:nth-child(2) { animation-delay: -.3s !important; } .ci-s .np-eq i:nth-child(3) { animation-delay: -.6s !important; }
+.ci-form { display: flex; flex-direction: column; gap: .7rem; padding-top: .3rem; } .ci-form label { display: flex; flex-direction: column; gap: .3rem; font-size: .78rem; color: hsl(var(--h) 70% 72%); font-weight: 600; } .ci-form input, .ci-form select { width: 100%; }
+.ci-row { display: flex; align-items: flex-end; gap: .8rem; flex-wrap: wrap; } .ci-form .ci-n { flex: 1 1 8rem; min-width: 8rem; max-width: 12rem; } .ci-kind { flex: none; }   /* wide enough for the placeholder next to the field's icon */
+.ci-sub { margin: .6rem 0 .2rem; color: var(--dim); font-size: .78rem; }
+.ci-def { font-style: normal; font-weight: 600; font-size: max(.7rem, 9px); color: var(--green); margin-left: .5rem; padding: .05rem .45rem; border: 1px solid hsl(150 60% 45% / .45); border-radius: 99px; }
+.ci-pre { padding: .3rem .8rem; border: 1px dashed hsl(var(--h) 60% 55% / .5); border-radius: 99px; background: transparent; color: #cfe6f7; font: 600 .8rem Onest; cursor: pointer; transition: background .15s, border-color .15s; } .ci-pre:hover { background: hsl(var(--h) 60% 30% / .45); border-style: solid; border-color: var(--cyan); }
+.ci-say { padding-right: .8rem; color: #cfe6f7; }

@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 from config_pack.config import get_settings_path
+from core.safe import swallow as _swallow
 # Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) — a
 # project-relative path here would never see this setting (and gets wiped
 # by a rebuild).
@@ -28,7 +29,7 @@ def _load_settings() -> dict:
         if _SETTINGS_PATH.exists():
             return json.loads(_SETTINGS_PATH.read_text(encoding='utf-8'))
     except Exception:
-        pass
+        _swallow()
     return {}
 def _save_settings(data: dict) -> None:
     _SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -66,7 +67,7 @@ def current_wifi_ssid() -> str | None:
             if m:
                 return m.group(1).strip() or None
     except Exception:
-        pass
+        _swallow()
     return None
 def describe_network_state(settings: dict | None = None) -> str:
     if settings is None:

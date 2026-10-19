@@ -5,6 +5,7 @@ from datetime import datetime, date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from actions.briefing_config import load_briefing_prefs
 from core.system import app_state, module_enabled
+from core.safe import swallow as _swallow
 LOG_DIR  = os.path.join('logs')
 LOG_FILE = os.path.join(LOG_DIR, 'last_briefing.txt')
 EVENING_LOG_FILE = os.path.join(LOG_DIR, 'last_evening_summary.txt')
@@ -19,7 +20,7 @@ def _read_last_date() -> str:
             with open(LOG_FILE, 'r', encoding='utf-8') as f:
                 return f.read().strip()
     except Exception:
-        pass
+        _swallow()
     return ''
 def _write_today():
     try:
@@ -27,14 +28,14 @@ def _write_today():
         with open(LOG_FILE, 'w', encoding='utf-8') as f:
             f.write(date.today().isoformat())
     except Exception:
-        pass
+        _swallow()
 def _read_last_evening_date() -> str:
     try:
         if os.path.exists(EVENING_LOG_FILE):
             with open(EVENING_LOG_FILE, 'r', encoding='utf-8') as f:
                 return f.read().strip()
     except Exception:
-        pass
+        _swallow()
     return ''
 def _write_evening_today():
     try:
@@ -42,13 +43,13 @@ def _write_evening_today():
         with open(EVENING_LOG_FILE, 'w', encoding='utf-8') as f:
             f.write(date.today().isoformat())
     except Exception:
-        pass
+        _swallow()
 def _wait_mixer_idle(timeout: float = 90.0) -> None:
     try:
         from core.speech.tts import wait_for_pygame_mixer_idle
         wait_for_pygame_mixer_idle(timeout=timeout)
     except Exception:
-        pass
+        _swallow()
 def _part_greeting(prefs: dict) -> str | None:
     if not prefs.get('include_greeting', True):
         return None
@@ -87,7 +88,7 @@ def _part_battery(prefs: dict) -> str | None:
             status   = 'заряжается' if charging else 'работает от батареи'
             return f'Заряд аккумулятора составляет {pct} процентов, система {status}.'
     except Exception:
-        pass
+        _swallow()
     return None
 def _part_sysload(prefs: dict) -> str | None:
     if not prefs.get('include_system_load', True):
@@ -101,7 +102,7 @@ def _part_sysload(prefs: dict) -> str | None:
             return (f'Внимание, {_ga()}. Наблюдается повышенная нагрузка на ресурсы. '
                     f'Процессор загружен на {int(cpu)} процентов.')
     except Exception:
-        pass
+        _swallow()
     return None
 def _part_weather(prefs: dict) -> str | None:
     if not prefs.get('include_weather', True):

@@ -4,6 +4,7 @@ picker (_r) used by every event_* function. Split out of the old
 phrases.py purely for file size; no behavior change.
 """
 import re
+from core.safe import swallow as _swallow
 
 def _decline_ru(n: int, f1: str, f2: str, f5: str) -> str:
     last2, last1 = abs(n) % 100, abs(n) % 10
@@ -61,7 +62,7 @@ def _resolve_addr(text: str) -> str:
         text = re.sub(r'\bсэр\b', addr, text, flags=re.IGNORECASE)
         text = re.sub(r'\bсер\b', addr, text, flags=re.IGNORECASE)
     except Exception:
-        pass
+        _swallow()
     return text
 
 def _addr() -> str:
@@ -107,7 +108,7 @@ def _r(ru: list, uk: list | None = None) -> str:
         if get_speech_language() == 'uk' and uk:
             return pick_response(tuple(uk), uk)
     except Exception:
-        pass
+        _swallow()
     return pick_response(tuple(ru), ru)
 
 def _pct_str(pct_float: float) -> str:

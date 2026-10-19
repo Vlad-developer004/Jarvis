@@ -1,13 +1,13 @@
 # Jarvis — offline RU/UA голосовой ассистент
 
-Local offline Win-voice assistant. Pipeline: ASR (sherpa-onnx/Vosk) -> Intent (keyword/semantic) -> Dispatch -> Action (CustomTkinter HUD, Silero TTS). Cloud: нет (опционально Groq — только для чата).
+Local offline Win-voice assistant. Pipeline: ASR (sherpa-onnx/Vosk) -> Intent (keyword/semantic) -> Dispatch -> Action (окно Tauri + мост, Silero TTS). Cloud: нет (опционально Groq — только для чата).
 
 ## Binding rules (flag tradeoff + confirm before changing)
 
 1. **Startup order is crash-sensitive.** `CUDA_VISIBLE_DEVICES=''` и стабы `pynvml`/`pyarrow` — в самом верху `main.py`, до импорта torch/nltk/pandas. Нарушение порядка = 0xC0000005 crash при старте.
-2. **No speculative refactoring.** Не менять рабочий код ради стиля/чистоты — нет автотестов, высокий риск сломать нативную Win32/DLL-логику (порядок preload, COM-инициализация). Сохранять Win32 API, реестр и Windows-специфичные пути как есть.
+2. **No speculative refactoring.** Не менять рабочий код ради стиля/чистоты — тесты не покрывают нативную Win32/DLL-логику (порядок preload, COM-инициализация), высокий риск её сломать. Сохранять Win32 API, реестр и Windows-специфичные пути как есть.
 3. **Thread safety в `core/system/state.py`.** Глобальные флаги (`pytorch_loaded`, `jarvis_active`, `game_mode`) читаются/пишутся из нескольких потоков (background init, HUD, audio loop) — при правках сохранять существующие блокировки, не убирать их «для упрощения».
-4. **UI-обновления только в UI-потоке** (`ui/hud.py`, CustomTkinter). Не дёргать HUD напрямую из audio/background потоков — только через существующий механизм передачи сообщений.
+4. **Окно — отдельный процесс, ядро говорит с ним только через `ui_next/host.py`** (мост `ui_next/bridge`, SSE+POST на 127.0.0.1). Не обращаться к мосту, процессу окна или его страницам напрямую из audio/background потоков и действий; состояние, уведомления, диалоги, ответ ИИ — функции `host`.
 
 ## Codebase exploration: no naive grep/full-file reads
 
@@ -33,7 +33,7 @@ grep — только когда граф не может ответить (ст
 
 ## Definition of Done
 
-Обновить `README.md`/`docs/*.md`, если меняется поведение. Early-accept: остановиться, как только изменение работает и проходит ручную проверку — автотестов нет, верификация запуском приложения.
+Обновить `README.md`/`docs/*.md`, если меняется поведение. Early-accept: остановиться, как только изменение работает: релевантные pytest-тесты зелёные, а для UI/аудио/Win32 — ещё и ручная проверка запуском приложения.
 
 ## Communication style
 
@@ -43,7 +43,7 @@ RU в чате без эмодзи, EN в коде/комментариях/до
 
 - Run: `python main.py` | Deps: `pip install -r requirements.txt` (+ опционально `requirements-*.txt`)
 - Build: `build.bat` (PyInstaller через `jarvis.spec`; копирует assets/models/profiles, strips envs)
-- Tests: автотестов нет, проверка вручную запуском приложения
+- Tests: `python -m pytest` (2200+ тестов в `tests/`, dev-зависимости в `requirements-dev.txt`, конфиг `pytest.ini`); нативный Win32/аудио/UI-слой дополнительно проверяется вручную запуском приложения
 
 ## Project shape
 
@@ -52,7 +52,7 @@ RU в чате без эмодзи, EN в коде/комментариях/до
 1. Верх файла: `CUDA_VISIBLE_DEVICES=''`, стабы `pynvml`/`pyarrow` (до torch/nltk/pandas).
 2. `core.system.bootstrap.bootstrap()` — DPI, dir fix, логи, mutex.
 3. `_background_init()` (thread): preload PyTorch DLL -> TTS warmup -> async semantic models -> PyAudio stream -> `CommandHandler`+`JarvisEngine` -> mic profile -> опциональные фичи.
-4. UI: `_run_hud` (thread), ждёт `_engine_ready`.
+4. UI: `_run_ui` (thread): стартует мост и процесс окна (`ui_next/shell.py`), ждёт `_engine_ready`, потом отдаёт мосту обработчик команд.
 5. Main thread: блокируется на `_engine_ready` -> `engine.run()` (audio loop).
 
 ### Pipeline & core modules
@@ -70,7 +70,7 @@ RU в чате без эмодзи, EN в коде/комментариях/до
 - `config_pack/config.py` — пороги, пути. Приоритет `%LOCALAPPDATA%\Jarvis` / `%APPDATA%\Jarvis`, fallback `./data`.
 - `core/system/state.py` — глобальный singleton флагов (`pytorch_loaded`, `jarvis_active`, `game_mode` и т.д.). **Thread safety критична.**
 - `core/i18n.py` — локали `data/locales/{ru,uk}.json`, `tr(key)`.
-- `ui/`: `hud.py` (overlay LOADING/IDLE/LISTENING/SPEAKING), `dialogs/` (settings). UI-обновления только в UI-потоке.
+- `ui_next/`: `host.py` (всё, что ядро просит у окна: состояние LOADING/IDLE/LISTENING/SPEAKING, уведомления, карточка ответа, вопросы), `bridge/` (сервер и команды окна), `shell.py` (запуск процесса окна), `shell/` (Tauri, Rust), `web/` (страницы окна). Старого CustomTkinter-интерфейса больше нет.
 
 ### Game Integration
 - Профили: `data/game_profiles/*.json` (ETS2, Hogwarts и др.).

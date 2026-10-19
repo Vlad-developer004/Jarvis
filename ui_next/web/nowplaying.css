@@ -1,0 +1,23 @@
+/* "Now playing" capsule under the core (nowplaying.js). It takes the place of the suggestion chips while something plays. */
+html[data-np] #sugg { display: none; }
+.np { position: relative; z-index: 3; width: min(34rem, 100%); margin: .5rem auto 0; padding: .5rem .8rem .45rem; display: flex; flex-direction: column; gap: .3rem; text-align: left;
+  background: linear-gradient(160deg, hsl(var(--h) calc(70% * var(--sk)) 16% / .97), hsl(var(--h) calc(75% * var(--sk)) 8% / .98)); border: 1px solid hsl(var(--h) 70% 55% / .35); border-left: 3px solid var(--cyan);
+  clip-path: polygon(0 0, calc(100% - .7rem) 0, 100% .7rem, 100% 100%, .7rem 100%, 0 calc(100% - .7rem)); box-shadow: 0 .4rem 1.2rem rgba(0, 0, 0, .3); }
+.np[hidden] { display: none; }
+.np[data-state=paused] { border-left-color: var(--amber); }
+.np-top { display: flex; align-items: center; gap: .7rem; }
+.np-eq { flex: none; display: flex; align-items: flex-end; gap: 2px; width: 1.1rem; height: 1.1rem; } .np-eq i { flex: 1; height: 30%; background: var(--cyan); border-radius: 1px; }
+.np[data-state=paused] .np-eq i { background: var(--amber); }
+html:not([data-fx=lite]) .np[data-state=playing] .np-eq i { animation: np-eq .9s ease-in-out infinite; } .np-eq i:nth-child(2) { animation-delay: -.3s !important; } .np-eq i:nth-child(3) { animation-delay: -.6s !important; }
+@keyframes np-eq { 0%, 100% { height: 25%; } 50% { height: 100%; } }
+.np-t { flex: 1; min-width: 0; display: flex; flex-direction: column; } .np-t b { font: 600 .92rem Onest; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .np-t small { color: var(--dim); font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-ctl { flex: none; display: flex; align-items: center; gap: .2rem; }
+.np-ctl button { position: relative; width: 2rem; height: 2rem; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: #cfe6f7; cursor: pointer; border-radius: 50%; transition: background .15s, color .15s, transform .1s; }
+.np-ctl button:hover:not(:disabled) { background: hsl(var(--h) 60% 40% / .45); color: #fff; } .np-ctl button:active:not(:disabled) { transform: scale(.92); } .np-ctl button:disabled { opacity: .3; cursor: default; }
+.np-ctl button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.np-ctl button em { position: absolute; font: 700 max(.65rem, 9px) Tektur; font-style: normal; letter-spacing: 0; pointer-events: none; }
+.np-ctl .np-main { width: 2.4rem; height: 2.4rem; background: hsl(var(--h) 80% 38% / .8); color: #fff; box-shadow: 0 0 .8rem hsl(var(--h) 100% 55% / .35); } .np-ctl .np-main:hover:not(:disabled) { background: hsl(var(--h) 85% 46%); }
+.np-bar { position: relative; height: .9rem; cursor: pointer; display: flex; align-items: center; } .np-bar::before { content: ""; position: absolute; left: 0; right: 0; height: .28rem; border-radius: 99px; background: hsl(var(--h) 40% 30% / .6); }
+.np-bar i { position: relative; display: block; height: .28rem; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--cyan), var(--green)); box-shadow: 0 0 .5rem hsl(var(--h) 100% 55% / .4); }
+.np-bar:hover::before, .np-bar:hover i { height: .4rem; } .np-bar.off { cursor: default; pointer-events: none; opacity: .6; }
+.np-time { display: flex; justify-content: space-between; font: 600 .7rem Tektur; color: var(--dim); letter-spacing: .04em; margin-top: -.2rem; }

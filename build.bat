@@ -30,6 +30,23 @@ if exist build rmdir /S /Q build
 if exist dist\Jarvis rmdir /S /Q dist\Jarvis
 for /d /r . %%d in (__pycache__) do @if exist "%%d" rd /s /q "%%d"
 
+
+:: --- Build the window (the Tauri shell the core starts; its pages are compiled into it) ---
+where cargo >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Rust ^(cargo^) not found in PATH: it is needed to build the window. Install it from https://rustup.rs
+    pause & exit /b 1
+)
+echo Building the window...
+pushd ui_next\shell\src-tauri
+cargo build --release
+if errorlevel 1 (
+    popd
+    echo [ERROR] The window build failed.
+    pause & exit /b 1
+)
+popd
+
 :: --- Build ---
 :: Suppress pygame/pkg_resources deprecation noise on stderr (optional).
 set PYTHONWARNINGS=ignore::UserWarning:pkg_resources

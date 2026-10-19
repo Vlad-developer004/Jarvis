@@ -162,7 +162,7 @@ def test_cancel_timer_calls_through(monkeypatch):
 def test_reminder_schedules_on_parseable_duration(monkeypatch):
     scheduled = []
     monkeypatch.setattr('features.reminder.schedule_reminder',
-                         lambda delay, msg, speak_fn, hud: scheduled.append((delay, msg)))
+                         lambda delay, msg, speak_fn: scheduled.append((delay, msg)))
     handler = _FakeHandler()
 
     sys_cmd._sys_reminder(handler, 'напомни через 5 минут выпить воды', 0)

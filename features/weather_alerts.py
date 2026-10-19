@@ -7,6 +7,7 @@ import threading
 import time
 from datetime import date
 from core.system import module_enabled
+from core.safe import swallow as _swallow
 
 LOG_DIR = os.path.join('logs')
 LOG_FILE = os.path.join(LOG_DIR, 'last_weather_alert.txt')
@@ -21,7 +22,7 @@ def _read_last_date() -> str:
             with open(LOG_FILE, 'r', encoding='utf-8') as f:
                 return f.read().strip()
     except Exception:
-        pass
+        _swallow()
     return ''
 
 
@@ -31,7 +32,7 @@ def _write_today() -> None:
         with open(LOG_FILE, 'w', encoding='utf-8') as f:
             f.write(date.today().isoformat())
     except Exception:
-        pass
+        _swallow()
 
 
 def _is_severe(desc: str, temp: float, wind: float, lang: str) -> bool:
@@ -74,7 +75,7 @@ def _alert_loop(handler) -> None:
             handler.speak(msg)
             _write_today()
         except Exception:
-            pass
+            _swallow()
 
 
 def start_weather_alerts(handler) -> None:

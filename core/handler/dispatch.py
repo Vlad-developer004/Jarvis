@@ -7,6 +7,7 @@ from core.responses import spk
 from core.logging_setup import get_logger as _get_logger
 from .base import BaseHandler
 from .interactive import handle_interactive
+from core.safe import swallow as _swallow
 
 _log = _get_logger('dispatch')
 
@@ -24,7 +25,7 @@ _MODULE_GATES = (
     (lambda c: c.startswith('figma_'), 'figma_voice', 'module.figma_disabled'),
     (lambda c: c in _GATE_NET_CMDS, 'network_profiles', 'module.net_disabled'),
     (lambda c: c == 'health_disks', 'system_health', 'module.net_disabled'),
-    (lambda c: c == 'calendar_next', 'calendar_ics', 'module.integrations_disabled'),
+    (lambda c: c in ('calendar_next', 'calendar_add'), 'calendar_ics', 'module.integrations_disabled'),
     (lambda c: c == 'inbox_unread', 'inbox_digest', 'module.integrations_disabled'),
     (lambda c: c == 'mail_compose', 'inbox_digest', 'module.mail_disabled'),
     (lambda c: c == 'song_id', 'song_id', 'module.song_disabled'),
@@ -51,7 +52,7 @@ def _handle_media_group(handler, cmd, text_lower, amount):
                 action = 'play' if 'play' in cmd else ('pause' if 'pause' in cmd else 'toggle')
                 send_play_pause_to_video(prefer='youtube', action=action)
             except Exception:
-                pass
+                _swallow()
         else:
             ok = False
             try:
@@ -89,12 +90,12 @@ def _handle_game_mode_off(handler, cmd, text_lower, amount):
         handler.asr.set_vad_mode(False)
         handler.asr.clear_hotwords()
     except Exception:
-        pass
+        _swallow()
     try:
         from actions.game_audio import game_matcher
         game_matcher.clear()
     except Exception:
-        pass
+        _swallow()
     handler.play_response()
 
 def _handle_exit_game(handler, cmd, text_lower, amount):
@@ -157,11 +158,8 @@ def _handle_play_yt(handler, cmd, text_lower, amount):
 
 def _handle_show_help(handler, cmd, text_lower, amount):
     try:
-        from ui.dialogs.welcome_dlg import open_welcome
-        from ui import hud
-        h = getattr(hud, '_hud', None)
-        if h:
-            h._hud_queue.put(lambda: open_welcome(h, force=True))
+        from ui_next import host
+        if host.open_wizard():
             handler.speak(spk('help.intro'))
         else:
             handler.speak(spk('hud.not_running'))
@@ -169,29 +167,17 @@ def _handle_show_help(handler, cmd, text_lower, amount):
         _log.error('show_help error: %s', e)
         handler.speak(spk('open.help_error'))
 
+# Which screen of the window each interface command opens.
+_UI_VIEWS = {'open_settings': 'look', 'open_keybinds': 'games', 'open_extensions': 'exts', 'open_perf': 'perf', 'open_deck': 'commands'}
+
 def _handle_hud_group(handler, cmd, text_lower, amount):
     try:
-        from ui import hud
-        h = getattr(hud, '_hud', None)
-        if not h:
-            from ui.hud import show_hud
-            show_hud()
-            h = getattr(hud, '_hud', None)
-
-        if h:
-            if cmd == 'show_hud':
-                from ui.hud import show_hud
-                h._hud_queue.put(lambda: show_hud())
-            elif cmd == 'open_settings':
-                h._hud_queue.put(lambda: h._open_settings())
-            elif cmd == 'open_keybinds':
-                h._hud_queue.put(lambda: h._open_keybind_editor())
-            elif cmd == 'open_extensions':
-                h._hud_queue.put(lambda: h._open_extensions())
-            elif cmd == 'open_perf':
-                h._hud_queue.put(lambda: h._open_perf_monitor())
-            elif cmd == 'open_deck':
-                h._hud_queue.put(lambda: h._open_deck())
+        from ui_next import host
+        if cmd == 'show_hud':
+            ok = host.show_window()
+        else:
+            ok = host.open_view(_UI_VIEWS.get(cmd, 'dash'))
+        if ok:
             handler.play_response()
         else:
             handler.speak(spk('hud.not_running'))
@@ -344,7 +330,7 @@ _reg_exact(['spell_list'], _w_game_extra)
 
 _reg_exact(['work_session'], _w_work_session)
 
-_reg_exact(['timer_set', 'timer_status', 'timer_cancel', 'timer_add'], _w_timer)
+_reg_exact(['timer_set', 'timer_status', 'timer_cancel', 'timer_add', 'timer_sub'], _w_timer)
 
 # Generic app launcher is a prefix fallback only — every command above that
 # happens to start with 'open_'/'close_' but has its own specific handler
@@ -357,7 +343,7 @@ _reg_prefix('close_', _handle_app_launcher)
 _reg_exact(['open_youtube'], _handle_open_youtube)
 _reg_exact(['play_yt'], _handle_play_yt)
 
-_reg_exact(['net_profile_status', 'net_profile_switch', 'vpn_reminder', 'health_disks', 'calendar_next', 'inbox_unread', 'mail_compose'], _w_integrations)
+_reg_exact(['net_profile_status', 'net_profile_switch', 'vpn_reminder', 'health_disks', 'calendar_next', 'calendar_add', 'inbox_unread', 'mail_compose'], _w_integrations)
 
 _reg_exact(['time_now', 'system_status', 'how_are_you', 'system_insult', 'praise', 'thanks'], _w_social)
 
@@ -372,11 +358,8 @@ _reg_exact(['song_id'], _w_song)
 class CommandHandler(BaseHandler):
     def __init__(self, pa, rate, chunk, asr):
         super().__init__(pa, rate, chunk, asr)
-        try:
-            from ui.hud_utils import _load_hud_settings
-            self._settings = _load_hud_settings()
-        except Exception:
-            self._settings = {}
+        from ui_next import host
+        self._settings = host.settings()
         # One dedicated worker serializes command execution — previously every
         # recognized utterance spawned its own unconditional daemon thread, so
         # two commands recognized close together (e.g. a follow-up said while

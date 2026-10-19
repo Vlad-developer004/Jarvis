@@ -1,6 +1,7 @@
 from rapidfuzz import fuzz
 from rapidfuzz.distance import Levenshtein
 import re
+from core.safe import swallow as _swallow
 WORDS_TO_NUM = {'ноль': '0', 'один': '1', 'одна': '1', 'одну': '1', 'одно': '1', 'два': '2', 'две': '2', 'три': '3', 'четыре': '4', 'пять': '5', 'шесть': '6', 'семь': '7', 'восемь': '8', 'девять': '9', 'десять': '10', 'одиннадцать': '11', 'двенадцать': '12', 'тринадцать': '13', 'четырнадцать': '14', 'пятнадцать': '15', 'шестнадцать': '16', 'семнадцать': '17', 'восемнадцать': '18', 'девятнадцать': '19', 'двадцать': '20', 'тридцать': '30', 'сорок': '40', 'пятьдесят': '50', 'шестьдесят': '60', 'семьдесят': '70', 'восемьдесят': '80', 'девяносто': '90', 'сто': '100', 'полминуты': '30', 'первую': '1', 'вторую': '2', 'третью': '3', 'четвертую': '4', 'пятую': '5', 'шестую': '6', 'седьмую': '7', 'восьмую': '8', 'девятую': '9', 'последнюю': '9', 'первый': '1', 'второй': '2', 'третий': '3', 'четвертый': '4', 'пятый': '5', 'шестой': '6', 'седьмой': '7', 'восьмой': '8', 'девятый': '9', 'последний': '9', 'первая': '1', 'вторая': '2', 'третья': '3', 'четвертая': '4', 'пятая': '5', 'шестая': '6', 'седьмая': '7', 'восьмая': '8', 'девятая': '9', 'последняя': '9', 'первое': '1', 'второе': '2', 'третье': '3',
     'четвёртую': '4', 'четвёртый': '4', 'четвёртая': '4',
     'десятую': '10', 'десятый': '10', 'десятая': '10',
@@ -251,7 +252,7 @@ class WakeWordsStrictSet:
         return False
 
 _WAKE_WORDS_STRICT = WakeWordsStrictSet()
-_FILLERS_STRICT = {'пожалуйста', 'плиз', 'ну', 'давай', 'хочу', 'мне', 'эту', 'тут', 'здесь', 'плиз', 'сэр', 'слушай'}
+_FILLERS_STRICT = {'пожалуйста', 'плиз', 'ну', 'давай', 'хочу', 'мне', 'эту', 'тут', 'здесь', 'сэр', 'слушай'}
 
 # Grammatical pattern: "что ты [verb 2nd person present]" or "ты [verb -ешь/-ишь/-ёшь]"
 # These are conversational questions about what Jarvis is CURRENTLY doing — never a command.
@@ -419,7 +420,7 @@ def _get_ext_manager():
             from core.extensions import ExtensionManager
             _ext_manager_cache = ExtensionManager()
         except Exception:
-            pass
+            _swallow()
     return _ext_manager_cache
 def match_command(text: str, threshold: int=75) -> str:
     text = _normalize_stt(text)
@@ -463,7 +464,7 @@ def _match_command_inner(text: str, threshold: int) -> str:
         )):
             return _INSULT
     except Exception:
-        pass
+        _swallow()
 
     # --- App-context shortcuts (PS / Figma) — cached ExtensionManager ---
     try:
@@ -479,7 +480,7 @@ def _match_command_inner(text: str, threshold: int) -> str:
                     cmd = _FIGMA_SHORT.get(text_norm) or _FIGMA_SHORT.get(text)
                     if cmd: return cmd
     except Exception:
-        pass
+        _swallow()
 
     # Compute once — reused across all sub-functions
     is_noise = _is_noise_phrase(text_norm)

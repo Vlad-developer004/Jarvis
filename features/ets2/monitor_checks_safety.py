@@ -12,6 +12,7 @@ from .phrases import (
     event_trailer_attached, event_trailer_detached, event_startup_wear, event_component_damaged,
     _wear_phrase, _r,
 )
+from core.safe import swallow as _swallow
 
 def _check_fines_and_tolls(state: _MonitorState, data: dict) -> None:
     from .monitor import _speak, _add_job_fine
@@ -143,7 +144,7 @@ def _check_wear(state: _MonitorState, data: dict) -> None:
             if high:
                 _speak(event_startup_wear(high))
         except Exception:
-            pass
+            _swallow()
         state.startup_wear_spoken = True
     for field, name in WEAR_COMPONENTS:
         raw = float(data.get(field, 0.0))
@@ -163,7 +164,7 @@ def _check_wear(state: _MonitorState, data: dict) -> None:
                         comp_name = _r([name], [_wnu.get(name, name)])
                         _speak(event_component_damaged(comp_name, pct))
                     except Exception:
-                        pass
+                        _swallow()
         for threshold in sorted(WEAR_THRESHOLDS, reverse=True):
             key = (field, threshold)
             if key in state.fired_wear: continue

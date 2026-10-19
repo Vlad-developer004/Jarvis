@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 from config_pack.config import get_settings_path
+from core.safe import swallow as _swallow
 # Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) — a
 # project-relative path here would never see this setting (and gets wiped
 # by a rebuild).
@@ -34,7 +35,7 @@ def get_programming_extensions() -> list[str]:
                 if n and n not in out:
                     out.append(n)
     except Exception:
-        pass
+        _swallow()
     return out
 def set_programming_extensions(exts: list[str]) -> None:
     seen: set[str] = set()
@@ -54,4 +55,4 @@ def set_programming_extensions(exts: list[str]) -> None:
         _SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         _SETTINGS_PATH.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
-        pass
+        _swallow()

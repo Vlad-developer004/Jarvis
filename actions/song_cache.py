@@ -16,6 +16,7 @@ import threading
 import time
 
 from core.logging_setup import get_logger
+from core.safe import swallow as _swallow
 
 _log = get_logger('song_cache')
 _lock = threading.Lock()
@@ -34,7 +35,7 @@ def _load() -> dict:
             if isinstance(data, dict) and isinstance(data.get('songs'), list):
                 return data
     except Exception:
-        pass
+        _swallow()
     return {'songs': []}
 
 
@@ -46,6 +47,26 @@ def _save(data: dict) -> None:
         _log.error('failed saving song cache: %s', e, exc_info=True)
 
 
+def _keep_cover(cover_path: str) -> str:
+    """Copies the cover (downloaded to %TEMP%, which gets cleaned) into a small JPEG next to the history; '' when impossible."""
+    try:
+        import hashlib
+        import os
+        from PIL import Image
+        if not cover_path or not os.path.isfile(cover_path):
+            return ''
+        folder = os.path.join(os.path.dirname(_cache_path()), 'song_covers')
+        os.makedirs(folder, exist_ok=True)
+        dest = os.path.join(folder, hashlib.md5(cover_path.encode('utf-8'), usedforsecurity=False).hexdigest() + '.jpg')
+        if not os.path.isfile(dest):
+            img = Image.open(cover_path).convert('RGB')
+            img.thumbnail((200, 200))
+            img.save(dest, 'JPEG', quality=85)
+        return dest
+    except Exception:
+        return ''
+
+
 def remember(result: dict) -> None:
     """result: the same dict recognize_song() returns on success (must have
     at least 'title'/'artist')."""
@@ -54,6 +75,9 @@ def remember(result: dict) -> None:
         entry = dict(result)
         entry.pop('ok', None)
         entry['recognized_at'] = time.time()
+        thumb = _keep_cover(entry.get('cover_path') or '')
+        if thumb:
+            entry['cover_thumb'] = thumb
         data['songs'].append(entry)
         if len(data['songs']) > _MAX_SONGS:
             data['songs'] = data['songs'][-_MAX_SONGS:]

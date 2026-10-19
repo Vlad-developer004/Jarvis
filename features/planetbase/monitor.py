@@ -19,6 +19,7 @@ from features.planetbase.phrases_planetbase import (
     _phrases_disaster_generic_start, _phrases_disaster_generic, _phrases_disaster_end,
     _phrases_arrival, _phrases_death, _phrases_milestone, _phrases_all_quiet,
 )
+from core.safe import swallow as _swallow
 
 _log = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ def _focus_planetbase() -> bool:
                 try:
                     w.restore()
                 except Exception:
-                    pass
+                    _swallow()
             if hasattr(w, '_hWnd'):
                 force_foreground(int(w._hWnd))
             return True
@@ -141,7 +142,7 @@ def _speak(text: str):
         from features.planetbase import journal
         journal.log(text)
     except Exception:
-        pass
+        _swallow()
     try:
         from core.speech.tts import speak
         from core.speech.pacing import add_pauses
@@ -237,7 +238,7 @@ def _announce_disaster_start(data: dict, sandstorm: bool, solar_flare: bool, bli
             threading.Thread(target=_llm_task, daemon=True).start()
             return
     except Exception:
-        pass
+        _swallow()
     _announce_disaster_start_fallback(sandstorm, solar_flare, blizzard)
 
 
@@ -252,7 +253,7 @@ def _announce_milestone(data: dict, milestone: int) -> None:
             threading.Thread(target=_llm_task, daemon=True).start()
             return
     except Exception:
-        pass
+        _swallow()
     _alert(_phrases_milestone(milestone), tone="congrats")
 
 
@@ -460,7 +461,7 @@ def get_session_report() -> str:
         if trend:
             parts.append(trend)
     except Exception:
-        pass
+        _swallow()
     text = " ".join(parts)
     a = _addr()
     return f"{a}, {text[0].lower()}{text[1:]}" if a else text
@@ -472,7 +473,7 @@ def _save_pb_session_snapshot() -> None:
         elapsed_min = (time.time() - _session_start) / 60.0 if _session_start > 0 else 0.0
         save_session(_peak_colonists, _disasters_survived, elapsed_min)
     except Exception:
-        pass
+        _swallow()
 
 
 def start():

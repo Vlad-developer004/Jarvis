@@ -11,6 +11,7 @@ into a spoken error) instead of just going quiet.
 import threading
 
 from core.logging_setup import get_logger
+from core.safe import swallow as _swallow
 
 _log = get_logger('speech.safe_task')
 
@@ -38,7 +39,7 @@ def run_speaking_task(fn, *args, error_message: str | None = None,
                         from core.speech.tts import speak as _speak
                     _speak(error_message)
                 except Exception:
-                    pass
+                    _swallow()
 
     t = threading.Thread(target=_wrapped, daemon=daemon, name=thread_name)
     t.start()

@@ -128,7 +128,7 @@ def test_reminder_ask_schedules_on_parseable_duration(monkeypatch):
     _no_semantic(monkeypatch)
     scheduled = []
     monkeypatch.setattr('features.reminder.schedule_reminder',
-                         lambda delay, msg, speak_fn, hud: scheduled.append(delay))
+                         lambda delay, msg, speak_fn: scheduled.append(delay))
     handler = _FakeHandler('reminder_ask', {})
 
     interactive.handle_interactive(handler, 'через 10 минут')

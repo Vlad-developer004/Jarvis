@@ -3,6 +3,7 @@ import os
 import threading
 import time
 from pathlib import Path
+from core.safe import swallow as _swallow
 _LOCK = threading.Lock()
 _PATH = Path('logs') / 'voice_engine.log'
 _MAX_FILE_BYTES = 1_500_000
@@ -27,6 +28,6 @@ def _write_line(msg: str) -> None:
             with open(_PATH, 'a', encoding='utf-8') as f:
                 f.write(line)
         except Exception:
-            pass
+            _swallow()
 def voice_event(msg: str) -> None:
     _write_line(msg)

@@ -40,8 +40,6 @@ from config_pack.config import get_settings_path, get_secrets_path
     'actions.meetings',
     'actions.programming_extensions',
     'actions.dev_projects',
-    'ui.dialogs.extensions_common',
-    'ui.dialogs.welcome_dlg',
 ])
 def test_module_settings_path_matches_canonical(module_name):
     import importlib
@@ -89,16 +87,6 @@ def test_filesystem_allow_parent_search_reads_canonical_settings_path(tmp_path, 
     # file) -> roots stay as folder_search_roots_and_depth's wider set,
     # not narrowed to [str(base)] the way allow_parent_search=False would.
     assert seen_roots['roots'] == ['fallback-root']
-
-
-def test_hud_constants_theme_loader_reads_canonical_settings_path(tmp_path, monkeypatch):
-    real_settings = tmp_path / 'jarvis_settings.json'
-    real_settings.write_text(json.dumps({'theme': 'dark'}), encoding='utf-8')
-    monkeypatch.setattr('config_pack.config.get_settings_path', lambda: str(real_settings))
-
-    import ui.hud_constants as hc
-    name, _colors = hc._load_theme_colors()
-    assert name == 'dark'
 
 
 def test_audio_utils_reads_canonical_settings_path(tmp_path, monkeypatch):

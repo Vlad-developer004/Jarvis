@@ -21,10 +21,13 @@ import urllib.error
 from typing import Callable
 
 from core.logging_setup import get_logger
+from core.safe import swallow as _swallow
 
 _log = get_logger('model_fetcher')
 
 _CACHE_TTL = 86400  # 24 h
+_SHOW_ALL = False      # set for the duration of one fetch (fetch_and_cache(show_all=True)): no chat-only filtering, the list is what the provider's own page shows
+_fetch_lock = threading.Lock()
 _UNKNOWN = '?'
 
 
@@ -52,7 +55,7 @@ def _load_json(path: str) -> dict:
             with open(path, encoding='utf-8') as f:
                 return json.load(f)
     except Exception:
-        pass
+        _swallow()
     return {}
 
 
@@ -127,12 +130,12 @@ def _fetch_groq(api_key: str) -> list[dict]:
     # non-chat model family under a name that doesn't already match one of
     # these (it happened with canopylabs/orpheus and playai-tts, neither of
     # which contain any of the previous tokens).
-    skip_tokens = ('whisper', 'distil', 'guard', 'tool-use', 'vision',
+    skip_tokens = ('whisper', 'distil', 'prompt-guard', 'tool-use', 'vision',
                    'orpheus', 'playai', 'tts')
     out = []
     for m in data.get('data', []):
         mid = m.get('id', '')
-        if not mid or any(s in mid for s in skip_tokens):
+        if not mid or (not _SHOW_ALL and any(s in mid for s in skip_tokens)):
             continue
         out.append({'id': mid, 'ctx': _fmt_ctx(m.get('context_window', 0))})
     return sorted(out, key=lambda x: x['id'])
@@ -160,7 +163,7 @@ def _fetch_openai(api_key: str) -> list[dict]:
         mid = m.get('id', '')
         if not mid:
             continue
-        if any(s in mid for s in skip_tokens):
+        if not _SHOW_ALL and any(s in mid for s in skip_tokens):
             continue
         out.append({'id': mid, 'ctx': _UNKNOWN})
     return sorted(out, key=lambda x: x['id'])
@@ -174,10 +177,10 @@ def _fetch_google(api_key: str) -> list[dict]:
     )
     out = []
     for m in data.get('models', []):
-        if 'generateContent' not in m.get('supportedGenerationMethods', []):
-            continue
         name = m.get('name', '').replace('models/', '')
-        if not name.startswith('gemini-'):
+        if not name:
+            continue
+        if not _SHOW_ALL and ('generateContent' not in m.get('supportedGenerationMethods', []) or not name.startswith('gemini-')):
             continue
         out.append({'id': name, 'ctx': _fmt_ctx(m.get('inputTokenLimit', 0))})
     return sorted(out, key=lambda x: x['id'])
@@ -227,7 +230,7 @@ def _fetch_openrouter(api_key: str = '') -> list[dict]:
             prompt_price = float(pricing.get('prompt', '1') or '1')
         except (ValueError, TypeError):
             prompt_price = 1.0
-        if prompt_price > 0 and not mid.endswith(':free'):
+        if not _SHOW_ALL and prompt_price > 0 and not mid.endswith(':free'):
             continue
         ctx = _fmt_ctx(m.get('context_length', 0))
         out.append({'id': mid, 'ctx': ctx})
@@ -274,7 +277,7 @@ def is_cache_stale(provider: str, ttl: int = _CACHE_TTL) -> bool:
 _RETRY_COOLDOWN = 300  # 5 min before retrying a failed fetch
 
 
-def fetch_and_cache(provider: str, api_key: str = '', base_url: str = '') -> bool:
+def fetch_and_cache(provider: str, api_key: str = '', base_url: str = '', show_all: bool = False) -> bool:
     """Fetch model list from provider API and persist to disk cache.
 
     Returns True on success. On failure writes a short-TTL tombstone to the
@@ -286,7 +289,13 @@ def fetch_and_cache(provider: str, api_key: str = '', base_url: str = '') -> boo
         _log.warning('Unknown provider: %s', provider)
         return False
     try:
-        models = fetcher(api_key, base_url) if provider == 'local' else fetcher(api_key)
+        global _SHOW_ALL
+        with _fetch_lock:
+            _SHOW_ALL = bool(show_all)
+            try:
+                models = fetcher(api_key, base_url) if provider == 'local' else fetcher(api_key)
+            finally:
+                _SHOW_ALL = False
         if not models:
             _log.warning('Empty model list returned for %s', provider)
             _write_tombstone(provider)

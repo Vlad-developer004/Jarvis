@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="ru" data-tier="standard">
+<head>
+<meta charset="utf-8"><link rel="icon" href="data:,">
+<title>Jarvis — Центр управления</title>
+<script src="look_boot.js"></script>
+<script>
+// colour theme: hue + saturation factor, kept in localStorage; every blue-family colour in the CSS is derived from --h / --sk
+const THEMES = [{ id: 'command', name: 'Командный центр', h: 197, sk: .95, skin: 'command' }, { id: 'polar', name: 'Полярная ночь', h: 212, sk: .72 }, { id: 'neon', name: 'Неон', h: 205, sk: 1 }, { id: 'space', name: 'Глубокий космос', h: 222, sk: .8 }, { id: 'ocean', name: 'Океан', h: 196, sk: .68 }, { id: 'cyber', name: 'Киберпанк', h: 340, sk: 1 }, { id: 'amber', name: 'Золотой час', h: 42, sk: 1 }, { id: 'matrix', name: 'Матрица', h: 152, sk: 1 }, { id: 'arctic', name: 'Арктика', h: 205, sk: .1 }, { id: 'crimson', name: 'Алая тревога', h: 352, sk: .92 }, { id: 'violet', name: 'Ультрафиолет', h: 268, sk: .9 }];
+let THEME = LOOK.pick(THEMES);
+document.documentElement.style.setProperty('--h', THEME.h); document.documentElement.style.setProperty('--sk', THEME.sk); document.documentElement.dataset.skin = 'command';   // one look for every theme; a theme only changes the colours
+document.documentElement.style.setProperty('--navy-h', THEME.skin === 'command' ? 219 : THEME.h); document.documentElement.style.setProperty('--ns', THEME.skin === 'command' ? 1 : THEME.sk);   // the dark background takes the hue of the theme (the first theme keeps its own navy)
+const hsl2hex = (h, s, l) => { s /= 100; l /= 100; const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return '#' + [f(0), f(8), f(4)].map((x) => Math.round(x * 255).toString(16).padStart(2, '0')).join(''); };
+</script>
+<style>
+  @font-face { font-family: Tektur; src: url(fonts/Tektur.ttf); font-weight: 400 900; font-stretch: 75% 100%; }
+  @font-face { font-family: Onest; src: url(fonts/Onest.ttf); font-weight: 100 900; }
+  :root { --h: 205; --sk: 1; --ic: hsl(calc(var(--h) - 5) calc(70% * var(--sk)) 80%); --ink: hsl(calc(var(--h) + 4) calc(100% * var(--sk)) 94.3%); --dim: hsl(calc(var(--h) + 1) calc(37% * var(--sk)) 65.3%); --cyan: hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2%); --green: #3df5ac; --amber: #ffb347; --red: #ff6b6b; --purple: #a98bff; --mag: #ff3fd0; --yel: #ffd21f; --state: hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2%); --bg1: hsl(calc(var(--h) + 5) calc(81% * var(--sk)) 16.5%);
+          --navw: 12.5rem; --sidew: 22.5rem; --bottomh: 11.5rem; --gap: .75rem; }
+  * { box-sizing: border-box; }
+  html { font-size: 16px; }
+  body { margin: 0; background: hsl(calc(var(--h) + 12) calc(76% * var(--sk)) 3.3%); color: var(--ink); font: 400 .9375rem/1.35 Onest, "Segoe UI", sans-serif; overflow: hidden; user-select: none; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  #app { position: fixed; inset: 0; display: grid; gap: var(--gap); padding: var(--gap); background: radial-gradient(ellipse 60% 50% at 50% 18%, var(--bg1) 0%, hsl(calc(var(--h) + 7) calc(80% * var(--sk)) 9.6%) 40%, hsl(calc(var(--h) + 12) calc(76% * var(--sk)) 3.3%) 78%);
+         grid-template-columns: var(--navw) minmax(0, 1fr) var(--sidew); grid-template-rows: auto minmax(0, 1fr) var(--bottomh); grid-template-areas: "nav top top" "nav hero side" "nav bottom side"; }
+  #app::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, hsl(calc(var(--h) + 4) calc(100% * var(--sk)) 61.8% / .03) 0 1px, transparent 1px 2.2rem), repeating-linear-gradient(90deg, hsl(calc(var(--h) + 4) calc(100% * var(--sk)) 61.8% / .03) 0 1px, transparent 1px 2.2rem); }
+  .panel { position: relative; isolation: isolate; min-width: 0; min-height: 0; padding: .85rem 1rem; display: flex; flex-direction: column; --cut: .8rem; }
+  .panel::before, .panel::after { content: ""; position: absolute; clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+  .panel::before { inset: 0; z-index: -2; background: linear-gradient(135deg, hsl(calc(var(--h) + -13) calc(100% * var(--sk)) 74.1%), hsl(calc(var(--h) + 1) calc(71% * var(--sk)) 38.0%) 30%, hsl(calc(var(--h) + 2) calc(70% * var(--sk)) 33.7%) 62%, hsl(calc(var(--h) + -10) calc(100% * var(--sk)) 68.6%)); }
+  .panel::after { inset: 1px; z-index: -1; background: linear-gradient(165deg, hsl(calc(var(--h) + 6) calc(77% * var(--sk)) 16.9% / .92), hsl(calc(var(--h) + 11) calc(83% * var(--sk)) 4.7% / .97) 70%); }
+  .ttl { display: flex; align-items: center; gap: .5rem; margin: 0 0 .55rem; font: 600 .78rem Tektur, sans-serif; letter-spacing: .15em; color: hsl(calc(var(--h) + -4) calc(81% * var(--sk)) 64.5%); text-transform: uppercase; flex: none; }
+  .ttl::before { content: ""; width: .2rem; height: .75rem; background: var(--cyan); box-shadow: 0 0 .4rem var(--cyan); }
+  .ttl .r { margin-left: auto; font: 400 .78rem Onest; letter-spacing: 0; text-transform: none; color: var(--dim); }
+  /* navigation */
+  #nav { grid-area: nav; padding: .85rem .6rem; gap: .2rem; }
+  .logo { display: flex; align-items: center; gap: .7rem; padding: 0 .4rem .8rem; }
+  .logo i { width: 2.1rem; height: 2.1rem; border-radius: 50%; border: 2px solid var(--cyan); box-shadow: 0 0 .8rem hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2% / .6), inset 0 0 .5rem hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2% / .4); display: grid; place-items: center; flex: none; }
+  .logo i::after { content: ""; width: .6rem; height: .6rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 .5rem var(--cyan); }
+  .logo b { font: 800 1.15rem Tektur; letter-spacing: .2em; color: #fff; } .logo small { display: block; color: var(--dim); font-size: .7rem; letter-spacing: .08em; }
+  .ni { display: flex; align-items: center; gap: .75rem; width: 100%; min-height: 2.7rem; padding: 0 .75rem; border: 0; border-radius: .45rem; background: none; color: hsl(var(--h) calc(47% * var(--sk)) 77.1%); font-weight: 500; font-size: .98rem; cursor: pointer; text-align: left; transition: background .12s; }
+  .ni:hover { background: hsl(var(--h) calc(66% * var(--sk)) 53.9% / .14); color: #fff; } .ni.on { background: linear-gradient(90deg, hsl(calc(var(--h) + -1) calc(76% * var(--sk)) 52.0% / .5), hsl(calc(var(--h) + 2) calc(73% * var(--sk)) 29.4% / .2)); color: #fff; box-shadow: 0 0 .9rem hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2% / .28); }
+  .ni svg { flex: none; } .ni .bd { margin-left: auto; min-width: 1.3rem; height: 1.3rem; padding: 0 .35rem; border-radius: .65rem; font-size: .75rem; font-weight: 700; display: grid; place-items: center; color: hsl(calc(var(--h) + 5) calc(75% * var(--sk)) 6.3%); background: var(--amber); }
+  .spacer { flex: 1; }
+  #top .clock { position: absolute; left: calc((100% - var(--sidew) - var(--gap)) / 2); top: 50%; transform: translate(-50%, -50%); } #top .msg { max-width: calc(50% - 6rem); min-width: 0; }
+  .offl { margin: .5rem .3rem 0; padding: .7rem .8rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .3); border-radius: .6rem; background: linear-gradient(160deg, hsl(calc(var(--h) + 2) calc(73% * var(--sk)) 29.4% / .35), hsl(calc(var(--h) + 8) calc(75% * var(--sk)) 12.5% / .4)); display: flex; flex-direction: column; gap: .5rem; } .offl .r1 { display: flex; align-items: center; gap: .55rem; font-weight: 600; font-size: .9rem; } .offl .r2 { color: var(--dim); font-size: .78rem; line-height: 1.35; } .offl .lv { display: flex; gap: 3px; align-items: flex-end; height: 1.4rem; } .offl .lv i { flex: 1; height: 100%; transform-origin: 50% 100%; transform: scaleY(.15); background: var(--cyan); border-radius: 2px; opacity: .85; }
+  /* top bar: calm greeting or ticker | clock | game mode, search, icons, operator */
+  #top { grid-area: top; flex-direction: row; align-items: center; gap: 1rem; padding: .5rem 1rem; --cut: .7rem; }
+  .msg { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: .8rem; overflow: hidden; }
+  .pill { display: inline-flex; align-items: center; gap: .55rem; padding: .35rem .95rem; border-radius: 999px; font-weight: 600; font-size: .9rem; white-space: nowrap; color: var(--c, var(--green)); border: 1px solid color-mix(in srgb, var(--c, var(--green)) 65%, transparent); background: color-mix(in srgb, var(--c, var(--green)) 13%, transparent); }
+  .pill i { width: .55rem; height: .55rem; border-radius: 50%; background: var(--c, var(--green)); box-shadow: 0 0 .5rem var(--c, var(--green)); }
+  .greet { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ticker { flex: 1; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
+  .track { display: inline-flex; white-space: nowrap; animation: tk var(--dur, 30s) linear infinite; } .track span { display: inline-flex; align-items: center; gap: .5rem; padding-right: 3rem; color: var(--c, var(--ink)); font-weight: 500; }
+  @keyframes tk { to { transform: translateX(-50%); } } @media (prefers-reduced-motion: reduce) { .track { animation: none; } }
+  .clock { flex: none; text-align: center; line-height: 1.1; } .clock b { display: block; font: 700 1.45rem Tektur; letter-spacing: .06em; color: #fff; text-shadow: 0 0 .8rem hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2% / .5); } .clock span { color: var(--dim); font-size: .8rem; }
+  .tools { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: .6rem; min-width: 0; }
+  .gmode { display: flex; align-items: center; gap: .55rem; padding: .35rem .8rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .4); border-radius: 999px; background: hsl(calc(var(--h) + 6) calc(78% * var(--sk)) 14.5% / .7); cursor: pointer; font-weight: 600; font-size: .88rem; white-space: nowrap; }
+  .gmode .sw { width: 2rem; height: 1.05rem; border-radius: .55rem; background: hsl(calc(var(--h) + 5) calc(54% * var(--sk)) 19.6%); position: relative; } .gmode .sw::after { content: ""; position: absolute; top: .15rem; left: .15rem; width: .75rem; height: .75rem; border-radius: 50%; background: var(--dim); transition: left .15s; }
+  .gmode.on { border-color: var(--green); color: var(--green); } .gmode.on .sw { background: rgba(61,245,172,.3); } .gmode.on .sw::after { left: 1.08rem; background: var(--green); }
+  .search { display: none; align-items: center; gap: .6rem; min-width: 11rem; padding: .45rem .9rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .4); border-radius: 999px; background: hsl(calc(var(--h) + 6) calc(78% * var(--sk)) 14.5% / .7); color: var(--dim); }
+  .ib { width: 2.5rem; height: 2.5rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .4); border-radius: .5rem; background: hsl(calc(var(--h) + 6) calc(78% * var(--sk)) 14.5% / .7); display: grid; place-items: center; cursor: pointer; } .ib:hover { background: hsl(calc(var(--h) + 3) calc(65% * var(--sk)) 45.1% / .4); }
+  .op { display: flex; align-items: center; gap: .6rem; } .op i { width: 2.3rem; height: 2.3rem; border-radius: 50%; border: 1px solid var(--cyan); background: hsl(calc(var(--h) + 1) calc(72% * var(--sk)) 21.0%); display: grid; place-items: center; font-style: normal; font-weight: 700; } .op b { display: block; font-size: .9rem; } .op span { color: var(--dim); font-size: .75rem; }
+
+  .gmode { gap: .7rem; padding: .3rem .9rem .3rem .35rem; height: 3rem; border-radius: .8rem; } .gmode .gi { width: 2.3rem; height: 2.3rem; border-radius: .55rem; display: grid; place-items: center; background: hsl(calc(var(--h) + 3) calc(70% * var(--sk)) 26.5% / .6); transition: background .15s; } .gmode .gt { text-align: left; line-height: 1.2; } .gmode .gt b { display: block; font-size: .9rem; } .gmode .gt span { font-size: .75rem; color: var(--dim); font-weight: 500; }
+  .gmode.on { border-color: var(--amber); color: #fff; box-shadow: 0 0 1rem rgba(255,179,71,.28); } .gmode.on .gi { background: rgba(255,179,71,.25); } .gmode.on .gt span { color: var(--amber); } .gmode.on .sw { background: rgba(255,179,71,.3); } .gmode.on .sw::after { background: var(--amber); }
+  .ib { position: relative; width: 3rem; height: 3rem; border-radius: .8rem; } .cnt { position: absolute; top: -.35rem; right: -.35rem; min-width: 1.15rem; height: 1.15rem; padding: 0 .25rem; border-radius: 999px; background: var(--amber); color: #1b1200; font: 700 .72rem/1.15rem Onest; text-align: center; } .cnt.err { background: var(--red); color: #fff; }
+  .op { display: flex; align-items: center; gap: .65rem; height: 3rem; padding: .25rem .7rem .25rem .3rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .4); border-radius: 999px; background: hsl(calc(var(--h) + 6) calc(78% * var(--sk)) 14.5% / .7); color: inherit; cursor: pointer; text-align: left; font: inherit; } .op:hover { background: hsl(calc(var(--h) + 3) calc(65% * var(--sk)) 45.1% / .35); } .op i { width: 2.3rem; height: 2.3rem; box-shadow: 0 0 .7rem hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2% / .45); } .op b { font-size: .9rem; line-height: 1.15; } .op span { font-size: .75rem; line-height: 1.15; }
+  .bellw { position: relative; } .drop { display: none; position: absolute; right: 0; top: 3.5rem; width: 19rem; z-index: 20; padding: .8rem .9rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .5); border-radius: .8rem; background: hsl(calc(var(--h) + 8) calc(75% * var(--sk)) 9.4% / .97); box-shadow: 0 .8rem 2rem rgba(0,0,0,.5); } .drop.open { display: block; } .drop h4 { margin: 0 0 .4rem; font-size: .8rem; color: var(--dim); font-weight: 600; } .drop .it { display: flex; gap: .6rem; align-items: center; padding: .45rem 0; border-top: 1px solid hsl(calc(var(--h) + 1) calc(56% * var(--sk)) 51.0% / .18); font-size: .88rem; } .drop .it:first-of-type { border-top: 0; } .drop .em { color: var(--dim); font-size: .85rem; padding: .3rem 0; }
+  /* hero */
+  #hero { grid-area: hero; padding: 0; } .stage { position: relative; flex: 1; min-height: 0; } #core { position: absolute; inset: 0; width: 100%; height: 100%; } .stage .ttl { position: absolute; left: 1rem; top: .85rem; margin: 0; }
+  .brand { position: absolute; left: 0; right: 0; top: 46%; transform: translateY(-50%); text-align: center; pointer-events: none; }
+  .brand .jv { font: 800 3.4rem/1 Tektur; letter-spacing: .3em; margin-right: -.3em; color: #fff; text-shadow: 0 0 1.4rem hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2% / .95), 0 0 .3rem rgba(255,255,255,.6); } .brand .sub { font: 500 .9rem Tektur; letter-spacing: .65em; margin-right: -.65em; color: hsl(calc(var(--h) + -10) calc(100% * var(--sk)) 78.0%); margin-top: .55rem; }
+  .st { position: absolute; left: 0; right: 0; bottom: .5rem; text-align: center; font: 700 .95rem Tektur; letter-spacing: .3em; color: var(--state); }
+  .foot { position: relative; padding: .3rem 5.2rem .9rem; } .say { text-align: center; min-width: 0; } .foot .mic { position: absolute; right: 1.1rem; top: .5rem; }
+  #heard { font: 500 1.55rem/1.25 Onest; color: #fff; min-height: 1.95rem; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } #reply { font-size: 1.1rem; color: var(--state); min-height: 1.4rem; }
+  #wave { display: block; width: min(24rem, 90%); height: 2.4rem; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); } .say { position: relative; }
+  .sugg { display: flex; justify-content: center; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; min-height: 2.1rem; } .sugg button { padding: .3rem .85rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .45); border-radius: 999px; background: hsl(calc(var(--h) + 4) calc(76% * var(--sk)) 19.2% / .6); color: hsl(calc(var(--h) + -2) calc(71% * var(--sk)) 83.5%); font-size: .85rem; cursor: pointer; transition: background .12s, transform .12s; } .sugg button:hover { background: hsl(calc(var(--h) + 1) calc(67% * var(--sk)) 47.1% / .45); transform: translateY(-1px); } .sugg button:active { transform: scale(.97); }
+  .mic { width: 3.6rem; height: 3.6rem; flex: none; border-radius: 50%; border: 2px solid var(--green); background: radial-gradient(circle, #0f4a4a, hsl(calc(var(--h) + -10) calc(74% * var(--sk)) 10.4%)); box-shadow: 0 0 1.2rem rgba(61,245,172,.5), 0 0 0 .45rem rgba(61,245,172,.07); display: grid; place-items: center; cursor: pointer; transition: transform .12s; } .mic:hover { transform: scale(1.06); } .mic:active { transform: scale(.96); }
+  .tbar { position: absolute; left: .9rem; right: .9rem; top: .6rem; height: 2rem; display: none; align-items: center; border-radius: .4rem; background: hsl(calc(var(--h) + 10) calc(75% * var(--sk)) 6.3% / .78); border: 1px solid hsl(calc(var(--h) + -1) calc(75% * var(--sk)) 60.8% / .28); padding: 0 .5rem; z-index: 2; } .stage.hasmsg .tbar { display: flex; } .stage.hasmsg .ttl { display: none; }
+  .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, hsl(calc(var(--h) + -1) calc(100% * var(--sk)) 73.5% / .035) 0 1px, transparent 1px 4px); mix-blend-mode: screen; }
+  /* lists */
+  .list { flex: 1; min-height: 0; overflow: hidden; }
+  .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .75rem; align-items: center; padding: .5rem 0; border-top: 1px solid hsl(calc(var(--h) + 1) calc(56% * var(--sk)) 51.0% / .18); } .row:first-child { border-top: 0; }
+  .ico { --c: var(--cyan); width: 2.2rem; height: 2.2rem; border-radius: .5rem; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 70%, transparent); } .ico.s { width: 1.7rem; height: 1.7rem; border-radius: .4rem; }
+  .t1 { font-weight: 600; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .t2 { color: var(--dim); font-size: .8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .rt { color: var(--dim); font-size: .8125rem; text-align: right; white-space: nowrap; }
+  .next .row:nth-child(n+3) { display: none; }
+  .big { font: 700 1.45rem/1 Tektur; color: var(--cyan); font-variant-numeric: tabular-nums; }
+  .hist .row { grid-template-columns: auto minmax(0, 1fr) auto; padding: .32rem 0; } .hist .t1 { font-weight: 500; } .hist .t1 span { color: var(--dim); font-weight: 400; }
+  /* system */
+  .grid2 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .9rem; flex: 1; align-content: center; } .ring { position: relative; width: 100%; max-width: 3.4rem; aspect-ratio: 1; margin: 0 auto; } .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); } .ring circle { fill: none; stroke-width: 7; stroke-linecap: round; } .ring .tr { stroke: hsl(calc(var(--h) + 4) calc(68% * var(--sk)) 14.9%); } .ring .pg { stroke: var(--c); filter: drop-shadow(0 0 3px var(--c)); }   /* no transition: values arrive once a second, and a running transition keeps the page redrawing */ .m .ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; font: 700 1rem Tektur; font-variant-numeric: tabular-nums; } .m .ring b small { font: 600 .7rem Onest; opacity: .8; } .m { text-align: center; } .m > span { display: block; margin-top: .3rem; font-size: .72rem; color: var(--dim); white-space: nowrap; letter-spacing: -.01em; } .m span { color: var(--dim); font-size: .78rem; } .m b { display: block; font: 700 1.3rem/1.1 Tektur; font-variant-numeric: tabular-nums; } .m b small { font: 600 .8rem Onest; opacity: .8; margin-left: .1rem; }
+  .bar { height: .26rem; border-radius: .15rem; background: hsl(calc(var(--h) + 4) calc(68% * var(--sk)) 14.9%); margin-top: .25rem; overflow: hidden; } .bar i { display: block; height: 100%; background: var(--c); box-shadow: 0 0 .4rem var(--c); }
+  /* weather scene */
+  .wxbox { position: relative; flex: 1; min-height: 0; border-radius: .5rem; overflow: hidden; border: 1px solid hsl(calc(var(--h) + -1) calc(75% * var(--sk)) 60.8% / .35); } #sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .wxover { position: absolute; inset: 0; padding: .7rem .85rem; display: flex; flex-direction: column; pointer-events: none; text-shadow: 0 1px .5rem rgba(0,0,0,.55); }
+  .wxtop { display: flex; align-items: flex-start; gap: .8rem; } .deg { font: 700 2.7rem/1 Tektur; color: #fff; } .wxd b { display: block; font-weight: 600; font-size: 1rem; } .wxd span { color: hsl(var(--h) calc(68% * var(--sk)) 88.8%); font-size: .8125rem; display: block; line-height: 1.35; }
+  .wxstats { margin-top: .25rem; display: flex; gap: .9rem; font-size: .78rem; color: hsl(calc(var(--h) + -2) calc(74% * var(--sk)) 93.9%); white-space: nowrap; } .wxstats b { font-weight: 600; } .wxtimes { display: flex; justify-content: space-between; gap: .5rem; font-size: .75rem; color: hsl(var(--h) calc(68% * var(--sk)) 88.8%); margin-bottom: .25rem; white-space: nowrap; } .wxtimes b { font: 700 .85rem Tektur; color: #fff; }
+  .wl { display: none; } html[data-tier=wide] .wl { display: inline; }
+  .badge { display: inline-block; margin-left: .4rem; padding: .05rem .5rem; border-radius: 999px; background: rgba(255,179,71,.2); color: var(--amber); font-size: .72rem; }
+  /* camera */
+  .camview { position: relative; flex: 1; min-height: 5rem; border-radius: .45rem; overflow: hidden; background: hsl(calc(var(--h) + 9) calc(67% * var(--sk)) 4.7%); border: 1px solid hsl(calc(var(--h) + -1) calc(75% * var(--sk)) 60.8% / .3); } #cam { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .camrow { display: flex; gap: .5rem; margin-top: .5rem; flex: none; } .btn { flex: 1; min-height: 2.4rem; padding: 0 .8rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .5); border-left: 3px solid var(--c, var(--cyan)); border-radius: .45rem; background: hsl(calc(var(--h) + 4) calc(75% * var(--sk)) 21.6% / .55); font-weight: 600; font-size: .88rem; cursor: pointer; transition: background .12s, transform .12s; }
+  .btn:hover { background: hsl(calc(var(--h) + 1) calc(67% * var(--sk)) 47.1% / .4); } .btn:active { transform: scale(.98); } .btn.on { --c: var(--amber); border-color: var(--amber); color: var(--amber); background: rgba(255,179,71,.14); } .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  #side { grid-area: side; display: grid; grid-template-rows: auto minmax(8rem, 1fr) minmax(11rem, 1.15fr); gap: var(--gap); min-height: 0; } #bottom { grid-area: bottom; display: grid; grid-template-columns: 1fr 1.7fr; gap: var(--gap); min-height: 0; }
+  #dbg { position: fixed; left: .6rem; bottom: .35rem; font: 500 .7rem Tektur; letter-spacing: .06em; color: hsl(var(--h) calc(31% * var(--sk)) 50.8%); opacity: .8; pointer-events: none; z-index: 9; }
+  /* size tiers (set from JS by rem width) */
+  html[data-tier=wide] { --sidew: 26rem; --bottomh: 12.5rem; } html[data-tier=wide] .search { display: flex; } html[data-tier=wide] #camnote { display: block; } html[data-tier=wide] .next .row:nth-child(n+3) { display: grid; } html[data-tier=wide] #bottom { grid-template-columns: 1fr 1.9fr; }
+   html[data-tier=standard] .op { padding: .25rem; }
+  html[data-tier=compact] .offl, html[data-short="1"] .offl { display: none; }
+  html[data-tier=compact] { --navw: 4.8rem; --sidew: 20rem; --bottomh: 7rem; } html[data-tier=compact] .lb, html[data-tier=compact] .logo small, html[data-tier=compact] .ni .bd { display: none; } html[data-tier=compact] .ni { justify-content: center; padding: 0; } html[data-tier=compact] .logo { justify-content: center; }
+  html[data-tier=compact] .hist, html[data-tier=compact] .search, html[data-tier=compact] .cam, html[data-tier=compact] .gmode .gt, html[data-tier=compact] .op div, html[data-tier=compact] .op > svg, html[data-tier=compact] .greet { display: none; } html[data-tier=compact] #bottom { grid-template-columns: 1fr; } html[data-tier=compact] .grid2 { grid-template-columns: repeat(4, 1fr); } html[data-tier=compact] #net { display: none; } html[data-tier=compact] .wxstats span:nth-child(3), html[data-tier=compact] #wleft { display: none; } html[data-tier=compact] #side { grid-template-rows: auto minmax(0, 1fr); } html[data-tier=compact] .sugg button:nth-child(n+3) { display: none; }
+  html[data-tier=mini] #top .clock { left: 50%; } html[data-tier=mini] #top .tools { display: none; } html[data-tier=mini][data-skin=command] #top .msg { max-width: calc(50% - 10rem); } html[data-tier=mini] { --navw: 0px; --bottomh: 0px; } html[data-tier=mini] #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "top" "hero" "side" "nav"; }
+  html[data-tier=mini] .offl, html[data-tier=mini] #bottom, html[data-tier=mini] .hist, html[data-tier=mini] .cam, html[data-tier=mini] .wxp, html[data-tier=mini] .search, html[data-tier=mini] .op, html[data-tier=mini] .logo, html[data-tier=mini] .ib, html[data-tier=mini] .spacer, html[data-tier=mini] .lb, html[data-tier=mini] .ni .bd, html[data-tier=mini] .gmode, html[data-tier=mini] .op, html[data-tier=mini] .sugg, html[data-tier=mini] .greet { display: none; }
+  html[data-tier=mini] .brand .sub, html[data-tier=mini] .stage .ttl { display: none; } html[data-tier=mini] .brand { top: 44%; } html[data-tier=mini] .brand .jv { font-size: 1.6rem; } html[data-tier=mini] #heard { font-size: 1.15rem; min-height: 1.5rem; } html[data-tier=mini] #reply { font-size: .95rem; } html[data-tier=mini] .foot { padding: .2rem .8rem .6rem; } html[data-tier=mini] .mic { width: 2.8rem; height: 2.8rem; }
+  html[data-tier=mini] #nav { flex-direction: row; justify-content: space-around; padding: .3rem; } html[data-tier=mini] .ni { width: auto; justify-content: center; padding: 0 .9rem; } html[data-tier=mini] #side { grid-template-rows: auto; } html[data-tier=mini] .next .row:nth-child(n+2) { display: none; }
+  html[data-tier=compact] .ring { max-width: 3rem; } html[data-tier=compact] .m .ring b { font-size: .8rem; } html[data-tier=compact] .m > span { font-size: .7rem; margin-top: .1rem; } html[data-tier=mini] .foot { padding: .2rem 4rem .6rem; } html[data-tier=mini] .foot .mic { right: .8rem; top: .3rem; }
+  html[data-short="1"] #bottom { display: none; } html[data-short="1"] { --bottomh: 0px; }
+
+  /* angular language: sharp controls, chamfered mic, no rounded pills */
+  .btn, .ib, .gmode, .sugg button, .pill, .ni, .ico, .search, .camview, .wxbox, .tbar, .drop, .offl, .op, .bar, .bar i, .gmode .gi, .gmode .sw, .gmode .sw::after, .pill i, .badge, .ni .bd, .cnt, .t1 + .rt { border-radius: 2px; }
+  .ico, .gmode .gi { clip-path: polygon(0 0, calc(100% - .4rem) 0, 100% .4rem, 100% 100%, .4rem 100%, 0 calc(100% - .4rem)); border-radius: 0; }
+  .logo i { border-radius: 0; transform: rotate(45deg); width: 1.7rem; height: 1.7rem; } .logo i::after { border-radius: 0; }
+  .btn { border-left-width: 3px; } .sugg button { clip-path: polygon(.5rem 0, 100% 0, calc(100% - .5rem) 100%, 0 100%); border: 0; padding: .35rem 1.2rem; background: hsl(calc(var(--h) + 2) calc(71% * var(--sk)) 40.2% / .45); }
+  .micw { position: absolute; right: 1.1rem; top: .5rem; width: 3.8rem; height: 3.8rem; filter: drop-shadow(0 0 .7rem rgba(61,245,172,.55)); } .foot .mic, .mic { position: relative; width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; background: var(--green); clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); isolation: isolate; right: auto; top: auto; }
+  .mic::before { content: ""; position: absolute; inset: 2px; z-index: -1; background: radial-gradient(circle, #0f4a4a, hsl(calc(var(--h) + -10) calc(74% * var(--sk)) 10.4%)); clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
+  html[data-tier=mini] .micw { width: 3rem; height: 3rem; right: .8rem; top: .3rem; }
+
+  /* polish: panel chrome, titles, nav accent, state label, scrim, boot sequence */
+  .panel::after { background: linear-gradient(var(--tk, hsl(calc(var(--h) + -10) calc(100% * var(--sk)) 68.6%)), var(--tk, hsl(calc(var(--h) + -10) calc(100% * var(--sk)) 68.6%))) top 0 right 1.2rem / 2.2rem 2px no-repeat, linear-gradient(var(--tk, hsl(calc(var(--h) + -10) calc(100% * var(--sk)) 68.6%)), var(--tk, hsl(calc(var(--h) + -10) calc(100% * var(--sk)) 68.6%))) bottom 0 left 1.2rem / 2.2rem 2px no-repeat, linear-gradient(165deg, hsl(calc(var(--h) + 6) calc(77% * var(--sk)) 16.9% / .92), hsl(calc(var(--h) + 11) calc(83% * var(--sk)) 4.7% / .97) 70%); }
+  .ttl .r { order: 3; margin-left: 0; } .ttl::after { content: ""; order: 2; flex: 1; height: 1px; background: linear-gradient(90deg, hsl(calc(var(--h) + -4) calc(81% * var(--sk)) 64.5% / .55), transparent); margin: 0 .5rem; }
+  .ni.on { position: relative; } .ni.on::before { content: ""; position: absolute; left: -.6rem; top: 18%; bottom: 18%; width: 3px; background: var(--cyan); box-shadow: 0 0 .7rem var(--cyan); } .ni { transition: background .12s, padding-left .12s; } .ni:hover { padding-left: .95rem; }
+  .st { display: flex; align-items: center; justify-content: center; gap: 1rem; } .st::before, .st::after { content: ""; width: 4.5rem; height: 1px; background: linear-gradient(90deg, transparent, var(--state)); } .st::after { transform: scaleX(-1); }
+  .wxover::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, hsl(calc(var(--h) + 13) calc(81% * var(--sk)) 6.1% / .6), hsl(calc(var(--h) + 13) calc(81% * var(--sk)) 6.1% / .25) 55%, transparent 80%); z-index: -1; }
+  .pill i { animation: pulse 2.2s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+  .row { transition: background .12s; } .row:hover { background: hsl(var(--h) calc(66% * var(--sk)) 53.9% / .08); }
+  @keyframes boot { from { opacity: 0; } to { opacity: 1; } }
+  .booting .panel { animation: boot .6s cubic-bezier(.2,.8,.2,1) both; } .booting #nav { animation-delay: .05s; } .booting #top { animation-delay: .15s; } .booting #hero { animation-delay: .25s; } .booting #bottom .panel:nth-child(1) { animation-delay: .35s; } .booting #bottom .panel:nth-child(2) { animation-delay: .42s; } .booting #side .panel:nth-child(1) { animation-delay: .3s; } .booting #side .panel:nth-child(2) { animation-delay: .38s; } .booting #side .panel:nth-child(3) { animation-delay: .46s; }
+  #scan { display: none; position: fixed; left: 0; right: 0; top: 0; height: 3rem; pointer-events: none; z-index: 30; background: linear-gradient(180deg, transparent, hsl(calc(var(--h) + -6) calc(100% * var(--sk)) 65.7% / .22) 80%, hsl(calc(var(--h) + -12) calc(100% * var(--sk)) 81.4% / .6)); } .booting #scan { display: block; animation: scan 1.3s cubic-bezier(.4,0,.2,1) .1s both; } @keyframes scan { from { transform: translateY(-3rem); opacity: 1; } 90% { opacity: 1; } to { transform: translateY(105vh); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .booting .panel, .booting #scan, .pill i { animation: none; } .booting #scan { display: none; } }
+
+  /* header modules: status / clock / controls share one height and one language */
+  .mod { display: flex; align-items: center; gap: .75rem; height: 3rem; padding: 0 1.1rem 0 .9rem; border: 1px solid hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .4); border-left: 3px solid var(--c, var(--green)); border-radius: 2px; background: hsl(calc(var(--h) + 6) calc(78% * var(--sk)) 14.5% / .7); white-space: nowrap; max-width: 100%; } .mod b { display: block; font-size: .92rem; line-height: 1.2; color: var(--c, var(--green)); } .mod span:not(.lamp) { display: block; font-size: .75rem; color: var(--dim); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; max-width: 11rem; }
+  .lamp { width: .7rem; height: .7rem; background: var(--c, var(--green)); box-shadow: 0 0 .7rem var(--c, var(--green)); animation: pulse 2.2s ease-in-out infinite; flex: none; }
+  #top .clock { padding: 0 1.6rem; } #top .clock::before, #top .clock::after { content: ""; position: absolute; top: -.2rem; bottom: -.2rem; width: 1px; background: linear-gradient(transparent, hsl(calc(var(--h) + -4) calc(81% * var(--sk)) 64.5% / .55), transparent); } #top .clock::before { left: 0; } #top .clock::after { right: 0; } #top .clock b { font-size: 1.6rem; }
+
+  /* control language: chamfered plates with an edge light, charge sweep on hover, ticked latch switch */
+  .btn, .ib, .gmode, .sugg button { position: relative; isolation: isolate; border: 0 !important; background: none !important; clip-path: none !important; border-radius: 0 !important; box-shadow: none !important; --cut: .55rem; --edge: hsl(calc(var(--h) + -3) calc(80% * var(--sk)) 59.8% / .7); --f1: hsl(calc(var(--h) + 3) calc(73% * var(--sk)) 29.0% / .92); --f2: hsl(calc(var(--h) + 8) calc(79% * var(--sk)) 11.0% / .96); transition: transform .12s, color .12s; }
+  .btn::before, .ib::before, .gmode::before, .sugg button::before, .btn::after, .ib::after, .gmode::after, .sugg button::after { content: ""; position: absolute; z-index: -1; clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+  .btn::before, .ib::before, .gmode::before, .sugg button::before { inset: 0; background: linear-gradient(135deg, var(--edge), color-mix(in srgb, var(--edge) 35%, transparent) 55%, var(--edge)); z-index: -2; transition: background .15s; }
+  .btn::after, .ib::after, .gmode::after, .sugg button::after { inset: 1px; background: linear-gradient(105deg, transparent 42%, hsl(calc(var(--h) + -11) calc(100% * var(--sk)) 83.3% / .28) 50%, transparent 58%) no-repeat 130% 0 / 260% 100%, linear-gradient(180deg, var(--f1), var(--f2)); transition: background-position .55s; }
+  .btn:hover, .ib:hover, .gmode:hover, .sugg button:hover { --edge: hsl(calc(var(--h) + -12) calc(100% * var(--sk)) 71.8%); color: #fff; transform: none; } .btn:hover::after, .ib:hover::after, .gmode:hover::after, .sugg button:hover::after { background-position: -30% 0, 0 0; }
+  .btn:active, .ib:active, .gmode:active, .sugg button:active { transform: translateY(1px) scale(.985); }
+  .btn { font: 600 .82rem Tektur; letter-spacing: .09em; text-transform: uppercase; min-height: 2.6rem; --cut: .6rem; }
+  .btn.on, .gmode.on { --edge: var(--amber); --f1: rgba(120,78,10,.8); --f2: rgba(40,26,6,.95); color: var(--amber); } .btn[disabled] { --edge: hsl(calc(var(--h) + 1) calc(33% * var(--sk)) 41.2% / .5); }
+  .gmode.on { color: #fff; } .ib { --cut: .5rem; } .gmode { --cut: .6rem; } .sugg button { --cut: .45rem; padding: .35rem 1.3rem; }
+  .gmode .sw { width: 3.7rem; height: 1.45rem; border-radius: 0; background: repeating-linear-gradient(90deg, hsl(var(--h) calc(54% * var(--sk)) 65.7% / .4) 0 2px, transparent 2px 6px), hsl(calc(var(--h) + 7) calc(73% * var(--sk)) 10.0%); clip-path: polygon(.4rem 0, 100% 0, calc(100% - .4rem) 100%, 0 100%); }
+  .gmode .sw::after { top: 3px; left: 3px; width: 1.3rem; height: calc(100% - 6px); border-radius: 0; background: hsl(var(--h) calc(35% * var(--sk)) 62.9%); clip-path: polygon(.3rem 0, 100% 0, calc(100% - .3rem) 100%, 0 100%); transition: left .2s cubic-bezier(.3,1.5,.5,1), background .15s; box-shadow: none; }
+  .gmode.on .sw { background: repeating-linear-gradient(90deg, rgba(255,179,71,.85) 0 2px, transparent 2px 6px), #2a1c08; } .gmode.on .sw::after { left: calc(100% - 1.3rem - 3px); background: var(--amber); }
+  .sw6 { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; } .swb { display: flex; align-items: center; gap: .6rem; padding: .5rem .6rem; border: 1px solid rgba(120,160,200,.25); background: rgba(255,255,255,.03); color: var(--ink); cursor: pointer; font-size: .85rem; text-align: left; } .swb:hover { background: rgba(255,255,255,.08); } .swb i { width: 1.4rem; height: 1.4rem; background: var(--sw); clip-path: polygon(.35rem 0, 100% 0, 100% calc(100% - .35rem), calc(100% - .35rem) 100%, 0 100%, 0 .35rem); box-shadow: none; } .swb.cur { border-color: var(--sw); color: #fff; }
+
+  /* fixes: menus above neighbouring panels, nicer counters, roomier ring numbers */
+  #top { z-index: 10; }
+  .ni .bd, .cnt { border-radius: 0; clip-path: polygon(.32rem 0, 100% 0, 100% calc(100% - .32rem), calc(100% - .32rem) 100%, 0 100%, 0 .32rem); background: linear-gradient(180deg, #ffd08a, #f0a030 55%, #d98512); color: #2a1700; font: 700 .76rem/1 Tektur; letter-spacing: .02em; min-width: 1.45rem; height: 1.4rem; padding: 0 .4rem; display: grid; place-items: center; text-shadow: 0 1px 0 rgba(255,255,255,.35); }
+  .cnt { top: -.5rem; right: -.5rem; line-height: 1; padding: 0 .35rem; } .cnt.err { background: linear-gradient(180deg, #ff9a9a, #e04848 60%, #b92f2f); color: #fff; text-shadow: none; }
+  .m .ring b { font-size: .86rem; letter-spacing: .01em; } .m .ring b small { font-size: max(.65rem, 9px); margin-left: .06rem; opacity: .7; } .ring circle { stroke-width: 5.5; }
+
+  /* core: compositor-only layers (no per-frame canvas work) */
+  .glow, .sweep { position: absolute; pointer-events: none; will-change: transform, opacity; border-radius: 50%; }
+  .glow { background: radial-gradient(circle closest-side, color-mix(in srgb, var(--state) 26%, transparent), color-mix(in srgb, var(--state) 8%, transparent) 55%, transparent); animation: breathe var(--breathe, 4.5s) ease-in-out infinite; }
+  .sweep { background: conic-gradient(from 0deg, transparent 0 72%, color-mix(in srgb, var(--state) 42%, transparent) 100%); -webkit-mask: radial-gradient(circle closest-side, transparent 84%, #000 85%); mask: radial-gradient(circle closest-side, transparent 84%, #000 85%); animation: spin var(--sweep, 7s) linear infinite; }
+  @keyframes breathe { 50% { opacity: .55; transform: scale(.94); } } @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .glow, .sweep { animation: none; } }
+  .brand .jv { background: linear-gradient(180deg, #fff 35%, hsl(calc(var(--h) - 5) calc(85% * var(--sk)) 78%)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; text-shadow: none; filter: drop-shadow(0 0 .9rem color-mix(in srgb, var(--state) 70%, transparent)); }
+  .net { display: flex; justify-content: center; gap: 2rem; margin-top: .35rem; white-space: nowrap; } .net span { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: .4rem; justify-content: center; } .net em { grid-column: 1 / -1; font-style: normal; color: var(--dim); font-size: .7rem; text-align: center; line-height: 1.1; } .net b { font: 600 .82rem Tektur; color: #fff; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--dim); font-size: .85rem; padding: .6rem 0; line-height: 1.4; }
+
+  /* microphone card in the nav */
+  .offl .r1 { display: flex; align-items: center; gap: .5rem; } .offl .r1 b { font-size: .9rem; } .offl .hear { margin-left: auto; font-size: .75rem; color: var(--dim); white-space: nowrap; }
+  .offl .kv { display: flex; justify-content: space-between; gap: .5rem; font-size: .75rem; color: var(--dim); } .offl .kv b { font: 700 .88rem Tektur; color: #fff; margin-left: .2rem; } .offl .kv span:last-child b { color: var(--amber); }
+  .offl .ar { display: flex; align-items: center; justify-content: space-between; padding-top: .5rem; border-top: 1px solid rgba(60,140,200,.2); font-size: .85rem; } .offl .r2 { display: flex; gap: .45rem; align-items: flex-start; } .offl .r2 svg { flex: none; margin-top: .1rem; }
+  .tgl { position: relative; border: 0; background: none; padding: 0; cursor: pointer; } .tgl .sw { display: block; position: relative; width: 3.2rem; height: 1.3rem; background: repeating-linear-gradient(90deg, rgba(120,175,215,.4) 0 2px, transparent 2px 6px), #07182c; clip-path: polygon(.4rem 0, 100% 0, calc(100% - .4rem) 100%, 0 100%); }
+  .tgl .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 1.2rem; height: calc(100% - 6px); background: #7fa6c2; clip-path: polygon(.3rem 0, 100% 0, calc(100% - .3rem) 100%, 0 100%); transition: left .2s cubic-bezier(.3,1.5,.5,1), background .15s; }
+  .tgl.on .sw { background: repeating-linear-gradient(90deg, rgba(61,245,172,.85) 0 2px, transparent 2px 6px), #07281f; } .tgl.on .sw::after { left: calc(100% - 1.2rem - 3px); background: var(--green); }
+  /* clock */
+  #top .clock b { font-size: 1.55rem; letter-spacing: .03em; line-height: 1; white-space: nowrap; } #top .clock .ss { font-size: .95rem; color: var(--cyan); margin-left: .25rem; text-shadow: none; font-weight: 600; }
+  #top .clock .secbar { display: block; position: relative; height: 3px; margin: .25rem 0 .2rem; background: repeating-linear-gradient(90deg, rgba(120,170,210,.28) 0 2px, transparent 2px 5px); } #top .clock .secbar i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 0%); background: repeating-linear-gradient(90deg, var(--cyan) 0 2px, transparent 2px 5px); filter: drop-shadow(0 0 3px var(--cyan)); transition: none; }   /* one step per second: a width tween re-ran layout on every frame (about 80 times a second on every screen) */
+  #top .clock #date { display: block; white-space: nowrap; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); } #top .clock #date b { display: inline; font: 600 .68rem Onest; color: var(--ink); text-shadow: none; letter-spacing: .12em; }
+
+  /* microphone card, second pass */
+  .offl { gap: .35rem; padding: .75rem .8rem .7rem; }
+  .offl .r1 { gap: .5rem; } .offl .r1 b { font: 700 .95rem Onest; letter-spacing: .01em; }
+  .offl .hear { display: block; margin: 0; font-size: .78rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 1.55rem; }
+  .offl .lv { margin: .15rem 0; }
+  .offl .kv { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; } .offl .kv span { display: flex; flex-direction: column; gap: .05rem; font-size: .72rem; color: var(--dim); } .offl .kv b { margin: 0; font: 700 1rem Tektur; color: #fff; }
+  .offl .ar { min-height: 2rem; padding-top: .4rem; margin-top: .1rem; }
+  .offl .r2 { font-size: .72rem; line-height: 1.35; padding-top: .35rem; border-top: 1px solid rgba(60,140,200,.15); }
+  /* microphone card, third pass: level strip in an inset well, stat tiles with an accent edge, autostart as its own row */
+  .offl { position: relative; gap: .5rem; padding: .8rem .8rem .75rem; box-shadow: inset 0 1px 0 hsl(var(--h) 90% 70% / .12), 0 .5rem 1.2rem rgba(0,0,0,.25); }
+  .offl #hear.hear { padding-left: 0; } .offl .hear { display: flex; align-items: center; gap: .4rem; font-size: .76rem; }
+  .offl .lv { margin: 0; height: 1.9rem; padding: .3rem .4rem; gap: 2px; align-items: center; background: rgba(2,10,22,.55); border: 1px solid rgba(60,140,200,.18); border-radius: 2px; box-shadow: inset 0 0 .6rem rgba(0,0,0,.45); }
+  .offl .lv i { height: 100%; min-width: 0; border-radius: 1px; opacity: .9; transform-origin: 50% 50%; } .offl .hear { text-align: left; }
+  .offl .ar .tgl .sw { width: 3.5rem; height: 1.4rem; } .offl .ar .tgl .sw::after { width: 1.2rem; } .offl .ar .tgl.on .sw::after { left: calc(100% - 1.2rem - 2px); } .offl .ar .tgl .sw::before { padding-right: .7rem; font-size: max(.65rem, 9px); } .offl .ar .tgl.on .sw::before { padding-left: .7rem; }
+  .offl .kv { gap: .4rem; } .offl .kv span { padding: .35rem .5rem .4rem .6rem; background: rgba(2,10,22,.4); border-left: 2px solid var(--cyan); font-size: .68rem; letter-spacing: .02em; } .offl .kv span:last-child { border-left-color: var(--amber); }
+  .offl .kv b { font: 700 1.15rem/1.15 Tektur; letter-spacing: .02em; }
+  .offl .ar { padding: .3rem .1rem 0 .15rem; margin-top: .05rem; font-size: .82rem; color: var(--dim); } .offl .ar span { display: flex; align-items: center; gap: .4rem; }
+  .offl .ar span::before { content: ""; width: .35rem; height: .35rem; background: var(--cyan); opacity: .7; transform: rotate(45deg); }
+  /* latch switch, one look everywhere: dark chamfered track, state word on the free side, slanted thumb */
+  .tgl .sw, .gmode .sw { position: relative; display: block; flex: none; width: 4.4rem; height: 1.55rem; background: hsl(var(--h) calc(55% * var(--sk)) 10%); border: 0; clip-path: polygon(.45rem 0, 100% 0, calc(100% - .45rem) 100%, 0 100%); box-shadow: none; }
+  .tgl .sw::before, .gmode .sw::before { content: "ВЫКЛ"; position: absolute; inset: 0; display: grid; align-items: center; justify-items: end; padding: 0 .85rem 0 0; font: 700 .6rem Tektur; letter-spacing: .1em; color: hsl(var(--h) 30% 62%); background: none; }
+  .tgl .sw::after, .gmode .sw::after { content: ""; position: absolute; top: 2px; bottom: 2px; left: 2px; width: 1.45rem; height: auto; background: #7fa6c2; clip-path: polygon(.35rem 0, 100% 0, calc(100% - .35rem) 100%, 0 100%); transition: left .2s cubic-bezier(.3,1.4,.5,1), background .15s; }
+  .tgl.on .sw { background: linear-gradient(90deg, rgba(61,245,172,.28), rgba(61,245,172,.1)); } .tgl.on .sw::before { content: "ВКЛ"; justify-items: start; padding: 0 0 0 .85rem; color: var(--green); } .tgl.on .sw::after { left: calc(100% - 1.45rem - 2px); background: var(--green); }
+  .gmode.on .sw { background: linear-gradient(90deg, rgba(255,179,71,.3), rgba(255,179,71,.1)); } .gmode.on .sw::before { content: "ВКЛ"; justify-items: start; padding: 0 0 0 .85rem; color: var(--amber); } .gmode.on .sw::after { left: calc(100% - 1.45rem - 2px); background: var(--amber); }
+  .tgl:focus-visible .sw, .gmode:focus-visible .sw { outline: 2px solid var(--cyan); }
+  /* charging badge on the battery ring */
+  .ring .chg { position: absolute; top: -.1rem; right: -.1rem; width: 1.05rem; height: 1.05rem; display: grid; place-items: center; background: var(--green); clip-path: polygon(.25rem 0, 100% 0, 100% calc(100% - .25rem), calc(100% - .25rem) 100%, 0 100%, 0 .25rem); }
+  /* idle is most of the time: nothing may animate forever (an endless animation keeps the page redrawing at 60 fps) */
+  html[data-st=IDLE] :is(.sweep, .glow, .lamp, .pill i, .track) { animation-play-state: paused; }
+  #nav.tight { gap: .1rem; } #nav.tight .ni { min-height: 2.3rem; padding-top: .22rem; padding-bottom: .22rem; } #nav.tight .logo { margin-bottom: .3rem; }
+</style>
+<link rel="stylesheet" href="cmds.css">
+<link rel="stylesheet" href="rems.css">
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="exts.css">
+<link rel="stylesheet" href="songs.css">
+<link rel="stylesheet" href="perf.css">
+<link rel="stylesheet" href="calendar.css">
+<link rel="stylesheet" href="mail.css">
+<link rel="stylesheet" href="mail_compose.css">
+<link rel="stylesheet" href="datepick.css">
+<link rel="stylesheet" href="voice.css">
+<link rel="stylesheet" href="look.css">
+<link rel="stylesheet" href="nowplaying.css">
+<link rel="stylesheet" href="cinema.css">
+<link rel="stylesheet" href="dev.css">
+<link rel="stylesheet" href="ai.css">
+<link rel="stylesheet" href="wizard.css">
+<link rel="stylesheet" href="answer.css">
+<link rel="stylesheet" href="prompts.css">
+<link rel="stylesheet" href="pedit.css">
+<link rel="stylesheet" href="fields.css">
+<link rel="stylesheet" href="fx.css">
+<link rel="stylesheet" href="skin.css">
+<link rel="stylesheet" href="buttons.css">
+<style>
+  .muted .mic { background: #6f8396; } .muted .mic::before { background: #0c1722; } .muted .mic svg { stroke: #8fa4b8; } .muted .micw { filter: drop-shadow(0 0 .5rem rgba(160,180,200,.25)); }
+  .mic::after { content: none; } .muted .mic::after { content: ""; position: absolute; left: 16%; right: 16%; top: 50%; height: 3px; background: var(--red); transform: rotate(-45deg); z-index: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="nav" class="panel"></nav>
+  <header id="top" class="panel">
+    <div class="msg" id="msg"></div>
+    <div class="clock"><b id="clk"></b><span class="secbar"><i id="secp"></i></span><span id="date"></span></div>
+    <div class="tools"><button class="gmode" id="gmode" aria-pressed="false"><span class="gi" id="gi"></span><span class="gt"><b>Игровой режим</b><span id="gs">выключен</span></span><span class="sw"></span></button><div class="search" id="search"></div><div class="bellw"><button class="ib" id="ib1" aria-label="Уведомления" title="Уведомления"></button><div class="drop" id="drop"></div></div></div>
+  </header>
+  <main id="hero" class="panel">
+    <div class="stage"><div class="ttl">Ядро</div><div class="tbar" id="tbar"></div><div class="glow" id="glow"></div><canvas id="core"></canvas><div class="sweep" id="sweep"></div><div class="brand"><div class="jv">JARVIS</div><div class="sub">AI CORE</div></div><div class="st" id="st">ОЖИДАНИЕ</div></div>
+    <div class="foot"><div class="say"><div id="heard"></div><div id="reply"></div><div class="sugg" id="sugg"></div><div class="np" id="np" hidden></div><canvas id="wave" height="40"></canvas></div><div class="micw"><button class="mic" id="mic" aria-label="Говорить с Jarvis"></button></div></div>
+  </main>
+  <section id="bottom">
+    <div class="panel"><div class="ttl">Система</div><div class="grid2" id="sys"></div><div class="net" id="net"></div></div>
+    <div class="panel hist"><div class="ttl">История<span class="r">что вы говорили</span></div><div class="list" id="hist"></div></div>
+  </section>
+  <aside id="side">
+    <section class="panel next"><div class="ttl">Что дальше</div><div id="next"></div></section>
+    <section class="panel wxp"><div class="ttl">Погода<span class="r" id="wxr"></span></div>
+      <div class="wxbox"><canvas id="sky"></canvas><div class="wxover"><div class="wxtop"><span class="deg" id="wdeg">+18°</span><div class="wxd"><b id="wdesc">Переменная облачность</b><span id="wfeels"></span><span id="wcmp"></span></div></div>
+        <div style="margin-top:auto"><div class="wxtimes"><span>☀ восход <b id="wsr">07:34</b></span><span id="wleft" class="wl"></span><span>закат <b id="wss">18:09</b> ☾</span></div><div class="wxstats" id="wstats"></div></div></div></div></section>
+    <section class="panel cam"><div class="ttl">Камера и охрана<span class="r" id="camst">выключена</span></div><div class="camview"><canvas id="cam"></canvas></div>
+      <div class="camrow"><button class="btn" id="bcam">Камера</button><button class="btn" id="bguard">Охрана</button></div><div class="t2" id="camnote" style="margin-top:.4rem;display:none"></div></section>
+  </aside>
+  <section id="cmds" class="panel" aria-label="Команды">
+    <div class="cm-head">
+      <div class="cm-title"><h2>Команды</h2><span id="cm-count"></span><label class="cm-only"><span>Только с кнопкой запуска</span><button class="tgl" id="cm-only" aria-pressed="false" title="Скрыть команды, которые можно только сказать вслух"><span class="sw"></span></button></label><label class="cm-only"><span>По алфавиту</span><button class="tgl" id="cm-abc" aria-pressed="false" title="Показать команды одним списком по алфавиту, а не по группам"><span class="sw"></span></button></label></div>
+      <label class="cm-search"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--ic)" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"><path d="M10 3l5 2 2 5-2 5-5 2-5-2-2-5 2-5zM16 16l5 5"/></svg><input id="cm-q" type="text" placeholder="Что вы хотите сделать? Например: громкость, таймер, открой…" autocomplete="off" spellcheck="false" aria-label="Поиск команды"><kbd>/</kbd><button id="cm-clear" aria-label="Очистить поиск"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M5 5l14 14M19 5L5 19"/></svg></button></label>
+      <div class="cm-sug" id="cm-sug"></div>
+    </div>
+    <div class="cm-note" id="cm-note" style="display:none"></div>
+    <div class="cm-main"><nav class="cm-rail" id="cm-rail" aria-label="Категории команд"></nav><div class="cm-body" id="cm-body"></div></div>
+    <div class="cm-toast" id="cm-toast" role="status"></div>
+  </section>
+  <section id="rems" class="panel" aria-label="Напоминания">
+    <div class="rm-head"><h2>Таймеры и напоминания</h2><span id="rm-count"></span></div>
+    <div class="rm-body" id="rm-body">
+      <div class="rm-col">
+        <div class="cm-card rm-card" id="rm-timer" style="--cc:var(--amber)"></div>
+        <div class="cm-card rm-card" style="--cc:var(--amber)">
+          <h3><span data-ic="bell"></span>Новое напоминание</h3>
+          <input class="rm-in" id="rm-text" type="text" maxlength="120" placeholder="О чём напомнить? Например: позвонить маме" autocomplete="off" aria-label="Текст напоминания">
+          <div class="rm-lbl">Когда</div>
+          <div class="rm-chips" id="rm-chips"></div>
+          <div class="rm-row"><span class="rm-lbl">или через</span><input class="rm-in num" id="rm-custom" type="number" min="1" max="1440" inputmode="numeric" placeholder="мин" aria-label="Через сколько минут"><span class="rm-lbl">мин</span><button class="cm-try primary" id="rm-radd" style="margin-left:auto">Поставить</button></div>
+          <div class="rm-err" id="rm-err" role="alert"></div>
+        </div>
+      </div>
+      <div class="rm-col"><div class="cm-card rm-card" style="--cc:var(--amber)"><h3><span data-ic="list"></span>Ближайшие напоминания</h3><div class="rm-list" id="rm-list"></div></div></div>
+    </div>
+    <div class="cm-toast" id="rm-toast" role="status"></div>
+  </section>
+  <section id="games" class="panel" aria-label="Игры">
+    <div class="rm-head"><h2>Игры</h2><span id="gm-count"></span></div>
+    <div class="gm-body" id="gm-body">
+      <div class="gm-col">
+        <div class="cm-card rm-card" style="--cc:var(--amber)">
+          <h3><span data-ic="pad"></span>Игровой режим</h3>
+          <div class="gm-mode"><div class="gmst"><b id="gm-st">Выключен</b><span>Jarvis слушает строже и понимает команды игры</span></div><button class="tgl" id="gm-sw" aria-pressed="false" title="Включить или выключить игровой режим"><span class="sw"></span></button></div>
+          <div class="gm-prof" id="gm-prof"></div>
+          <div class="gm-hint">Режим включается сам, когда вы запускаете игру отсюда или говорите «запусти игру». Если игра запущена вручную, Jarvis узнает её по окну.</div>
+        </div>
+        <div class="cm-card rm-card" style="--cc:var(--green)"><h3><span data-ic="mic"></span>Голосовые команды игр</h3><div class="gm-pl" id="gm-pl"></div></div>
+      </div>
+      <div class="gm-col"><div class="cm-card rm-card" style="--cc:var(--cyan)">
+        <h3><span data-ic="pad"></span>Установленные игры</h3>
+        <div class="gm-tools"><label class="cm-search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--ic)" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"><path d="M10 3l5 2 2 5-2 5-5 2-5-2-2-5 2-5zM16 16l5 5"/></svg><input id="gm-q" type="text" placeholder="Найти игру" autocomplete="off" spellcheck="false" aria-label="Поиск игры"></label><button class="cm-try" id="gm-scan">Обновить</button></div>
+        <div class="gm-lib" id="gm-lib"></div>
+      </div></div>
+    </div>
+    <div class="cm-toast" id="gm-toast" role="status"></div>
+    <div class="pe-modal" id="pe-modal" hidden><div class="pe-box" id="pe-box" role="dialog" aria-modal="true"></div></div>
+  </section>
+  <section id="voice" class="panel" aria-label="Голос">
+    <div class="rm-head"><h2>Голос</h2><span>Микрофон, озвучка и обращение</span></div>
+    <div class="vc-body" id="vc-body"></div>
+    <div class="cm-toast" id="vc-toast" role="status"></div>
+  </section>
+  <section id="mail" class="panel" aria-label="Почта">
+    <div class="ml-head"><h2>Почта</h2><span id="ml-count"></span><div class="ml-btns"><button class="cm-try" id="ml-refresh">Обновить</button><button class="cm-try primary" id="ml-new">Новое письмо</button></div></div>
+    <div class="ml-body"><aside class="ml-list" id="ml-list"></aside><article class="ml-read" id="ml-read"></article></div>
+    <div class="cm-toast" id="ml-toast" role="status"></div>
+    <div id="ml-modal" hidden><div id="ml-mbox" role="dialog" aria-modal="true"></div></div>
+  </section>
+  <section id="calpage" class="panel" aria-label="Календарь">
+    <div class="cl-head"><div class="cl-ht"><h2>Календарь</h2><span id="cl-count"></span></div>
+      <div class="cl-nav"><button type="button" class="cl-arrow" id="cl-prev" aria-label="Назад">&#8249;</button><button type="button" class="cl-ttl" id="cl-title" title="Перейти к дате" aria-haspopup="dialog"></button><button type="button" class="cl-arrow" id="cl-next" aria-label="Вперёд">&#8250;</button></div>
+      <div class="cl-seg" role="group" aria-label="Вид"><button type="button" data-vw="month">Месяц</button><button type="button" data-vw="week">Неделя</button><button type="button" data-vw="day">День</button><button type="button" data-vw="agenda">Список</button></div>
+      <div class="cl-btns"><button type="button" class="cl-ib" id="cl-find-btn" title="Поиск (/)" aria-label="Поиск"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg></button>
+        <button type="button" class="cl-ib" id="cl-refresh" title="Обновить календари" aria-label="Обновить"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.500-5.800M20 4v5h-5"/></svg></button>
+        <button type="button" class="cl-ib" id="cl-sidebtn" title="Боковая панель" aria-label="Боковая панель"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="3.500" y="4.500" width="17" height="15" rx="2"/><path d="M15 4.500v15"/></svg></button>
+        <button type="button" class="cm-try" id="cl-today">Сегодня</button><button type="button" class="cm-try primary" id="cl-new">Создать</button></div></div>
+    <div class="cl-find" id="cl-find" hidden><label class="cl-fb"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg><input id="cl-q" data-fld="1" placeholder="Название, место или заметка" autocomplete="off" aria-label="Поиск событий"><small>год назад и вперёд</small></label><button type="button" class="cl-ib" id="cl-find-x" aria-label="Закрыть поиск">&times;</button></div>
+    <div class="cl-body"><div class="cl-main" id="cl-main"></div><aside class="cl-side" id="cl-side"></aside></div>
+    <div class="cm-toast" id="cl-toast" role="status"></div>
+    <div id="cl-modal" hidden><div id="cl-mbox" role="dialog" aria-modal="true"></div></div>
+  </section>
+  <section id="cinema" class="panel" aria-label="Кино">
+    <div class="rm-head"><h2>Кино</h2><span>Что играет, где смотреть и поиск</span></div>
+    <div class="vc-body" id="ci-body"></div>
+    <div class="cm-toast" id="ci-toast" role="status"></div>
+  </section>
+  <section id="look" class="panel" aria-label="Настройки">
+    <div class="rm-head"><h2>Настройки</h2><div class="lk-tabs seg2" id="lk-tabs" role="tablist" style="--n:5;--i:0"><button type="button" class="on" data-tab="look" role="tab" aria-selected="true">Внешний вид</button><button type="button" data-tab="tools" role="tab" aria-selected="false">Инструменты</button><button type="button" data-tab="modules" role="tab" aria-selected="false">Модули</button><button type="button" data-tab="ai" role="tab" aria-selected="false">ИИ</button><button type="button" data-tab="dev" role="tab" aria-selected="false">Разработчик</button></div></div>
+    <div class="vc-body" id="lk-body"></div>
+    <div class="vc-body" id="lk-tools" hidden></div>
+    <div class="vc-body" id="lk-mods" hidden></div>
+    <div class="vc-body" id="lk-ai" hidden></div>
+    <div class="vc-body" id="lk-dev" hidden></div>
+    <div class="xs-modal" id="lk-modal" hidden><div class="xs-box" id="lk-mbox" role="dialog" aria-modal="true"></div></div>
+    <div class="cm-toast" id="lk-toast" role="status"></div>
+  </section>
+  <section id="songs" class="panel" aria-label="Песни">
+    <div class="sg-head"><h2>Песни</h2><span id="sg-count"></span><div class="sg-btns"><button class="cm-try" id="sg-clear">Очистить историю</button><button class="cm-try" id="sg-now">Узнать песню</button></div></div>
+    <div class="sg-body" id="sg-body"></div>
+    <div class="cm-toast" id="sg-toast" role="status"></div>
+  </section>
+  <section id="perf" class="panel" aria-label="Система">
+    <div class="pf-head"><h2>Система</h2><span id="pf-sub"></span><button type="button" class="cm-try pf-mini" id="pf-mini" hidden title="Маленькое окно поверх остальных: можно сделать прозрачным или коротким">Мини-окно</button></div>
+    <div class="pf-body" id="pf-body"></div>
+  </section>
+  <section id="exts" class="panel" aria-label="Расширения">
+    <div class="ex-head"><h2>Расширения</h2><span id="ex-count"></span></div>
+    <div class="ex-body" id="ex-body"></div>
+    <div class="cm-toast" id="ex-toast" role="status"></div>
+    <div class="xs-modal" id="ex-modal" hidden><div class="xs-box" id="ex-mbox" role="dialog" aria-modal="true"></div></div>
+  </section>
+</div>
+<div id="scan"></div>
+<div id="dbg"></div>
+<script src="shared.js"></script>
+<script src="i18n_uk.js"></script>
+<script src="i18n.js"></script>
+<script>{ const a = document.documentElement; a.classList.add('booting'); setTimeout(() => { a.classList.remove('booting'); if (typeof layout === 'function') layout(); }, 1800); }</script>
+<script>
+const $ = (id) => document.getElementById(id), m = J.model, html = document.documentElement;
+const C = { cyan: hsl2hex(THEME.h - 8, 100 * THEME.sk, 59), star: hsl2hex(THEME.h - 5, 100 * THEME.sk, 87), green: '#3df5ac', amber: '#ffb347', red: '#ff6b6b', purple: '#a98bff', mag: '#ff3fd0', yel: '#ffd21f' };
+let micMuted = false, VIEW = 'dash'; const DIMCOL = '#6f8396'; let coreTint = ''; const curCol = () => (micMuted ? DIMCOL : (coreTint || SC[m.state] || SC.IDLE));
+const SC = { IDLE: C.cyan, LISTENING: C.cyan, SPEAKING: C.star }, SRU = { IDLE: 'ОЖИДАНИЕ', LISTENING: 'СЛУШАЮ', SPEAKING: 'ГОВОРЮ' };
+const P = { home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z', mic: 'M9 3h6v9l-2 2h-2l-2-2zM5 11v2l4 4h6l4-4v-2M12 17v4M8 21h8', list: 'M4 6h16M4 12h16M4 18h10',
+  bell: 'M12 3l5 4v6l3 4H4l3-4V7zM9 20h6', cal: 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4', music: 'M9 18V5l10-2v13M9 18l-3 2-3-2 3-2zM19 16l-3 2-3-2 3-2z', mail: 'M3 5h18v14H3zM3 5l9 8 9-8', pad: 'M6 8h12l4 6-3 5h-3l-2-3h-4l-2 3H5l-3-5zM8 11v3M6.5 12.5h3',
+  ext: 'M4 8h5V4h4v4h5v5h-4v4h4v3H4z', gear: 'M12 2l8 4.5v9L12 22l-8-6.5v-9zM12 9l3 1.7v3.6L12 16l-3-1.7v-3.6z', timer: 'M12 4l8 4v8l-8 4-8-4V8zM12 8v5l3 2M9 1h6', search: 'M10 3l5 2 2 5-2 5-5 2-5-2-2-5 2-5zM16 16l5 5', check: 'M4 12l5 5L20 6', warn: 'M12 3l10 18H2zM12 10v5M12 18v1', theme: 'M12 3l9 5v8l-9 5-9-5V8zM12 12l9-4M12 12v9M12 12L3 8', cam: 'M3 7h4l2-3h6l2 3h4v13H3zM9 13l3-3 3 3-3 3z', shield: 'M12 2l8 3v7l-8 10-8-10V5z', chip: 'M7 7h10v10H7zM10 2v3M14 2v3M10 19v3M14 19v3M2 10h3M2 14h3M19 10h3M19 14h3' };
+const ic = (k, col = 'currentColor', s = 20) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"><path d="${P[k]}"/></svg>`;
+const hmDate = (t) => { const [h, mm] = t.split(':').map(Number), d = new Date(); d.setHours(h, mm, 0, 0); return d; };
+/* times arrive as HH:MM, so a day boundary has to be inferred: a past time that is "ahead" of the clock was yesterday, a future time that is "behind" it is tomorrow */
+const mins = (t) => { const d = hmDate(t); if (d < Date.now() - 30000) d.setDate(d.getDate() + 1); return Math.max(0, Math.round((d - Date.now()) / 60000)); },
+  ago = (t) => { const d = hmDate(t); if (d > Date.now() + 30000) d.setDate(d.getDate() - 1); const x = Math.max(0, Math.round((Date.now() - d) / 60000)); return x < 60 ? x + ' мин назад' : x < 1440 ? Math.floor(x / 60) + ' ч назад' : 'вчера'; };
+const rel = (x) => x < 60 ? `через ${x} мин` : `через ${Math.floor(x / 60)} ч ${x % 60 ? (x % 60) + ' мин' : ''}`;
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+
+// ---- thresholds in rem (OS scaling and user zoom are accounted for automatically) ----
+const TIERS = [{ name: 'mini', maxRemW: 52 }, { name: 'compact', maxRemW: 72 }, { name: 'standard', maxRemW: 100 }, { name: 'wide', maxRemW: Infinity }]; const SHORT_REM_H = 38, SCALE_EXP = 0.8, SCALE_MIN = 0.85, SCALE_MAX = 2.3, MIN_ROOT_PX = 13;   // MIN_ROOT_PX: the smallest text stays readable at any window size and zoom
+let userScale = 1; try { userScale = Math.min(1.6, Math.max(.8, +localStorage.getItem('uiScale') || 1)); } catch (e) {}
+function layout() { const W = innerWidth, H = innerHeight, k = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.min(W / 1280, H / 720))); const px = Math.max(MIN_ROOT_PX, 16 * Math.pow(k, SCALE_EXP) * userScale); html.style.fontSize = px.toFixed(2) + 'px';
+  const remW = W / px, remH = H / px, tier = TIERS.find((t) => remW < t.maxRemW).name; html.dataset.tier = tier; html.dataset.short = remH < SHORT_REM_H ? '1' : '0';
+  $('dbg').textContent = `${tier} · ${W}×${H}px · ${remW.toFixed(0)}×${remH.toFixed(0)}rem · ${px.toFixed(1)}px · зум ${Math.round(userScale * 100)}%${demoT !== null ? ' · демо-время ' + fmtT(demoT) : ''}${WX.cond !== 'partly' ? ' · погода: ' + WX.cond : ''}`;
+  requestAnimationFrame(() => { fitRows($('hist')); fitSide(); fitNav(); fitHero(); sizeCanvas(); sizeSky(); sizeCam(); }); }
+/* the lower part of the hero (what you said, the reply, the player, the wave) may take at most 45% of its height; otherwise the least important parts go, one by one */
+function fitHero() { const hero = $('hero'), foot = hero.querySelector('.foot'); if (!foot) return; hero.removeAttribute('data-fit'); const off = [];
+  for (const s of ['np', 'wave', 'reply']) { if (foot.offsetHeight <= hero.clientHeight * 0.45) break; off.push(s); hero.dataset.fit = off.join(' '); } }
+if (window.ResizeObserver) new ResizeObserver(() => fitHero()).observe(document.querySelector('#hero .foot'));
+function fitRows(el) { const rows = [...el.children]; rows.forEach((r) => (r.style.display = '')); for (let i = rows.length - 1; i > 0 && el.scrollHeight > el.clientHeight + 1; i--) rows[i].style.display = 'none'; }
+function fitNav() { const nav = $('nav'), card = nav.querySelector('.offl'), parts = ['mrow-off', 'lv', 'mrow-auto', 'kv'].map((id) => $(id)); const over = () => nav.scrollHeight > nav.clientHeight + 2;
+  parts.forEach((e) => e && (e.style.display = '')); if (card) card.style.display = ''; nav.classList.remove('tight', 'scroll');
+  if (html.dataset.tier === 'mini') return;
+  if (html.dataset.tier === 'compact') { if (over()) nav.classList.add('tight', 'scroll'); return; }
+  /* order: tighter menu rows, then drop the card's optional parts one by one, then the whole card */
+  if (over()) nav.classList.add('tight');
+  for (const e of parts) { if (!over()) break; if (e) e.style.display = 'none'; }
+  if (over() && card) card.style.display = 'none';
+  if (over()) nav.classList.add('scroll'); }      /* a very short window: the menu scrolls, nothing is lost */
+function fitSide() { const side = $('side'), order = [document.querySelector('.cam'), document.querySelector('.wxp')]; order.forEach((p) => p && (p.style.display = '')); if (html.dataset.tier === 'mini') return;
+  const clipped = () => [...side.children].some((p) => getComputedStyle(p).display !== 'none' && p.scrollHeight > p.clientHeight + 3);   // a panel whose content is cut off is worse than a hidden one
+  for (const p of order) { if (side.scrollHeight <= side.clientHeight + 2 && !clipped()) break; if (getComputedStyle(p).display !== 'none') p.style.display = 'none'; } }
+addEventListener('resize', layout);
+const fmtT = (min) => String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(Math.round(min % 60)).padStart(2, '0');
+let demoT = null, problem = false; const DEMO_TIMES = [null, 6 * 60 + 10, 12 * 60, 18 * 60 + 40, 23 * 60 + 30], CONDS = ['partly', 'clear', 'cloudy', 'rain', 'snow'];
+addEventListener('keydown', (e) => { const z = (d) => { userScale = Math.min(1.6, Math.max(.8, +(userScale + d).toFixed(2))); try { localStorage.setItem('uiScale', userScale); } catch (x) {} layout(); e.preventDefault(); };
+  if (e.ctrlKey && (e.key === '+' || e.key === '=')) z(.1); else if (e.ctrlKey && e.key === '-') z(-.1); else if (e.ctrlKey && e.key === '0') { userScale = 1; try { localStorage.setItem('uiScale', 1); } catch (x) {} layout(); e.preventDefault(); }
+  else if (e.key === 'x' || e.key === 'ч') { problem = !problem; setNotice('mic', problem ? { sev: 'err', text: 'Микрофон не отвечает — проверьте подключение' } : null); }
+  else if (e.key === 'n' || e.key === 'т') { setNotice('mail', { sev: 'info', text: 'Почта: 3 новых письма' }); setNotice('bat', { sev: 'warn', text: 'Низкий заряд батареи — 14%' }); setNotice('timer', { sev: 'info', text: 'Таймер на 10 минут запущен' }); }
+  else if (e.key === 't' || e.key === 'е') { demoT = DEMO_TIMES[(DEMO_TIMES.indexOf(demoT) + 1) % DEMO_TIMES.length]; layout(); } else if (e.key === 'w' || e.key === 'ц') { WX.cond = CONDS[(CONDS.indexOf(WX.cond) + 1) % CONDS.length]; layout(); } });
+addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+
+// ---- static content ----
+const NAVKEY = { 'Настройки': 'look', 'Обзор': 'dash', 'Команды': 'commands', 'Напоминания': 'rems', 'Игры': 'games', 'Расширения': 'exts', 'Песни': 'songs', 'Голос': 'voice', 'Почта': 'mail', 'Календарь': 'calendar', 'Кино': 'cinema', 'Система': 'perf' };
+$('nav').innerHTML = `<div class="logo"><i></i><div class="lb"><b>JARVIS</b><small>центр управления</small></div></div>` + [['home', 'Обзор', 0], ['mic', 'Голос', 0], ['list', 'Команды', 0], ['bell', 'Напоминания', 2], ['cal', 'Календарь', 0], ['music', 'Песни', 0], ['cam', 'Кино', 0], ['mail', 'Почта', 3], ['pad', 'Игры', 0], ['chip', 'Система', 0], ['ext', 'Расширения', 0]]
+  .map(([k, l, b], i) => `<button class="ni ${i ? '' : 'on'}" title="${l}" data-nav="${NAVKEY[l] || ''}" data-label="${l}">${ic(k, 'currentColor', 20)}<span class="lb">${l}</span>${b ? `<span class="bd">${b}</span>` : ''}</button>`).join('') + `<div class="spacer"></div><div class="offl"><div class="r1"><button class="mswb on" id="msw" aria-pressed="true" title="Выключить или включить микрофон для Jarvis">${ic('mic', C.cyan, 18)}</button><b>Микрофон</b></div><div class="hear" id="hear">пока тихо</div><div class="lv" id="lv">${'<i></i>'.repeat(16)}</div>
+    <div class="kv"><span>Усиление<b id="mgain">—</b></span><span>Порог<b id="mthr">—</b></span></div>
+    <div class="ar" id="mrow-auto"><span>Автозапуск</span><button class="tgl" id="asw" aria-pressed="false" title="Запускать Jarvis вместе с Windows"><span class="sw"></span></button></div>
+    <div class="r2" id="mrow-off">${ic('shield', C.green, 15)}Работает офлайн, речь остаётся на этом компьютере</div></div><button class="ni" title="Настройки" data-nav="look" data-label="Настройки">${ic('gear', 'currentColor', 20)}<span class="lb">Настройки</span></button>`;
+$('search').innerHTML = ic('search', 'var(--ic)', 16) + '<span>Поиск  Ctrl+K</span>'; $('ib1').innerHTML = ic('bell', 'var(--ic)', 19); $('mic').innerHTML = ic('mic', '#3df5ac', 28);
+$('sys').innerHTML = [['cpu', 'ЦП', C.cyan], ['ram', 'Память', C.green], ['disk', 'Диск C:', C.amber], ['bat', 'Батарея', C.green]].map(([k, l, c]) => `<div class="m" style="--c:${c}"><div class="ring"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="34"/><circle class="pg" id="b_${k}" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6"/></svg><b id="v_${k}">–</b></div><span id="l_${k}">${l}</span></div>`).join('');
+const setGame = (on) => { $('gmode').classList.toggle('on', on); $('gmode').setAttribute('aria-pressed', on); $('gs').textContent = on ? 'включён' : 'выключен'; $('gi').innerHTML = ic('pad', on ? C.amber : 'var(--ic)', 20); }; setGame(false); $('gmode').onclick = async () => { const want = !$('gmode').classList.contains('on'); if (m.connected) { const r = await J.send('run', { id: want ? 'game_mode_on' : 'game_mode_off' }); if (!(r && r.ok)) setGame(!!m.game); return; } setGame(want); };   // live: the state comes back through the `game` topic setGame(false);
+const SUG = ['поставь таймер на 10 минут', 'что за песня играет', 'включи игровой режим']; $('sugg').innerHTML = SUG.map((s) => `<button>«${s}»</button>`).join('');
+$('sugg').onclick = (e) => { const b = e.target.closest('button'); if (b) { J.model.heard = b.textContent.slice(1, -1); J.setState('SPEAKING'); } };
+
+// ---- notices: calm greeting when fine, scrolling ticker when there is something to say ----
+const notices = {}; const SEV = { info: [C.cyan, 'bell'], warn: [C.amber, 'warn'], err: [C.red, 'warn'] };
+function setNotice(id, n) { if (n) notices[id] = n; else delete notices[id]; renderMsg(); }
+function bellList(list) { $('drop').innerHTML = '<h4>Уведомления</h4>' + (list.length ? list.map((n) => { const [c, k] = SEV[n.sev]; return `<div class="it">${ic(k, c, 17)}<span>${esc(n.text)}</span></div>`; }).join('') : '<div class="em">Всё спокойно: новых уведомлений нет.</div>'); }
+P.palette = 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM9 11h.01M15 11h.01M12 15h.01';
+$('ib1').onclick = (e) => { e.stopPropagation(); $('drop').classList.toggle('open'); }; document.addEventListener('click', () => { $('drop').classList.remove('open'); });
+function bellBadge(list) { bellList(list); const old = $('ib1').querySelector('.cnt'); if (old) old.remove(); if (list.length) $('ib1').insertAdjacentHTML('beforeend', `<span class="cnt${list.some((n) => n.sev === 'err') ? ' err' : ''}">${list.length}</span>`); }
+const SUBS = { IDLE: 'ждёт команду', LISTENING: 'слушает вас', SPEAKING: 'отвечает' };
+function renderMsg() { const list = Object.values(notices), bad = list.some((n) => n.sev === 'err'), warn = list.some((n) => n.sev === 'warn'); const col = bad ? C.red : warn || micMuted ? C.amber : C.green;
+  bellBadge(list); const hr = new Date().getHours(), gr = hr < 6 ? 'Доброй ночи' : hr < 12 ? 'Доброе утро' : hr < 18 ? 'Добрый день' : 'Добрый вечер';
+  const first = list.find((n) => n.sev === 'err') || list.find((n) => n.sev === 'warn');
+  $('msg').innerHTML = `<div class="mod" style="--c:${col}"><span class="lamp"></span><div><b>${bad ? 'Нужно внимание' : micMuted ? 'Jarvis не слушает' : 'Jarvis работает'}</b><span id="sub">${first ? esc(first.text) : micMuted ? 'микрофон выключен' : SUBS[m.state]}</span></div></div>`;
+  const items = list.map((n) => { const [c, k] = SEV[n.sev]; return `<span style="--c:${c}">${ic(k, c, 17)}${esc(n.text)}</span>`; }).join(''); const dur = Math.max(18, list.length * 9);
+  document.querySelector('.stage').classList.toggle('hasmsg', list.length > 0); $('tbar').innerHTML = list.length ? `<div class="ticker"><div class="track" style="--dur:${dur}s">${items}</div></div>` : '';
+  const tk = $('tbar').firstElementChild, tr = tk && tk.firstElementChild; if (tr && tr.getBoundingClientRect().width > tk.clientWidth) tr.innerHTML = items + items; else if (tk) { tk.style.maskImage = tk.style.webkitMaskImage = 'none'; tr.style.animation = 'none'; } }   // scroll only when the notices do not fit
+renderMsg();
+
+// ---- next / history ----
+const KIND = { timer: ['timer', C.cyan], info: ['list', C.cyan], app: ['cal', C.green], reminder: ['bell', C.amber], game: ['pad', C.green] };
+let left = 7 * 60 + 42; const clock = () => String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+const EMPTY = (t) => `<div class="empty">${t}</div>`;
+let timerEnd = 0;   // epoch ms when the running timer ends (live mode); 0 = demo countdown
+const fmtLeft = (sec) => { sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec / 3600), mi = Math.floor(sec % 3600 / 60), se = sec % 60, p = (n) => String(n).padStart(2, '0'); return h ? `${h}:${p(mi)}:${p(se)}` : `${p(mi)}:${p(se)}`; };
+function renderNext() {
+  if (!m.upcoming.length) { $('next').innerHTML = EMPTY('Ближайших дел нет'); return; }
+  $('next').innerHTML = m.upcoming.map((u) => {
+    if (u.kind === 'timer') return `<div class="row"><span class="ico" style="--c:${C.cyan}">${ic('timer', C.cyan, 19)}</span><div><div class="t1">${esc(u.label || 'Таймер')}</div><div class="t2">сработает в ${u.t}</div></div><span class="big" id="cd">${timerEnd ? fmtLeft((timerEnd - Date.now()) / 1000) : clock()}</span></div>`;
+    const [k, c] = KIND[u.kind] || KIND.info; return `<div class="row"><span class="ico" style="--c:${c}">${ic(k, c, 19)}</span><div><div class="t1">${esc(u.label)}</div><div class="t2">${u.t}${u.note ? ' · ' + esc(u.note) : ''}</div></div><span class="rt">${rel(mins(u.t))}</span></div>`;
+  }).join('');
+}
+function renderHist() {
+  $('hist').innerHTML = m.log.length ? m.log.slice().reverse().map((l) => { const [k, c] = KIND[l.kind] || KIND.info; return `<div class="row"><span class="ico s" style="--c:${c}">${ic(k, c, 15)}</span><div class="t1">${l.said ? `«${esc(l.said)}» <span>→ ${esc(l.did)}</span>` : esc(l.did)}</div><span class="rt">${ago(l.t)}</span></div>`; }).join('') : EMPTY('Пока пусто: скажите «Джарвис» и команду');
+  requestAnimationFrame(() => fitRows($('hist')));
+}
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+renderNext(); renderHist();
+setInterval(() => { const e = $('cd'); if (timerEnd) { if (e) e.textContent = fmtLeft((timerEnd - Date.now()) / 1000); return; } left = Math.max(0, left - 1); if (e) e.textContent = clock(); }, 1000);
+const MON = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+function tick() { const d = new Date(), p2 = (n) => String(n).padStart(2, '0'), sec = d.getSeconds();
+  $('clk').innerHTML = `${p2(d.getHours())}:${p2(d.getMinutes())}<span class="ss">${p2(sec)}</span>`;
+  const bar = $('secp'); bar.style.transition = sec === 0 ? 'none' : ''; bar.style.setProperty('--p', (sec / 59 * 100).toFixed(1) + '%');
+  { const dk = d.toDateString(); if ($('date').dataset.d !== dk) { $('date').dataset.d = dk; $('date').innerHTML = `<b>${d.toLocaleDateString('ru-RU', { weekday: 'long' })}</b><i></i><span>${d.getDate()} ${MON[d.getMonth()]}</span>`; } } } setInterval(tick, 1000); tick();
+const FX_SPD = { IDLE: ['7s', '4.5s'], LISTENING: ['3.4s', '2.4s'], SPEAKING: ['2.4s', '1.6s'] };
+let stateAt = Date.now(), seenSt = '';
+/* "calm": nothing is happening, so the page may draw slowly and stop its endless animations. LISTENING counts as calm when it has lasted
+   over 8 s with no speech (the core can sit in it for a long time after a stray noise). */
+const calm = () => m.state === 'IDLE' || (m.state === 'LISTENING' && m.connected && Date.now() - Math.max(m.speechTs || 0, stateAt) > 8000);
+const syncCalm = () => { const v = calm() ? 'IDLE' : m.state; if (html.dataset.st !== v) html.dataset.st = v; };
+function paint() { if (m.state !== seenSt) { seenSt = m.state; stateAt = Date.now(); } syncCalm(); { const f = FX_SPD[m.state] || FX_SPD.IDLE; html.style.setProperty('--sweep', f[0]); html.style.setProperty('--breathe', f[1]); } const sb = $('sub'); if (sb && !Object.keys(notices).length) sb.textContent = micMuted ? 'микрофон выключен' : SUBS[m.state]; const col = curCol(); html.style.setProperty('--state', col); $('st').textContent = micMuted ? 'МИКРОФОН ВЫКЛЮЧЕН' : SRU[m.state]; const idle = m.state === 'IDLE';
+  $('heard').textContent = micMuted ? 'Нажмите на микрофон, чтобы Jarvis снова слушал' : m.state === 'LISTENING' ? '«' + (m.heard || '…') + '»' : m.state === 'SPEAKING' ? '«' + m.heard + '»' : 'Скажите «Джарвис»'; $('heard').style.opacity = idle || micMuted ? .55 : 1; $('reply').textContent = m.state === 'SPEAKING' ? m.reply : ''; $('sugg').style.visibility = idle && !micMuted ? 'visible' : 'hidden'; if (decorKey !== curCol() + CW + CH) drawDecor(); }
+J.on('state', paint); J.on('heard', paint);
+const BAT = { v: 87, real: false, charging: false }; if (navigator.getBattery) navigator.getBattery().then((b) => { const upd = () => { BAT.v = Math.round(b.level * 100); BAT.charging = b.charging; BAT.real = true; }; upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd); }).catch(() => {});
+const NET_ARROW = (k) => `<svg viewBox="0 0 12 12" width="11" height="11" fill="${k === 'd' ? C.green : C.amber}"><path d="${k === 'd' ? 'M1 3h10L6 11z' : 'M1 9h10L6 1z'}"/></svg>`;
+const fmtSpeed = (kb) => { kb = kb || 0; if (kb < 1) return '0 КБ/с'; if (kb < 1000) return Math.round(kb) + ' КБ/с'; const mb = kb / 1024; return (mb < 10 ? mb.toFixed(1) : Math.round(mb)).toString().replace('.', ',') + ' МБ/с'; };
+J.on('sensors', () => { const s = m.sensors, set = (k, v) => { window.fzNum ? fzNum($('v_' + k), v, '<small>%</small>') : ($('v_' + k).innerHTML = Math.round(v) + '<small>%</small>'); $('b_' + k).style.strokeDashoffset = 213.6 * (1 - Math.min(100, v) / 100); }; set('cpu', s.cpu || 0); set('ram', s.ram || 0); set('disk', s.disk || 0); set('bat', BAT.v); { const rg = $('v_bat') && $('v_bat').parentElement; if (rg) { let bd = rg.querySelector('.chg'); if (BAT.charging && !bd) rg.insertAdjacentHTML('beforeend', `<span class="chg" title="Заряжается"><svg viewBox="0 0 24 24" width="10" height="10" fill="#04140e"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>`); else if (!BAT.charging && bd) bd.remove(); } } $('net').innerHTML = `<span title="Скорость скачивания из интернета">${NET_ARROW('d')}<b>${fmtSpeed(s.down)}</b><em>скачивание</em></span><span title="Скорость отправки в интернет">${NET_ARROW('u')}<b>${fmtSpeed(s.up)}</b><em>отправка</em></span>`; });
+
+// ================= weather: sky scene driven by real sunrise/sunset (day/night cycle) =================
+const WX = { city: 'Киев', temp: 18, feels: 17, wind: 2.2, hum: 54, pres: 764, sr: '07:34', ss: '18:09', cond: 'partly', yest: 3 };
+const COND_RU = { partly: 'Переменная облачность', clear: 'Ясно', cloudy: 'Пасмурно', rain: 'Дождь', snow: 'Снег' }, TIP = { partly: 'Возьмите лёгкую куртку', clear: 'Хороший день для прогулки', cloudy: 'Может стать прохладнее', rain: 'Возьмите зонт', snow: 'Одевайтесь теплее, скользко' };
+const toMin = (s) => +s.slice(0, 2) * 60 + +s.slice(3);
+const nowMin = () => { if (demoT !== null) return demoT; const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60; };
+function sunState() { const t = nowMin(), sr = toMin(WX.sr), ss = toMin(WX.ss);
+  if (t >= sr && t <= ss) { const f = (t - sr) / (ss - sr); return { day: true, f, h: Math.sin(Math.PI * f), t, sr, ss }; }
+  const nl = 1440 - (ss - sr), tt = t > ss ? t - ss : t + 1440 - ss, f = tt / nl, dist = Math.min(tt, nl - tt), x = Math.min(1, dist / 120), sm = x * x * (3 - 2 * x); return { day: false, f, h: -0.02 - 0.98 * sm, t, sr, ss }; }
+const lerpC = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k)), mix = (stops, h) => { for (let i = 0; i < stops.length - 1; i++) { const [h0, c0] = stops[i], [h1, c1] = stops[i + 1]; if (h <= h1) return lerpC(c0, c1, Math.max(0, (h - h0) / (h1 - h0))); } return stops[stops.length - 1][1]; };
+const SKY_TOP = [[-1, [4, 9, 28]], [-.12, [8, 16, 44]], [.02, [52, 44, 98]], [.2, [24, 98, 170]], [1, [20, 108, 190]]], SKY_BOT = [[-1, [10, 24, 52]], [-.12, [16, 34, 74]], [.02, [222, 112, 74]], [.2, [110, 190, 235]], [1, [126, 202, 244]]];
+const sky = $('sky'), sg = sky.getContext('2d'); let SW = 300, SH = 150, SD = 1; const CLOUDS = Array.from({ length: 7 }, (_, i) => ({ x: (i * 0.173) % 1, y: .12 + ((i * 0.37) % 0.5), s: .6 + (i % 3) * .3, v: .006 + (i % 4) * .003 })), DROPS = Array.from({ length: 60 }, (_, i) => ({ x: (i * .6180339) % 1, y: (i * .377) % 1, v: .5 + (i % 5) * .12 })), STARS2 = Array.from({ length: 70 }, (_, i) => ({ x: (i * .6180339 * 1.7) % 1, y: ((i * .377 * 2.3) % 1) * .8, p: i }));
+function sizeSky() { const r = sky.getBoundingClientRect(); if (!r.width) return; SD = Math.min(devicePixelRatio || 1, 1.5); SW = r.width; SH = r.height; sky.width = Math.round(SW * SD); sky.height = Math.round(SH * SD); }
+function drawSky(now) { const S = sunState(), g = sg; g.setTransform(SD, 0, 0, SD, 0, 0); const top = mix(SKY_TOP, S.h), bot = mix(SKY_BOT, S.h), gr = g.createLinearGradient(0, 0, 0, SH); gr.addColorStop(0, `rgb(${top})`); gr.addColorStop(1, `rgb(${bot})`); g.fillStyle = gr; g.fillRect(0, 0, SW, SH);
+  const night = Math.max(0, Math.min(1, (0.1 - S.h) / 0.25)); if (night > 0) { g.fillStyle = '#dff1ff'; for (const s of STARS2) { g.globalAlpha = night * (.25 + .6 * Math.abs(Math.sin(now / 900 + s.p))); g.fillRect(s.x * SW, s.y * SH, 1.3, 1.3); } g.globalAlpha = 1; }
+  const baseY = SH * .78, arcH = SH * .52, x0 = SW * .1, x1 = SW * .9, px = x0 + (x1 - x0) * S.f, py = baseY - Math.sin(Math.PI * S.f) * arcH;
+  g.strokeStyle = 'rgba(255,255,255,.22)'; g.setLineDash([2, 5]); g.lineWidth = 1; g.beginPath(); for (let i = 0; i <= 40; i++) { const f = i / 40, x = x0 + (x1 - x0) * f, y = baseY - Math.sin(Math.PI * f) * arcH; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); g.setLineDash([]);
+  const cc = { clear: 0, partly: 3, cloudy: 7, rain: 7, snow: 7 }[WX.cond]; const dark = WX.cond === 'cloudy' || WX.cond === 'rain' ? .55 : 0;
+  if (S.day) { const rg = g.createRadialGradient(px, py, 2, px, py, SH * .5); rg.addColorStop(0, 'rgba(255,236,170,.95)'); rg.addColorStop(.18, 'rgba(255,214,120,.55)'); rg.addColorStop(1, 'rgba(255,200,100,0)'); g.fillStyle = rg; g.fillRect(0, 0, SW, SH); g.fillStyle = '#fff3c4'; g.beginPath(); g.arc(px, py, SH * .055, 0, 6.283); g.fill(); }
+  else { const rg = g.createRadialGradient(px, py, 2, px, py, SH * .4); rg.addColorStop(0, 'rgba(190,215,255,.5)'); rg.addColorStop(1, 'rgba(190,215,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, SW, SH); g.fillStyle = '#e8f1ff'; g.beginPath(); g.arc(px, py, SH * .06, 0, 6.283); g.fill(); g.fillStyle = `rgb(${top})`; g.beginPath(); g.arc(px + SH * .03, py - SH * .01, SH * .055, 0, 6.283); g.fill(); }
+  for (let i = 0; i < cc; i++) { const c = CLOUDS[i], x = ((c.x + now / 1000 * c.v) % 1.3 - .15) * SW, y = c.y * SH, w = SW * .26 * c.s; const lum = S.day ? 255 - dark * 120 : 120 - dark * 40, a = (S.day ? .7 : .35) * (WX.cond === 'partly' ? .8 : 1);
+    g.fillStyle = `rgba(${lum},${lum},${Math.min(255, lum + 8)},${a})`; for (const [dx, dy, r] of [[0, 0, .32], [.28, -.1, .4], [.6, 0, .3], [.3, .08, .34]]) { g.beginPath(); g.ellipse(x + dx * w, y + dy * w * .5, r * w * .7, r * w * .42, 0, 0, 6.283); g.fill(); } }
+  if (WX.cond === 'rain') { g.strokeStyle = 'rgba(190,220,255,.55)'; g.lineWidth = 1; g.beginPath(); for (const d of DROPS) { const y = ((d.y + now / 1000 * d.v) % 1) * SH, x = d.x * SW + y * .12; g.moveTo(x, y); g.lineTo(x - 2, y + 9); } g.stroke(); }
+  if (WX.cond === 'snow') { g.fillStyle = 'rgba(255,255,255,.85)'; for (const d of DROPS) { const y = ((d.y + now / 1000 * d.v * .25) % 1) * SH, x = d.x * SW + Math.sin(now / 900 + d.y * 9) * 6; g.beginPath(); g.arc(x, y, 1.5, 0, 6.283); g.fill(); } }
+  g.fillStyle = S.day ? 'rgba(8,24,44,.55)' : 'rgba(3,8,18,.82)'; g.beginPath(); g.moveTo(0, SH); g.lineTo(0, baseY + 6); for (let i = 0; i <= 24; i++) { const x = SW * i / 24, h = [0, 8, 4, 14, 6, 10, 3, 12, 8, 16, 5, 9, 4, 13, 7, 10, 3, 11, 6, 15, 5, 9, 4, 8, 6][i]; g.lineTo(x, baseY + 6 - h); } g.lineTo(SW, SH); g.closePath(); g.fill();
+  if (S.h < .12) { g.fillStyle = '#ffd98a'; for (let i = 0; i < 16; i++) { g.globalAlpha = .35 + .5 * Math.abs(Math.sin(now / 1500 + i * 2)); g.fillRect(SW * (.05 + i * .059), baseY + 5 - ((i * 7) % 9), 1.6, 1.6); } g.globalAlpha = 1; }
+  g.fillStyle = `rgba(0,0,0,${.12 + dark * .15})`; g.fillRect(0, 0, SW, SH); }
+function paintWeather() { const S = sunState(), tip = TIP[WX.cond]; $('wdeg').textContent = (WX.temp > 0 ? '+' : '') + WX.temp + '°'; $('wdesc').textContent = COND_RU[WX.cond]; $('wfeels').textContent = `ощущается ${WX.feels > 0 ? '+' : ''}${WX.feels}°`;
+  $('wcmp').textContent = tip; $('wsr').textContent = WX.sr; $('wss').textContent = WX.ss; $('wxr').innerHTML = esc(WX.city) + (demoT !== null ? `<span class="badge">демо ${fmtT(demoT)}</span>` : '');
+  const rest = S.day ? Math.round((S.ss - S.t)) : Math.round(S.t < S.sr ? S.sr - S.t : 1440 - S.t + S.sr); $('wleft').textContent = S.day ? `до заката ${Math.floor(rest / 60)} ч ${rest % 60} мин` : `до рассвета ${Math.floor(rest / 60)} ч ${rest % 60} мин`;
+  $('wstats').innerHTML = '';
+  const [br, bg, bb] = String(mix([[-1, [5, 18, 40]], [-.1, [8, 26, 54]], [.2, [10, 50, 92]], [1, [12, 62, 108]]], S.h)).split(',').map(Number), mxv = Math.max(br, bg, bb) / 255, mnv = Math.min(br, bg, bb) / 255, ll = (mxv + mnv) / 2, ss = mxv === mnv ? 0 : (mxv - mnv) / (1 - Math.abs(2 * ll - 1));
+  html.style.setProperty('--bg1', `hsl(calc(var(--h) + 5) calc(${(ss * 100).toFixed(0)}% * var(--sk)) ${(ll * 100).toFixed(1)}%)`); }
+
+// ================= camera and guard (from the old HUD: preview with face box, guard mode) =================
+const cam = $('cam'), cg = cam.getContext('2d'); let CWd = 300, CHt = 150, camOn = false, guardOn = false;
+function sizeCam() { const r = cam.getBoundingClientRect(); if (!r.width) return; cam.width = Math.round(r.width); cam.height = Math.round(r.height); CWd = r.width; CHt = r.height; }
+function corners(g, w, h, col, s = 16, p = 10) { g.strokeStyle = col; g.lineWidth = 2; for (const [x, y, dx, dy] of [[p, p, 1, 1], [w - p, p, -1, 1], [p, h - p, 1, -1], [w - p, h - p, -1, -1]]) { g.beginPath(); g.moveTo(x + dx * s, y); g.lineTo(x, y); g.lineTo(x, y + dy * s); g.stroke(); } }
+// real webcam through getUserMedia (the preview only; the guard keeps using the synthetic view in this prototype)
+const vid = document.createElement('video'); vid.muted = true; vid.playsInline = true; let stream = null, camErr = '', camBusy = false;
+async function camStart() { if (stream || camBusy) return; camBusy = true; camErr = '';
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false }); vid.srcObject = stream; await vid.play(); if (!camOn) camStop(); }
+  catch (e) { camErr = e && e.name === 'NotAllowedError' ? 'Нет доступа к камере' : 'Камера не найдена или занята'; camOn = false; paintCam(); }
+  camBusy = false; }
+function camStop() { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; vid.srcObject = null; } }
+function drawVideo(g, w, h, col) { const vw = vid.videoWidth, vh = vid.videoHeight; g.fillStyle = '#040b14'; g.fillRect(0, 0, w, h); if (!vw) { g.fillStyle = C.dim || '#8fb4cc'; g.font = '500 13px Onest'; g.textAlign = 'center'; g.fillText('запуск камеры…', w / 2, h / 2); g.textAlign = 'left'; return; }
+  const k = Math.max(w / vw, h / vh), dw = vw * k, dh = vh * k; g.save(); g.translate(w, 0); g.scale(-1, 1); g.drawImage(vid, (w - dw) / 2, (h - dh) / 2, dw, dh); g.restore();   // mirrored like a mirror
+  corners(g, w, h, col); g.fillStyle = C.red; g.beginPath(); g.arc(w - 18, 18, 4, 0, 6.283); g.fill(); }
+function drawCam(now) { const g = cg, w = CWd, h = CHt; g.clearRect(0, 0, w, h); const col = guardOn ? C.amber : C.cyan, t = now / 1000;
+  if (camOn && !guardOn) { drawVideo(g, w, h, col); return; }
+  if (camOn) { const bg = g.createLinearGradient(0, 0, w, h); bg.addColorStop(0, '#16303a'); bg.addColorStop(1, '#0b1c26'); g.fillStyle = bg; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 0; i < 90; i++) g.fillRect((i * 97.3 + t * 40) % w, (i * 53.7) % h, 2, 1);
+    const fx = w * .5 + Math.sin(t * .8) * w * .06, fy = h * .5, fw = h * .5; g.fillStyle = '#244a58'; g.beginPath(); g.ellipse(fx, fy + fw * .15, fw * .42, fw * .58, 0, 0, 6.283); g.fill(); g.fillStyle = '#12303c'; g.beginPath(); g.ellipse(fx, fy + fw * .75, fw * .8, fw * .4, 0, 0, 6.283); g.fill();
+    g.strokeStyle = '#ffff55'; g.lineWidth = 1.5; g.strokeRect(fx - fw * .5, fy - fw * .55, fw, fw * 1.3); g.fillStyle = '#ffff55'; g.font = '600 11px Onest'; g.fillText('владелец', fx - fw * .5, fy - fw * .6); corners(g, w, h, col); g.fillStyle = C.red; g.beginPath(); g.arc(w - 18, 18, 4, 0, 6.283); g.fill(); return; }
+  g.fillStyle = '#050c16'; g.fillRect(0, 0, w, h); const cx = w / 2, cy = h * .46, r = Math.min(w, h) * .24; g.strokeStyle = col; g.globalAlpha = .75; g.lineWidth = 1; g.setLineDash([4, 4]); g.beginPath(); g.arc(cx, cy, r, 0, 6.283); g.stroke(); g.setLineDash([2, 3]); g.beginPath(); g.moveTo(cx - r - 14, cy); g.lineTo(cx + r + 14, cy); g.moveTo(cx, cy - r - 14); g.lineTo(cx, cy + r + 14); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; corners(g, w, h, col);
+  if (guardOn) { const y = (t * .5 % 1) * h; const sg2 = g.createLinearGradient(0, y - 18, 0, y); sg2.addColorStop(0, rgba(C.amber, 0)); sg2.addColorStop(1, rgba(C.amber, .35)); g.fillStyle = sg2; g.fillRect(0, y - 18, w, 18); g.fillStyle = C.amber; g.font = '600 12px Onest'; g.textAlign = 'center'; g.fillText('наблюдаю', cx, h - 14); g.textAlign = 'left'; }
+  else { g.fillStyle = 'var(--ic)'; g.font = '500 12px Onest'; g.textAlign = 'center'; g.fillText('камера выключена', cx, h - 14); g.textAlign = 'left'; } }
+function paintCam() { if (camOn && !guardOn) camStart(); else camStop(); $('bcam').classList.toggle('on', camOn); $('bguard').classList.toggle('on', guardOn); $('bcam').disabled = guardOn; $('bcam').title = guardOn ? 'Камеру сейчас использует охрана' : ''; $('bcam').textContent = camOn ? 'Стоп' : 'Камера'; $('bguard').textContent = guardOn ? 'Снять охрану' : 'Охрана';
+  $('camst').textContent = guardOn ? 'охрана включена' : camOn ? 'идёт просмотр' : camErr || 'выключена'; $('camst').style.color = guardOn ? C.amber : camOn ? C.green : ''; $('camnote').textContent = guardOn ? 'Последнее: владелец распознан · ' + new Date(Date.now() - 6 * 60000).toTimeString().slice(0, 5) : 'Охрана узнаёт вас по лицу и сообщает о чужих'; }
+$('bcam').onclick = () => { camOn = !camOn; paintCam(); }; const setGuard = (on) => { guardOn = !!on; if (guardOn) camOn = false; paintCam(); setNotice('guard', guardOn ? { sev: 'info', text: 'Охрана включена' } : null); if (guardOn) setTimeout(() => setNotice('guard', null), 9000); };
+$('bguard').onclick = () => { const want = !guardOn; if (!m.connected) { setGuard(want); return; } if (want) { camOn = false; paintCam(); } J.send('guard', { on: want }); };   // the core answers through the `guard` topic: it needs a few seconds to learn the owner's face
+J.on('guard', () => { if (m.guard !== guardOn) setGuard(m.guard); }); paintCam();
+
+// ================= core canvas (as in h.html) =================
+const cv = $('core'), g = cv.getContext('2d'), decor = document.createElement('canvas'); let FH = 0, CW = 600, CH = 300, GX, GY, RG, DPR = 1;
+function sizeCanvas() { FH = document.querySelector('.foot').offsetHeight; cv.style.height = `calc(100% + ${FH}px)`; const r = cv.getBoundingClientRect(); if (!r.width) return; DPR = Math.min(devicePixelRatio || 1, 1.25); /* soft line art: a higher density only costs fill rate */ CW = r.width; CH = r.height; cv.width = Math.round(CW * DPR); cv.height = Math.round(CH * DPR); decor.width = cv.width; decor.height = cv.height; GX = CW / 2; const CHs = CH - FH; GY = CHs * 0.47; RG = Math.min(CW * 0.22, CHs * 0.3); const sw = $('sweep'), gw = $('glow'); sw.style.cssText = `left:${GX - RG * 1.3}px;top:${GY - RG * 1.3}px;width:${RG * 2.6}px;height:${RG * 2.6}px`; gw.style.cssText = `left:${GX - RG * 2.1}px;top:${GY - RG * 2.1}px;width:${RG * 4.2}px;height:${RG * 4.2}px`; drawDecor(); }
+let decorKey = '', barCol = '';
+/* The core is drawn once per colour/size into `decor` (dense node mesh on a sphere, atmosphere, orbits with satellites, glowing floor,
+   side arcs, dust). While idle only a few hub nodes and stars glint (see frame); nothing is re-computed per frame. */
+const TWINK = []; let ORBG = [];
+const MESH = (() => { const N = 270, pts = [], links = [];
+  for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + .5) / N, r = Math.sqrt(1 - y * y), a = i * 2.399963; pts.push([r * Math.cos(a), y, r * Math.sin(a)]); }
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) { const dx = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1], dz = pts[i][2] - pts[j][2]; if (dx * dx + dy * dy + dz * dz < .105) links.push([i, j]); }
+  return { pts, links }; })();
+function drawDecor() { if (!GX) return; decorKey = curCol() + CW + CH; const d = decor.getContext('2d'), col = curCol(); d.setTransform(DPR, 0, 0, DPR, 0, 0); d.clearRect(0, 0, CW, CH); TWINK.length = 0;
+  const TAU = 6.283185, FY = GY + RG * 1.3;
+  // aura
+  { const gl = d.createRadialGradient(GX, GY, RG * .1, GX, GY, RG * 2.4); gl.addColorStop(0, rgba(col, .30)); gl.addColorStop(.5, rgba(col, .09)); gl.addColorStop(1, rgba(col, 0)); d.fillStyle = gl; d.fillRect(0, 0, CW, CH); }
+  // floor: glow disc, concentric glowing ellipses, tick ring
+  { d.save(); d.translate(0, FY); d.scale(1, .24); d.translate(0, -FY); const fl = d.createRadialGradient(GX, FY, 0, GX, FY, RG * 2.4); fl.addColorStop(0, rgba(col, .34)); fl.addColorStop(.45, rgba(col, .12)); fl.addColorStop(1, rgba(col, 0)); d.fillStyle = fl; d.beginPath(); d.arc(GX, FY, RG * 2.4, 0, TAU); d.fill(); d.restore();
+    d.strokeStyle = col; d.shadowColor = col; d.shadowBlur = 10; for (let k = 0; k < 5; k++) { d.globalAlpha = .75 - k * .13; d.lineWidth = k ? 1 : 1.6; d.beginPath(); d.ellipse(GX, FY, RG * (1.1 + k * .42), RG * (.14 + k * .05), 0, 0, TAU); d.stroke(); }
+    d.shadowBlur = 0; d.lineWidth = 1; d.globalAlpha = .45; d.beginPath(); for (let a = 0; a < 150; a++) { const an = a * TAU / 150, c = Math.cos(an), sn = Math.sin(an), l = a % 10 === 0 ? 11 : a % 5 === 0 ? 7 : 3.5, rx = RG * 2.05, ry = RG * .3; d.moveTo(GX + c * rx, FY + sn * ry); d.lineTo(GX + c * (rx + l), FY + sn * (ry + l * .22)); } d.stroke(); d.globalAlpha = 1; }
+  // orbits, back halves
+  const ORB = [[RG * 1.85, RG * .5, -.2, [.4, 1.3]], [RG * 2.12, RG * .66, .17, [.9, 1.75]]];
+  const arc = (o, a0, a1) => { d.beginPath(); d.ellipse(GX, GY, o[0], o[1], o[2], a0 * Math.PI, a1 * Math.PI); d.stroke(); };
+  d.strokeStyle = col; d.lineWidth = 1; d.globalAlpha = .32; for (const o of ORB) arc(o, 1, 2);
+  // atmosphere
+  { const at = d.createRadialGradient(GX, GY, RG * .9, GX, GY, RG * 1.3); at.addColorStop(0, rgba(col, 0)); at.addColorStop(.28, rgba(col, .4)); at.addColorStop(1, rgba(col, 0)); d.globalAlpha = 1; d.fillStyle = at; d.beginPath(); d.arc(GX, GY, RG * 1.3, 0, TAU); d.fill(); }
+  // sphere body and mesh
+  { d.save(); d.beginPath(); d.arc(GX, GY, RG, 0, TAU); d.clip();
+    const bg = d.createRadialGradient(GX - RG * .32, GY - RG * .38, RG * .05, GX, GY, RG); bg.addColorStop(0, rgba(col, .34)); bg.addColorStop(.55, rgba(col, .11)); bg.addColorStop(1, rgba(col, .03)); d.fillStyle = bg; d.fillRect(GX - RG, GY - RG, RG * 2, RG * 2);
+    const ROT = .9, TILT = .34, cr = Math.cos(ROT), sr = Math.sin(ROT), ct = Math.cos(TILT), st = Math.sin(TILT);
+    const P = MESH.pts.map((p) => { const x = p[0] * cr + p[2] * sr, z = -p[0] * sr + p[2] * cr, y2 = p[1] * ct - z * st, z2 = p[1] * st + z * ct; return [GX + RG * x, GY - RG * y2, z2]; });
+    d.lineWidth = .7; d.strokeStyle = col;
+    for (const [lo, hi, al] of [[-2, 0, .14], [0, .3, .3], [.3, .65, .52], [.65, 2, .85]]) { d.globalAlpha = al; d.beginPath(); for (const [i, j] of MESH.links) { const zz = (P[i][2] + P[j][2]) / 2; if (zz >= lo && zz < hi) { d.moveTo(P[i][0], P[i][1]); d.lineTo(P[j][0], P[j][1]); } } d.stroke(); }
+    for (let i = 0; i < P.length; i++) { const p = P[i]; if (p[2] < -.05) continue; const hub = i % 11 === 0, z = Math.max(0, p[2]);
+      if (hub) { const hg = d.createRadialGradient(p[0], p[1], 0, p[0], p[1], 9); hg.addColorStop(0, rgba(col, .75)); hg.addColorStop(1, rgba(col, 0)); d.globalAlpha = .4 + .6 * z; d.fillStyle = hg; d.fillRect(p[0] - 9, p[1] - 9, 18, 18); if (z > .3) TWINK.push([p[0], p[1], i]); }
+      d.globalAlpha = .35 + .65 * z; d.fillStyle = hub ? '#fff' : col; d.beginPath(); d.arc(p[0], p[1], hub ? 1.9 + z : .8 + z * .9, 0, TAU); d.fill(); }
+    d.restore(); }
+  // rim light
+  d.globalAlpha = 1; d.strokeStyle = col; d.shadowColor = col; d.shadowBlur = 16; d.lineWidth = 1.6; d.beginPath(); d.arc(GX, GY, RG, 0, TAU); d.stroke(); d.shadowBlur = 0; d.lineWidth = 1; d.globalAlpha = .4; d.beginPath(); d.arc(GX, GY, RG * 1.06, 0, TAU); d.stroke();
+  // orbits, front halves and satellites
+  d.shadowColor = col; d.shadowBlur = 8; d.globalAlpha = .85; for (const o of ORB) arc(o, 0, 1); d.shadowBlur = 0;
+  ORBG = ORB; d.globalAlpha = 1;
+  // thin HUD ring with sparse ticks and bearing labels
+  d.strokeStyle = col; d.lineWidth = 1; d.globalAlpha = .3; d.beginPath(); d.arc(GX, GY, RG * 1.2, 0, TAU); d.stroke(); d.beginPath(); for (let i = 0; i < 100; i++) { const a = i * TAU / 100, r1 = RG * 1.2, r2 = r1 + RG * (i % 5 ? .03 : .07); if (i % 5 === 0 || i % 2 === 0) { d.moveTo(GX + r1 * Math.cos(a), GY + r1 * Math.sin(a)); d.lineTo(GX + r2 * Math.cos(a), GY + r2 * Math.sin(a)); } } d.stroke();
+  d.globalAlpha = .7; d.fillStyle = col; d.font = '600 10px Tektur'; d.textAlign = 'center'; d.textBaseline = 'middle'; for (const [t, an] of [['000', -1.5708], ['090', 0], ['270', 3.1416]]) d.fillText(t, GX + Math.cos(an) * RG * 1.42, GY + Math.sin(an) * RG * 1.42); d.textAlign = 'start'; d.textBaseline = 'alphabetic';
+  // side arcs (wide stage) and dust
+  if (CW > 640) { d.strokeStyle = col; d.lineWidth = 2; for (const sg of [-1, 1]) for (let r = 0; r < 2; r++) { const rad = RG * (1.9 + r * .22), a0 = (sg < 0 ? Math.PI : 0) - .55; d.globalAlpha = .5 - r * .2; d.beginPath(); d.arc(GX, GY, rad, a0, a0 + 1.1); d.stroke(); }
+    d.lineWidth = 1; d.globalAlpha = .4; d.beginPath(); for (let i = -6; i <= 6; i++) for (const sg of [-1, 1]) { const an = (sg < 0 ? Math.PI : 0) + i * .075 * (sg < 0 ? -1 : 1), r1 = RG * 2.18, r2 = r1 + (i % 3 ? 4 : 9); d.moveTo(GX + Math.cos(an) * r1, GY + Math.sin(an) * r1); d.lineTo(GX + Math.cos(an) * r2, GY + Math.sin(an) * r2); } d.stroke(); }
+  d.fillStyle = col; for (let i = 0; i < 70; i++) { d.globalAlpha = .12 + (i * .37 % 1) * .4; d.fillRect(GX + Math.sin(i * 12.9898) * CW * .44, GY + RG * 1.6 - ((i * .137) % 1) * CH * .95, 1.5, 1.5); }
+  d.globalAlpha = 1; }
+const NODES = Array.from({ length: 28 }, (_, i) => ({ lat: Math.asin(((i * 0.6180339 * 2) % 2) - 1), lon: i * 2.399963 })), STARS = Array.from({ length: 50 }, (_, i) => ({ x: ((i * 97.3) % 100) / 100, y: ((i * 53.7) % 100) / 100, p: i * 1.7 }));
+function project(lat, lon, th, tilt) { const x = Math.cos(lat) * Math.sin(lon + th), y0 = Math.sin(lat), z0 = Math.cos(lat) * Math.cos(lon + th); const y = y0 * Math.cos(tilt) - z0 * Math.sin(tilt), z = y0 * Math.sin(tilt) + z0 * Math.cos(tilt); return [GX + RG * x, GY - RG * y, z]; }
+
+// ---- "from the future" layer on the core: voice equalizer ring, radar sweep, comets on the orbits, pulse waves, mouse parallax ----
+let mx = 0, my = 0, pmx = 0, pmy = 0; addEventListener('pointermove', (e) => { mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5; });
+const AMP = { IDLE: .1, LISTENING: .55, SPEAKING: .85 }; let amp = .1; const waves = []; let nextWave = 0;
+function fx(g, t, dt, col) {
+  const a = AMP[m.state] || .1; amp += (a - amp) * Math.min(1, dt * 5); const lv = J.level(t), R0 = RG * 1.06;
+  // equalizer ring: 72 bars, height follows the voice level (state-based noise in the prototype)
+  g.lineWidth = 2; g.strokeStyle = col; g.lineCap = 'round'; g.globalAlpha = .85; g.beginPath();
+  for (let i = 0; i < 72; i++) { const an = i / 72 * 6.283 - 1.5708, n = Math.abs(Math.sin(t * 3.1 + i * .9) * Math.sin(t * 1.7 + i * .37)), h = 2 + (.25 + .75 * n) * lv * RG * .5; g.moveTo(GX + Math.cos(an) * R0, GY + Math.sin(an) * R0); g.lineTo(GX + Math.cos(an) * (R0 + h), GY + Math.sin(an) * (R0 + h)); } g.stroke();
+  // pulse waves when listening or speaking
+  if (m.state !== 'IDLE' && t > nextWave) { waves.push(t); nextWave = t + (m.state === 'SPEAKING' ? .55 : .9); } while (waves.length && t - waves[0] > 2.2) waves.shift();
+  g.lineWidth = 1.5; for (const w0 of waves) { const k = (t - w0) / 2.2; g.globalAlpha = (1 - k) * .45; g.strokeStyle = col; g.beginPath(); g.arc(GX, GY, RG * (1.1 + k * 1.1), 0, 6.283); g.stroke(); }
+  // comets on the orbit ellipses
+  for (let k = 0; k < 3; k++) { const rr = RG * (1.3 + (k + 1) * .45), ry = RG * (.16 + (k + 1) * .05), sp = (.5 + k * .22) * (k % 2 ? -1 : 1);
+    for (let tail = 0; tail < 14; tail++) { const an = t * sp - tail * .045 * Math.sign(sp); g.globalAlpha = (1 - tail / 14) * .9; g.fillStyle = tail ? col : '#fff'; g.beginPath(); g.arc(GX + Math.cos(an) * rr, GY + RG * 1.3 + Math.sin(an) * ry, (1 - tail / 14) * 2.6 + .3, 0, 6.283); g.fill(); } }
+  g.globalAlpha = 1; g.lineCap = 'butt'; }
+const SPD = { IDLE: .32, LISTENING: .8, SPEAKING: 1.3 }; let th = 0, last = performance.now(), lastSlow = 0, lastBars = 0;
+const NO_NX = new Set();
+/* cheap vector motion on top of the static art: a light band sweeping down the sphere, satellites on both orbits, a bright arc running along the floor rings */
+function coreMotion(g, t, col) { const TAU = 6.283185, FY = GY + RG * 1.3;
+  g.save(); g.beginPath(); g.arc(GX, GY, RG, 0, TAU); g.clip();
+  const by = GY - RG + (((t * .17) % 1.5) - .25) * RG * 2, bh = RG * .42, bg = g.createLinearGradient(0, by - bh, 0, by + bh); bg.addColorStop(0, rgba(col, 0)); bg.addColorStop(.5, rgba(col, .26)); bg.addColorStop(1, rgba(col, 0)); g.fillStyle = bg; g.fillRect(GX - RG, by - bh, RG * 2, bh * 2); g.restore();
+  g.lineCap = 'round'; g.strokeStyle = col; const fa = t * .9; for (const [w, al] of [[5, .12], [1.8, .9]]) { g.lineWidth = w; g.globalAlpha = al; g.beginPath(); g.ellipse(GX, FY, RG * 1.94, RG * .3, 0, fa, fa + .7); g.stroke(); }
+  g.lineWidth = 1.4; g.globalAlpha = .55; g.beginPath(); g.ellipse(GX, FY, RG * 1.52, RG * .22, 0, -fa * 1.3, -fa * 1.3 + .45); g.stroke(); g.lineCap = 'butt';
+  ORBG.forEach((o, i) => { for (let k = 0; k < 2; k++) { const a = t * (i ? -.32 : .42) + k * Math.PI + i, ex = o[0] * Math.cos(a), ey = o[1] * Math.sin(a), x = GX + ex * Math.cos(o[2]) - ey * Math.sin(o[2]), y = GY + ex * Math.sin(o[2]) + ey * Math.cos(o[2]), back = Math.sin(a) < 0;
+    g.fillStyle = col; g.globalAlpha = back ? .12 : .3; g.beginPath(); g.arc(x, y, back ? 5 : 8, 0, TAU); g.fill(); g.fillStyle = '#fff'; g.globalAlpha = back ? .45 : 1; g.beginPath(); g.arc(x, y, back ? 1.6 : 2.5, 0, TAU); g.fill(); } });
+  g.globalAlpha = 1; }
+function frame(now) { requestAnimationFrame(frame); if (document.hidden || VIEW !== 'dash') return;
+  const NXs = window.NX || NO_NX; if (now - lastSlow > 110) { lastSlow = now; if (sky.width && !NXs.has('sky')) drawSky(now); if (cam.width && !NXs.has('cam')) drawCam(now); }          // weather and camera at ~9 fps (clouds drift slowly)
+  const quiet = calm();
+  if (NXs.has('core') || !GX || now - last < (quiet ? 100 : 40)) return;   // quiet: 10 fps (motion overlay + glints); listening and speaking: 25 fps
+  const dt = (now - last) / 1000; last = now; const col = curCol(), t = now / 1000;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.drawImage(decor, 0, 0); g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.fillStyle = C.star; for (const s of STARS) { g.globalAlpha = .12 + .4 * Math.abs(Math.sin(t * .8 + s.p)); g.fillRect(s.x * CW, s.y * CH, 1.4, 1.4); }
+  g.fillStyle = '#fff'; for (const h of TWINK) { g.globalAlpha = .15 + .75 * Math.max(0, Math.sin(t * 1.2 + h[2] * 1.7)) ** 3; g.beginPath(); g.arc(h[0], h[1], 2.6, 0, 6.283); g.fill(); } g.globalAlpha = 1;
+  if (!NXs.has('motion')) coreMotion(g, t, col);
+  if (!quiet) fx(g, t, dt, col);
+  const bars = document.querySelectorAll('#lv i'); if (now - lastBars > (calm() ? 220 : 90)) { lastBars = now; const lv = J.level(t); bars.forEach((b, i) => { b.style.transform = `scaleY(${((12 + lv * 88 * Math.abs(Math.sin(t * 4 + i * .8))) / 100).toFixed(2)})`; if (barCol !== col) b.style.background = col; }); barCol = col; }
+  const wv = $('wave'), on = m.state !== 'IDLE'; wv.style.visibility = on ? 'visible' : 'hidden';
+  if (on) { const w = wv.clientWidth, h = wv.clientHeight; if (wv.width !== w * 2) { wv.width = w * 2; wv.height = h * 2; } const c = wv.getContext('2d'), lv = J.level(t); c.setTransform(2, 0, 0, 2, 0, 0); c.clearRect(0, 0, w, h); c.lineWidth = 2; c.strokeStyle = col; 
+    for (let k = 0; k < 2; k++) { c.globalAlpha = k ? .35 : 1; c.beginPath(); for (let x = 0; x <= w; x += 3) { const u = x / w, env = Math.sin(u * 3.1416) ** 1.5, y = h / 2 + Math.sin(u * 14 + t * (6 + k * 2) + k) * env * h * .42 * (.25 + lv); x ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); } } }
+new ResizeObserver(() => { sizeCanvas(); sizeSky(); sizeCam(); }).observe(document.body);
+
+// ================= live data from the Jarvis core (see ui_next/bridge); demo content stays only when no core is connected =================
+const toT = (ts) => { const d = new Date(ts); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const WCODE = (c, desc) => { if (c == null) { const d = String(desc || '').toLowerCase(); return /снег|сніг/.test(d) ? 'snow' : /дожд|дощ|ливен|гроз/.test(d) ? 'rain' : /ясно|солнечно|сонячно/.test(d) ? 'clear' : /пасмур|хмар|туман/.test(d) ? 'cloudy' : 'partly'; }
+  return c === 0 ? 'clear' : c <= 2 ? 'partly' : c === 3 || c === 45 || c === 48 ? 'cloudy' : (c >= 71 && c <= 77) || c === 85 || c === 86 ? 'snow' : 'rain'; };
+J.on('live', () => { m.upcoming = []; m.log = []; document.querySelectorAll('.ni .bd').forEach((b) => b.remove()); renderNext(); renderHist(); });
+J.on('conn', () => { setNotice('conn', m.connected ? null : { sev: 'warn', text: 'Нет связи с Jarvis: запущен ли он?' }); });
+J.on('state', () => { setNotice('loading', m.loading ? { sev: 'info', text: 'Jarvis загружается…' } : null); });
+J.on('game', () => { setGame(!!m.game); });
+J.on('notices', () => { for (const k of Object.keys(notices)) if (k.startsWith('core:')) delete notices[k]; for (const n of m.notices) notices['core:' + n.id] = { sev: n.sev, text: n.text }; renderMsg(); });
+const setBadge = (label, n) => { const b = [...document.querySelectorAll('.ni')].find((x) => x.title === label); if (!b) return; let bd = b.querySelector('.bd'); if (!n) { if (bd) bd.remove(); return; } if (!bd) { b.insertAdjacentHTML('beforeend', '<span class="bd"></span>'); bd = b.querySelector('.bd'); } bd.textContent = n; };
+J.on('timers', () => { const t = m.timers || {}, up = []; timerEnd = 0;
+  if (t.timer) { timerEnd = Date.now() + t.timer.remaining * 1000; up.push({ kind: 'timer', label: t.timer.label || 'Таймер', t: toT(timerEnd) }); }
+  for (const r of t.reminders || []) up.push({ kind: 'reminder', label: r.text, t: toT(r.at), note: 'напоминание' });
+  m.upcoming = up; renderNext(); setBadge('Напоминания', (t.reminders || []).length); });
+J.on('history', () => { m.log = m.history.map((h) => ({ t: toT(h.ts), said: h.said, did: h.did, kind: 'info' })); renderHist(); });
+J.on('weather', () => { const w = m.weather; if (!w || !w.ok) return; Object.assign(WX, { city: w.city, temp: w.temp, feels: w.feels, wind: w.wind, hum: w.humidity, pres: w.pressure, sr: w.sunrise, ss: w.sunset, cond: WCODE(w.code, w.desc) }); paintWeather(); });
+
+
+// ---- views: Overview (dashboard) and Commands; other sections announce that they are coming ----
+function showView(v) { VIEW = v; $('app').dataset.view = v === 'dash' ? '' : v;
+  document.querySelectorAll('.ni[data-nav]').forEach((b) => { if (b.dataset.nav) b.classList.toggle('on', b.dataset.nav === v); });
+  if (v === 'dash') requestAnimationFrame(() => layout()); else if (v === 'rems') window.renderRems(); else if (v === 'games') window.renderGames(); else if (v === 'exts') window.renderExts(); else if (v === 'songs') window.renderSongs(); else if (v === 'voice') window.renderVoice(); else if (v === 'mail') window.renderMail(); else if (v === 'calendar') window.renderCalendar(); else if (v === 'look') window.renderLook(); else if (v === 'cinema') window.renderCinema(); else if (v === 'perf') window.renderPerf(); else if (window.renderCommands) window.renderCommands(); }
+let soonTimer = 0;
+$('nav').addEventListener('click', (e) => { const b = e.target.closest('.ni'); if (!b) return;
+  if (b.dataset.nav) { showView(b.dataset.nav); return; }
+  setNotice('soon', { sev: 'info', text: `Раздел «${b.dataset.label || b.title}» появится в следующих версиях` }); clearTimeout(soonTimer); soonTimer = setTimeout(() => setNotice('soon', null), 3500); });
+
+// ---- commands from the core ("open settings", "show the window", reactor effects by voice) ----
+const CORE_TINT = { red: C.red, cyan: C.cyan, green: C.green, amber: C.amber, magenta: C.mag, white: '#ffffff' };
+const coreBurst = () => { for (let i = 0; i < 3; i++) setTimeout(() => waves.push(performance.now() / 1000), i * 160); };
+J.on('uicmd', () => { const c = m.uicmd || {};
+  if (c.op === 'show') { const T = window.__TAURI__; if (T && T.core) T.core.invoke('show_window').catch(() => {}); }
+  else if (c.op === 'view') showView(c.name || 'dash');
+  else if (c.op === 'wizard') { showView('dash'); if (window.openWizard) window.openWizard(); }
+  else if (c.op === 'compose') { showView('mail'); if (window.MailC) window.MailC.open(); }
+  else if (c.op === 'reactor') { if (c.what === 'color') coreTint = CORE_TINT[c.color] || ''; else if (c.what === 'reset') coreTint = ''; else if (c.what === 'pulse') coreBurst(); else if (c.what === 'glitch') { const keep = coreTint; ['red', 'magenta', 'white', 'cyan'].forEach((k, i) => setTimeout(() => { coreTint = CORE_TINT[k]; }, i * 110)); setTimeout(() => { coreTint = keep; }, 520); coreBurst(); } }
+});
+
+// ---- microphone card: configured gain/threshold (live from the core), "hearing" readout from the last voice onset, Windows autostart ----
+let autoOn = false;
+const setAuto = (on) => { autoOn = !!on; $('asw').classList.toggle('on', autoOn); $('asw').setAttribute('aria-pressed', autoOn); };
+$('asw').onclick = async () => { const want = !autoOn; if (m.connected) { const r = await J.send('autostart', { on: want }); if (r && r.ok) setAuto(r.on); } else setAuto(want); };
+J.on('mic', () => { const mp = m.mic || {}; $('mgain').textContent = mp.gain ? '×' + Number(mp.gain).toFixed(1) : '—'; $('mthr').textContent = mp.threshold != null ? mp.threshold : '—'; });
+J.on('autostart', () => setAuto(m.autostart));
+function paintHear() { const el = $('hear'); let txt = 'пока тихо', col = 'var(--dim)'; if (micMuted) { el.textContent = 'выключен'; el.style.color = 'var(--amber)'; return; }
+  if (m.connected) { if (m.speechTs > 0) { const s = (Date.now() - m.speechTs) / 1000; if (s < 2) { txt = 'слышит'; col = 'var(--green)'; } else { txt = s < 60 ? `${Math.floor(s)} с назад` : `${Math.floor(s / 60)} мин назад`; col = s < 120 ? 'var(--amber)' : 'var(--red)'; } } }
+  else if (m.state !== 'IDLE') { txt = 'слышит'; col = 'var(--green)'; }
+  const dot = col === 'var(--dim)' ? '' : '● '; el.textContent = dot + txt; el.style.color = col; }
+setInterval(() => { paintHear(); syncCalm(); }, 500); paintHear();
+// ---- microphone on/off (the old reactor click): while muted Jarvis ignores everything until switched back ----
+function setMuted(on) { micMuted = !!on; html.classList.toggle('muted', micMuted); $('msw').classList.toggle('on', !micMuted); $('msw').setAttribute('aria-pressed', !micMuted); $('mic').setAttribute('aria-pressed', micMuted); $('mic').title = micMuted ? 'Микрофон выключен: нажмите, чтобы включить' : 'Выключить микрофон'; renderMsg(); paint(); paintHear(); }
+async function toggleMic() { const r = await J.send('mic', { on: micMuted }); if (r && r.ok) setMuted(r.muted); else if (!m.connected) setMuted(!micMuted); }
+$('mic').onclick = toggleMic; $('msw').onclick = toggleMic; J.on('muted', () => setMuted(m.muted));
+
+if (!window.__TAURI__) { $('mgain').textContent = '×2.5'; $('mthr').textContent = '199'; }   // browser demo values
+layout(); paint(); paintWeather(); setInterval(paintWeather, 15000); requestAnimationFrame(frame);
+const _layout = layout; layout = function () { _layout(); paintWeather(); };
+// demo presets from the shell (env JARVIS_Q), e.g. "t=12:00;w=rain;x;n;g;c" = time, weather, mic problem, notices, guard, camera
+function applyDemo(q) { if (!q || q === 'full' || q === 'lite') return; for (const part of q.split(';')) { const [k, v] = part.split('='); if (k === 'cat') { window.cmdsCategory(v); continue; } if (k === 'z') { setMuted(true); continue; } if (k === 'v') { showView(v); continue; } if (k === 'q') { $('cm-q').value = v; $('cm-q').dispatchEvent(new Event('input')); continue; } if (k === 'th') { if (v !== THEME.id) { try { localStorage.setItem('jarvisTheme', v); } catch (e) {} location.reload(); return; } continue; }
+  if (k === 't') demoT = toMin(v); else if (k === 'w') WX.cond = v; else if (k === 'x') { problem = true; setNotice('mic', { sev: 'err', text: 'Микрофон не отвечает — проверьте подключение' }); }
+  else if (k === 'n') { setNotice('mail', { sev: 'info', text: 'Почта: 3 новых письма' }); setNotice('bat', { sev: 'warn', text: 'Низкий заряд батареи — 14%' }); setNotice('timer', { sev: 'info', text: 'Таймер на 10 минут запущен' }); }
+  else if (k === 'g') { guardOn = true; camOn = false; paintCam(); } else if (k === 'c') { camOn = true; paintCam(); } else if (k === 'm') { setGame(true); } } layout(); }
+if (window.__TAURI__) window.__TAURI__.core.invoke('get_quality').then(applyDemo);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(layout); setTimeout(layout, 600);
+</script>
+<script src="dropdown.js"></script>
+<script src="datepick.js"></script>
+<script src="timepick.js"></script>
+<script src="cmds.js"></script>
+<script src="stepper.js"></script>
+<script src="rems.js"></script>
+<script src="games.js"></script>
+<script src="exts.js"></script>
+<script src="extsetup.js"></script>
+<script src="songs.js"></script>
+<script src="perf.js"></script>
+<script src="calendar.js"></script>
+<script src="calendar_views.js"></script>
+<script src="calendar_edit.js"></script>
+<script src="calendar_drag.js"></script>
+<script src="calendar_dav.js"></script>
+<script src="mail.js"></script>
+<script src="mail_extra.js"></script>
+<script src="mail_compose.js"></script>
+<script src="voice.js"></script>
+<script src="look.js"></script>
+<script src="tools.js"></script>
+<script src="modules.js"></script>
+<script src="ai.js"></script>
+<script src="dev.js"></script>
+<script src="wizard.js"></script>
+<script src="answer.js"></script>
+<script src="prompts.js"></script>
+<script src="prompts_list.js"></script>
+<script src="nowplaying.js"></script>
+<script src="cinema.js"></script>
+<script src="pedit.js"></script>
+<script src="fields.js"></script>
+<script src="fx.js"></script>
+<script src="sfx.js"></script>
+</body>
+</html>

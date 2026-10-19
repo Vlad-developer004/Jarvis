@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 import pygetwindow as gw
 from core.system import force_foreground
+from core.safe import swallow as _swallow
 _log = logging.getLogger('jarvis.app_launcher')
 def _find_steam_via_registry() -> str | None:
     try:
@@ -39,7 +40,7 @@ def _save_exe_cache():
     try:
         _EXE_CACHE_PATH.write_text(json.dumps(_exe_cache, ensure_ascii=False, indent=2), encoding='utf-8')
     except Exception:
-        pass
+        _swallow()
 _load_exe_cache()
 APPS = {
     'explorer': {'type': 'shell', 'cmd': 'explorer', 'keywords': ['explorer', 'проводник']},
@@ -188,7 +189,7 @@ def _focus_and_maximize(title_keywords: list[str], timeout: float=3.0):
                         force_foreground(w._hWnd)
                         return True
                     except Exception:
-                        pass
+                        _swallow()
         time.sleep(0.3)
     return False
 def open_app(app_name: str) -> tuple[bool, str]:
@@ -199,8 +200,8 @@ def open_app(app_name: str) -> tuple[bool, str]:
     
     # Check for launch behavior preference from global HUD settings
     launch_rules = {}
-    if app_state.hud:
-        launch_rules = app_state.hud._settings.get('app_launch_rules', {})
+    from ui_next import host
+    launch_rules = host.launch_rules()
     
     behavior = launch_rules.get(app_name, 'switch') # 'switch' (default) or 'new'
     
@@ -218,7 +219,7 @@ def open_app(app_name: str) -> tuple[bool, str]:
                             force_foreground(w._hWnd)
                             return (True, app_name)
                         except Exception:
-                            pass
+                            _swallow()
         if app_type == 'shell':
             subprocess.Popen(app['cmd'])
             time.sleep(0.5)
@@ -355,7 +356,7 @@ def close_app(app_name: str) -> tuple[bool, str]:
                         w.close()
                         closed_any = True
                     except Exception:
-                        pass
+                        _swallow()
         if closed_any:
             time.sleep(0.5)
         if exe_name and exe_name.lower() not in ['explorer.exe', 'python.exe']:

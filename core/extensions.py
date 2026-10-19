@@ -3,6 +3,7 @@ import json
 import os
 from config_pack.config import get_data_path
 from core import i18n
+from core.safe import swallow as _swallow
 
 def _get_catalog_path():
     """Get catalog path, preferring Ukrainian version if language is set to Ukrainian"""
@@ -48,7 +49,7 @@ class ExtensionManager:
             with open(_INSTALLED_PATH, 'w', encoding='utf-8') as f:
                 json.dump({'installed': sorted(self._installed)}, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            pass
+            _swallow()
     def is_installed(self, ext_id: str) -> bool:
         return ext_id in self._installed
     def has_feature(self, feature: str) -> bool:

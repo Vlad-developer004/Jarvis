@@ -37,7 +37,7 @@ cp .env.example .env   # optional: fill in for Telegram bot, AI Q&A, mail — Ja
 python main.py
 ```
 
-On first launch a welcome window opens where you pick how JARVIS should address you and see cards with the key features. After that, just say **"Jarvis"**.
+On first launch the Jarvis window opens with a short setup wizard (language, microphone, how JARVIS should address you, feature set, AI). After that, just say **"Jarvis"**. The window is a separate small program (`ui_next/shell`, Tauri) that the assistant starts itself; the close button hides it to the tray, and the tray menu's "Выход" ends the assistant. Running from source needs it built once: `cd ui_next/shell/src-tauri && cargo build --release` (Rust from <https://rustup.rs>). Without it the assistant runs voice-only.
 
 ### Dependency tiers
 
@@ -101,9 +101,16 @@ There are a lot of commands, and you don't need to memorize them. Just say at an
 - Needs `requirements-vision-game.txt` (OpenCV) and downloads a small face-detection model on first use.
 
 **Remote control via your own Telegram bot**
-- Once you set `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (see `.env.example`), Jarvis long-polls your bot's own chat and runs any text message through the exact same intent matcher as spoken commands — so you can trigger voice commands remotely by texting your bot.
+- Once you set `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` (see `.env.example`), Jarvis long-polls your bot's own chat and runs text messages through the same intent matcher as spoken commands, but only a safe subset: media and volume, brightness, timers and reminders, time, weather, calendar, unread mail count, game/economy mode. Power, files, window closing, mail sending, git, cleanup and turning the guard off are never run from the chat; do those at the PC. Nothing runs while `TELEGRAM_CHAT_ID` is empty.
 - The same token/chat ID also power guard-mode intruder photo alerts above.
 - **Setup**: message [@BotFather](https://t.me/BotFather) on Telegram, `/newbot`, get the token — then message your new bot once and get your chat ID (e.g. via `https://api.telegram.org/bot<TOKEN>/getUpdates`). Put both into `.env` as `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Both features are no-ops (fully disabled, no errors) until these two variables are set — nobody else can use or see your bot.
+
+**Security and privacy notes**
+- Updates install only when the release carries `SHA256SUMS` and a valid ed25519 signature `SHA256SUMS.sig` made with the owner's key (public key in `data/update_pubkey.txt`); without that key a build only announces new versions. See `docs/releasing.md`.
+- Downloads of models and helper files use HTTPS only; a hash pinned in `data/model_hashes.json` is enforced, and archives cannot write outside their folder.
+- Files that can run code (`.exe`, `.bat`, `.ps1`, `.lnk`, ...) are never opened by a voice command; links must be http, https or mailto.
+- The IP address lookups (the "my IP" command and the weather fallback when Windows location is off) can be switched off with `"allow_ip_lookup": false` in `jarvis_settings.json`.
+- Passwords and keys live in `%APPDATA%\Jarvis\secrets.env`, written atomically and escaped; log lines mask tokens and keys.
 
 **Assistant and notes**
 - "Remind me to turn off the oven in 20 minutes".
@@ -125,12 +132,12 @@ There are a lot of commands, and you don't need to memorize them. Just say at an
 
 ## Where to find settings
 
-The ⚙️ gear button in the UI, or say "open settings".
+The "Настройки" item of the window's menu, or say "open settings".
 
-- **Voice tab** — mic sensitivity, gain, wake-word mode and "sleep" timer, one-click calibration, local-AI memory-retention timeout.
-- **Interface tab** — themes, transparency, scale.
-- **Extension Manager** — game profiles and extra skills, installed as needed.
-- **Modules tab** — per-feature toggles, including the local AI fallback described above.
+- **Voice screen** — mic sensitivity, gain, wake-word mode and "sleep" timer, one-click calibration, local-AI memory-retention timeout.
+- **Settings > Appearance** — themes (12), effects, scale (also Ctrl +/-).
+- **Extensions screen** — game profiles and extra skills, installed as needed.
+- **Settings > Modules, Tools, AI, Developer** — per-feature toggles (including the local AI fallback described above), backup and update, AI providers and limits, editors and projects.
 
 ---
 
@@ -145,6 +152,7 @@ build.bat
 ```
 
 The script:
+0. Builds the window with `cargo build --release` in `ui_next/shell/src-tauri` (needs Rust); `jarvis.spec` puts the resulting `jarvis-ui.exe` into `dist\Jarvis\shell\`.
 1. Runs PyInstaller against `jarvis.spec` (can take a few minutes — Silero TTS pulls in PyTorch).
 2. Copies `assets/`, `audio/`, `models/`, `config_pack/` next to `Jarvis.exe`.
 3. Copies static data (game profiles, extension catalog, the semantic NLU ONNX model, embedding cache) into `dist\Jarvis\data\` — but **not** your personal `jarvis_settings.json`, `.env`/`secrets.env`, or logs, so API keys or history never leak by accident.

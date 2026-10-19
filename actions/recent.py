@@ -99,8 +99,11 @@ def search_and_open_file(query: str, file_type: str='any') -> tuple[bool, str]:
             
     if best_path and best_score >= 75:
         try:
-            os.startfile(best_path)
+            from core.safe_open import open_user_file
+            open_user_file(best_path)
             return (True, f'Открываю: {best_name}')
+        except PermissionError:
+            return (False, 'Исполняемые файлы я не запускаю по команде')
         except Exception as e:
             return (False, str(e))
             
@@ -112,7 +115,8 @@ def open_recent_file(file_type: str='any', offset: int=0) -> tuple[bool, str]:
         return (False, f'Нет недавних {type_names.get(file_type, 'файлов')}')
     target = files[offset]
     try:
-        os.startfile(target)
+        from core.safe_open import open_user_file
+        open_user_file(target)
         name = Path(target).name
         prefix = 'Последний' if offset == 0 else 'Предпоследний'
         return (True, f'{prefix}: {name}')

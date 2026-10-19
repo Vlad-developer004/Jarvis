@@ -23,6 +23,7 @@ from .phrases import (
     event_air_pressure_emergency, event_air_pressure_warning,
     event_battery_warning, event_adblue_warning,
 )
+from core.safe import swallow as _swallow
 _job_real_start: float = 0.0
 _job_planned_income: int = 0
 _job_fines: list = []
@@ -61,7 +62,7 @@ def _resolve_addr(text: str) -> str:
         text = re.sub(r'\bсэр\b', addr, text, flags=re.IGNORECASE)
         text = re.sub(r'\bсер\b', addr, text, flags=re.IGNORECASE)
     except Exception:
-        pass
+        _swallow()
     return text
 
 def _speak(text: str) -> None:
@@ -70,7 +71,7 @@ def _speak(text: str) -> None:
         from core.speech.pacing import add_pauses
         speak_async(add_pauses(_resolve_addr(text)))
     except Exception:
-        pass
+        _swallow()
 def get_session_report() -> str:
     elapsed = time.monotonic() - _session_start if _session_start > 0 else 0
     h = int(elapsed // 3600)
@@ -341,7 +342,7 @@ def _announce_job_start(data: dict) -> None:
             threading.Thread(target=_llm_job, daemon=True).start()
             return
     except Exception:
-        pass
+        _swallow()
     _announce_job_start_fallback(data)
 
 
@@ -378,7 +379,7 @@ def _announce_job_delivered(data: dict) -> None:
             threading.Thread(target=_llm_delivery, daemon=True).start()
             return
     except Exception:
-        pass
+        _swallow()
     _announce_job_delivered_fallback(data)
 
 
@@ -530,7 +531,7 @@ def _save_session_snapshot() -> None:
         from .session_history import save_session
         save_session(_session_jobs, _session_revenue, _session_dist_km)
     except Exception:
-        pass
+        _swallow()
 
 
 def start() -> None:

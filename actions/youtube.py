@@ -6,6 +6,10 @@ import pygetwindow as gw
 from actions.windows import send_hardware_key, _ensure_en_layout, _restore_layout
 from core.system import force_foreground
 
+import logging
+_log = logging.getLogger(__name__)
+
+
 def search_youtube_candidates(query: str, limit: int = 5) -> list[dict]:
     """Top `limit` YouTube search results as [{'id','title','url','thumbnail'}].
 
@@ -75,7 +79,7 @@ def _get_url_by_search(title: str) -> str | None:
     import yt_dlp
     search_q = title.replace(' - YouTube', '').replace('YouTube', '').strip()
     if len(search_q) < 5: return None
-    print(f'[_get_url_by_search] searching for: {search_q!r}', flush=True)
+    _log.debug(f'[_get_url_by_search] searching for: {search_q!r}')
     opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'noplaylist': True}
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -85,10 +89,10 @@ def _get_url_by_search(title: str) -> str | None:
                 if url:
                     if not url.startswith('http'):
                         url = f"https://www.youtube.com/watch?v={url}"
-                    print(f'[_get_url_by_search] found: {url}', flush=True)
+                    _log.debug(f'[_get_url_by_search] found: {url}')
                     return url
     except Exception as e:
-        print(f'[_get_url_by_search] error: {e}', flush=True)
+        _log.debug(f'[_get_url_by_search] error: {e}')
     return None
 
 def _get_url_from_history(window_title: str = '') -> str | None:
@@ -135,8 +139,7 @@ def _get_url_from_history(window_title: str = '') -> str | None:
                         pass
     
     result = title_match_url or best_url
-    print(f'[_get_url_from_history] hint={title_hint_clean!r} match={title_match_url!r} best={best_url!r}', flush=True)
-    
+    _log.debug(f'[_get_url_from_history] hint={title_hint_clean!r} match={title_match_url!r} best={best_url!r}')
     # Fallback to search if history is useless or title was specific but didn't match history
     if not result and len(title_hint_clean) > 8:
         result = _get_url_by_search(title_hint)
@@ -163,7 +166,7 @@ def _get_current_url() -> str | None:
         except Exception:
             continue
     if not browser_win:
-        print('[_get_current_url] no browser found', flush=True)
+        _log.debug('[_get_current_url] no browser found')
         return None
     hwnd = browser_win._hWnd
     old_clip = ''
@@ -188,7 +191,7 @@ def _get_current_url() -> str | None:
             user32.AttachThreadInput(fg_tid, cur_tid, False)
         time.sleep(0.5)
         actual_fg = user32.GetForegroundWindow()
-        print(f'[_get_current_url] hwnd={hwnd} actual_fg={actual_fg} match={actual_fg==hwnd}', flush=True)
+        _log.debug(f'[_get_current_url] hwnd={hwnd} actual_fg={actual_fg} match={actual_fg==hwnd}')
         mon_w = user32.GetSystemMetrics(0)
         mon_h = user32.GetSystemMetrics(1)
         is_fullscreen = (browser_win.width >= mon_w and browser_win.height >= mon_h)
@@ -217,7 +220,7 @@ def _get_current_url() -> str | None:
                 if top > 0:
                     break
                 time.sleep(0.1)
-            print(f'[_get_current_url] after F11: left={left} top={top}', flush=True)
+            _log.debug(f'[_get_current_url] after F11: left={left} top={top}')
             user32.SetForegroundWindow(hwnd)
             user32.BringWindowToTop(hwnd)
             time.sleep(0.3)
@@ -232,7 +235,7 @@ def _get_current_url() -> str | None:
         _ctrl_key(VK_C)
         time.sleep(0.3)
         url = pyperclip.paste().strip()
-        print(f'[_get_current_url] ctrl+l got: {url!r}', flush=True)
+        _log.debug(f'[_get_current_url] ctrl+l got: {url!r}')
         if not url.startswith('http'):
             pyperclip.copy('')
             VK_MENU = 0x12
@@ -247,16 +250,16 @@ def _get_current_url() -> str | None:
             _ctrl_key(VK_C)
             time.sleep(0.3)
             url = pyperclip.paste().strip()
-            print(f'[_get_current_url] alt+d got: {url!r}', flush=True)
+            _log.debug(f'[_get_current_url] alt+d got: {url!r}')
         user32.keybd_event(VK_ESCAPE, 0, 0, 0)
         time.sleep(0.05)
         user32.keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0)
         time.sleep(0.1)
-        print(f'[_get_current_url] got: {url!r}', flush=True)
+        _log.debug(f'[_get_current_url] got: {url!r}')
         if url.startswith('http'):
             return url
     except Exception as e:
-        print(f'[_get_current_url] error: {e}', flush=True)
+        _log.debug(f'[_get_current_url] error: {e}')
     finally:
         # Always restore fullscreen if we toggled it off, even if something above raised.
         if fs_toggled_off:
@@ -336,8 +339,7 @@ def open_youtube_channel(channel_name: str, background: bool = False):
                 if match:
                     url = f'https://www.youtube.com/channel/{match.group(1)}'
     except Exception as e:
-        print(f'[open_youtube_channel] error: {e}', flush=True)
-
+        _log.debug(f'[open_youtube_channel] error: {e}')
     if url:
         _open_youtube_url(url, background=background)
     else:
@@ -536,7 +538,7 @@ def save_current_video():
         url = _get_current_url()
         if not url:
             url = _get_url_from_history(_browser_title)
-    print(f'[save_current_video] url={url!r}', flush=True)
+    _log.debug(f'[save_current_video] url={url!r}')
     if not url or ('youtube.com' not in url and 'youtu.be' not in url):
         return False
     import re as _re2
@@ -594,7 +596,7 @@ def open_last_watched_video(background: bool = False) -> bool:
     return True
 def open_saved_video(index: int = -1, background: bool = False):
     save_path = os.path.join(os.path.expanduser('~'), 'Jarvis_YT_Saved.txt')
-    print(f'[open_saved_video] index={index}, path={save_path}', flush=True)
+    _log.debug(f'[open_saved_video] index={index}, path={save_path}')
     if not os.path.exists(save_path):
         return False
     with open(save_path, 'r', encoding='utf-8') as f:

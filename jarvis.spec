@@ -1,10 +1,9 @@
 import os
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dynamic_libs, collect_submodules
 ROOT = os.path.dirname(os.path.abspath(SPEC))
 def gather(pkg):
     d, b, h = collect_all(pkg)
     return d, b, h
-ctk_d,  ctk_b,  ctk_h  = gather("customtkinter")
 sher_d, sher_b, sher_h = gather("sherpa_onnx")
 pgm_d,  pgm_b,  pgm_h  = gather("pygame")
 cv2_d,  cv2_b,  cv2_h  = gather("cv2")
@@ -77,6 +76,8 @@ def _project_datas() -> list[tuple[str, str]]:
     safe_files = [
         os.path.join(ROOT, "data", "extensions_catalog.json"),
         os.path.join(ROOT, "data", "jarvis_settings.example.json"),
+        os.path.join(ROOT, "data", "update_pubkey.txt"),
+        os.path.join(ROOT, "data", "model_hashes.json"),
     ]
     for p in safe_files:
         if os.path.exists(p):
@@ -113,7 +114,7 @@ def _filter_datas(datas_list):
             is_gp = d_norm_slash.startswith('data/game_profiles/')
             is_locales = d_norm_slash.startswith('data/locales/')
             is_integrations = d_norm_slash.startswith('data/integrations/')
-            is_safe = name in ['extensions_catalog.json', 'jarvis_settings.example.json']
+            is_safe = name in ['extensions_catalog.json', 'jarvis_settings.example.json', 'update_pubkey.txt', 'model_hashes.json']
             if not (is_gp or is_locales or is_integrations or is_safe):
                 continue
         
@@ -121,21 +122,21 @@ def _filter_datas(datas_list):
     return filtered
 
 datas = _filter_datas(
-    ctk_d + sher_d + pgm_d + cv2_d + pil_d + vosk_d + wsdk_d + tt_d
+    sher_d + pgm_d + cv2_d + pil_d + vosk_d + wsdk_d + tt_d
     + anth_d + oa_d + gen_d + sel_d + llama_d
     + _project_datas()
     + collect_data_files("num2words")
     + collect_data_files("wikipedia")
 )
 ICON_PATH = os.path.join(ROOT, "assets", "icon.ico")
-binaries = ctk_b + sher_b + pgm_b + cv2_b + pil_b + vosk_b + wsdk_b + tt_b + anth_b + oa_b + gen_b + sel_b + llama_b
+# The window is a separate program (ui_next/shell, built by build.bat with cargo) that the core starts; its pages are inside it.
+SHELL_EXE = os.path.join(ROOT, "ui_next", "shell", "src-tauri", "target", "release", "jarvis-ui.exe")
+if not os.path.isfile(SHELL_EXE):
+    raise SystemExit("jarvis-ui.exe is missing: build the window first (cd ui_next/shell/src-tauri && cargo build --release), or run build.bat")
+datas = datas + [(SHELL_EXE, "shell")]
+binaries = sher_b + pgm_b + cv2_b + pil_b + vosk_b + wsdk_b + tt_b + anth_b + oa_b + gen_b + sel_b + llama_b
 hiddenimports = (
-    ctk_h + sher_h + pgm_h + cv2_h + pil_h + vosk_h + wsdk_h + tt_h + llama_h + [
-        "customtkinter",
-        "tkinter", "tkinter.ttk", "tkinter.font",
-        "PIL._tkinter_finder",
-        "ui.hud_constants", "ui.hud_state", "ui.hud_utils", "ui.hud_widgets", "ui.hud_commands", "ui.splash",
-        "ui.hud_layout", "ui.hud_monitoring", "ui.hud_renderer", "ui.hud_window", "ui.hud_camera", "ui.hud_weather",
+    sher_h + pgm_h + cv2_h + pil_h + vosk_h + wsdk_h + tt_h + llama_h + [
         "core.speech.asr", "core.audio_utils", "core.nlp.commands", "core.extensions",
         "core.handler", "core.mic_calibration", "core.responder", "core.system.state",
         "core.speech.tts", "core.system.windows",
@@ -166,14 +167,13 @@ hiddenimports = (
         "features.ets2.phrases_job", "features.ets2.phrases_warnings",
         "features.planetbase", "features.planetbase.installer",
         "features.planetbase.monitor", "features.planetbase.telemetry",
+        "features.planetbase.commands", "features.planetbase.extras",
+        "features.planetbase.advisor", "features.planetbase.autopilot",
+        "features.planetbase.autosave", "features.planetbase.history",
+        "features.planetbase.journal", "features.planetbase.knowledge",
+        "features.planetbase.planet", "core.speech.pacing",
         "features.remote_control", "features.remote_control.client",
         "features.qa.model_fetcher",
-        "ui.dialogs.extensions_common", "ui.dialogs.extensions_setup",
-        "ui.dialogs.keybind_editor", "ui.dialogs.mail_client_dlg",
-        "ui.dialogs.mail_compose_dlg", "ui.dialogs.mail_shared",
-        "ui.dialogs.settings_tabs.tools_remote", "ui.dialogs.spell_editor",
-        "ui.dialogs.yt_picker_dlg", "ui.dialogs.deck",
-        "ui.hud_ai_window", "ui.hud_reactor_fx", "ui.hud_timer_widget",
         "truck_telemetry",
         "truck_telemetry.truck_telemetry",
         "truck_telemetry.telemetry_version",
@@ -184,17 +184,6 @@ hiddenimports = (
         "features.guard", "features.lag_hunter", "features.morning_briefing",
         "features.calendar_reminders",
         "features.qa", "features.ets2.monitor",
-        "ui.dialogs.settings_dlg", "ui.dialogs.name_dlg",
-        "ui.dialogs.file_type_dlg", "ui.dialogs.manage_dlg", "ui.dialogs.welcome_dlg",
-        "ui.dialogs.extensions", "ui.dialogs.commit_dlg",
-        "ui.dialogs.settings_tabs.appearance",
-        "ui.dialogs.settings_tabs.voice",
-        "ui.dialogs.settings_tabs.modules",
-        "ui.dialogs.settings_tabs.modules.premium_view",
-        "ui.dialogs.settings_tabs.modules.base",
-        "ui.dialogs.settings_tabs.modules.constants",
-        "ui.dialogs.settings_tabs.dev",
-        "ui.dialogs.settings_tabs.tools",
         "sherpa_onnx", "vosk",
         "pyaudio", "sounddevice",
         "numpy",
@@ -213,13 +202,13 @@ hiddenimports = (
         "speedtest", "winsdk",
         "num2words", "g2p_en",
         "dotenv", "winsound", "pyperclip",
-        "pystray", "pystray._win32",
         "importlib_resources", "importlib.resources",
         "webbrowser", "socket", "threading", "queue",
         "groq", "httpx", "anyio", "httpcore", "h11", "sniffio",
         "anthropic", "openai", "google.generativeai", "selenium",
     ]
 )
+hiddenimports += collect_submodules("ui_next", filter=lambda name: "devtools" not in name)   # the bridge modules are imported on demand
 a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],

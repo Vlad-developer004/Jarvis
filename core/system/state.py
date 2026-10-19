@@ -24,7 +24,6 @@ class AppState:
         self.mouse_dx: int = 0
         self.mouse_dy: int = 0
         self.mouse_speed: float = 1.0
-        self.hud = None
         self.last_media_hwnd: int = 0
         self.remote_control_enabled: bool = True
         # Live mic-activity readout for the HUD (single-attribute writes,
@@ -45,5 +44,26 @@ class AppState:
         with self._lock:
             self.ignore_mode = not self.ignore_mode
             return self.ignore_mode
+
+    # The game flag and its profile, and the detected game and its exe, are pairs: written under the lock and read as one
+    # snapshot, so a reader on another thread never sees the new flag with the old profile.
+    def set_game(self, active: bool, profile: str = '') -> None:
+        with self._lock:
+            self.game_mode = bool(active)
+            self.game_profile = profile
+
+    def game_snapshot(self) -> tuple[bool, str]:
+        with self._lock:
+            return self.game_mode, self.game_profile
+
+    def set_detected(self, game: str = '', exe: str = '') -> None:
+        with self._lock:
+            self.detected_game = game
+            self.detected_exe = exe
+
+    def detected_snapshot(self) -> tuple[str, str]:
+        with self._lock:
+            return self.detected_game, self.detected_exe
+
 app_state = AppState()
 

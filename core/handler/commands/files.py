@@ -147,7 +147,7 @@ def _empty_trash(handler, cmd, text_lower):
 
 def _create_folder(handler, cmd, text_lower):
     from core.handler.dispatch import parse_folder_name
-    from ui.dialogs.name_dlg import ask_text
+    from ui_next.host import ask_text
     from actions.filesystem import resolve_folder_for_hint
     name, folder_hint = parse_folder_name(text_lower, 'create')
     name = name.strip()
@@ -186,7 +186,7 @@ def _create_folder(handler, cmd, text_lower):
 
 def _delete_folder(handler, cmd, text_lower):
     from core.handler.dispatch import parse_folder_name
-    from ui.dialogs.name_dlg import ask_text
+    from ui_next.host import ask_text
     from actions.filesystem import resolve_folder_for_hint
     name, folder_hint = parse_folder_name(text_lower, 'delete')
     name = name.strip()
@@ -216,7 +216,7 @@ def _delete_folder(handler, cmd, text_lower):
     else: handler.speak(res_msg)
 
 def _delete_file(handler, cmd, text_lower):
-    from ui.dialogs.name_dlg import ask_text
+    from ui_next.host import ask_text
     from pathlib import Path
     from actions.filesystem import normalize_folder_voice_query, get_name_variants, calculate_match_score
 
@@ -327,7 +327,7 @@ def _create_word_doc(handler, cmd, text_lower):
     from actions.office_documents import CREATE_BY_KIND, open_file, sanitize_document_stem, create_plain_text_file
     _KNOWN_EXT = tuple(sorted(CREATE_BY_KIND.keys(), key=len, reverse=True))
     from core.handler.parse_create_file import parse_create_file_intent
-    from ui.dialogs.name_dlg import ask_text
+    from ui_next.host import ask_text
     intent = parse_create_file_intent(text_lower)
     ctx = get_context_path(handler)
     base_path, folder_warn = resolve_folder_for_hint(intent.get('folder_hint'), ctx)

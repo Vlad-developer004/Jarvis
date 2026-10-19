@@ -1,0 +1,137 @@
+/* Skin "command" (theme «Командный центр»): the look of the reference dashboard. Cyan accent on deep navy, glass panels with a hairline cyan edge,
+   a hexagonal status pill and a large cyan clock in the header, outlined active menu item, round counters.
+   Everything is scoped by html[data-skin=command], so the other themes keep the original angular look. */
+
+html[data-skin=command] { --navy-h: 219; --ns: 1; }
+html[data-skin=command] body { background: hsl(calc(var(--navy-h) + 3) calc(72% * var(--ns)) 3.6%); }
+html[data-skin=command] #app { background: radial-gradient(ellipse 62% 52% at 50% 20%, hsl(calc(var(--navy-h) + -2) calc(82% * var(--ns)) 12.5%) 0%, hsl(calc(var(--navy-h) + 1) calc(80% * var(--ns)) 6.4%) 44%, hsl(calc(var(--navy-h) + 4) calc(78% * var(--ns)) 3.6%) 80%); }
+html[data-skin=command] #app::before { background: repeating-linear-gradient(0deg, hsl(var(--h) 100% 62% / .035) 0 1px, transparent 1px 2.2rem), repeating-linear-gradient(90deg, hsl(var(--h) 100% 62% / .035) 0 1px, transparent 1px 2.2rem); }
+
+/* ---- panels ---- */
+html[data-skin=command] .panel { --cut: .5rem; }
+html[data-skin=command] .panel::before { background: linear-gradient(135deg, hsl(var(--h) 100% 72%), hsl(var(--h) 70% 30%) 26%, hsl(var(--h) 60% 22%) 64%, hsl(var(--h) 100% 66%)); }
+html[data-skin=command] .panel::after,
+html[data-skin=command]:not([data-fx=lite]):not(.nx-glass) .panel::after { background: linear-gradient(165deg, hsl(calc(var(--navy-h) + -1) calc(66% * var(--ns)) 14% / .78), hsl(calc(var(--navy-h) + 3) calc(76% * var(--ns)) 6.2% / .9) 72%); }
+html[data-skin=command] .ttl { color: hsl(var(--h) 55% 80%); letter-spacing: .17em; }
+html[data-skin=command] .ttl::before { display: none; }
+
+/* ---- header: hexagonal status pill, clock with the date above ---- */
+html[data-skin=command] #top .msg { position: relative; isolation: isolate; flex: none; padding: .38rem 1.9rem .38rem 1.2rem; overflow: visible; max-width: calc(50% - 8rem); }
+html[data-skin=command] #top .msg::before, html[data-skin=command] #top .msg::after { content: ""; position: absolute; z-index: -1; clip-path: polygon(.75rem 0, calc(100% - .75rem) 0, 100% 50%, calc(100% - .75rem) 100%, .75rem 100%, 0 50%); }
+html[data-skin=command] #top .msg::before { inset: 0; background: hsl(var(--h) 100% 62% / .6); }
+html[data-skin=command] #top .msg::after { inset: 1px; background: linear-gradient(180deg, hsl(calc(var(--navy-h) + -1) calc(70% * var(--ns)) 15% / .96), hsl(calc(var(--navy-h) + 3) calc(76% * var(--ns)) 8% / .98)); }
+html[data-skin=command] #top .clock { display: flex; flex-direction: column; align-items: center; }
+html[data-skin=command] #top .clock #date { order: 0; margin-bottom: .1rem; }
+html[data-skin=command] #top .clock #clk { order: 1; color: hsl(var(--h) 100% 70%); text-shadow: 0 0 1.1rem hsl(var(--h) 100% 60% / .75), 0 0 .3rem hsl(var(--h) 100% 80% / .6); font-size: 1.9rem; }
+html[data-skin=command] #top .clock .secbar { order: 2; width: 100%; }
+html[data-skin=command] #top .clock .ss { color: hsl(var(--h) 80% 62%); }
+
+/* ---- navigation: outlined active item, round counters ---- */
+html[data-skin=command] .ni { border-radius: .5rem; }
+html[data-skin=command] .ni.on { background: hsl(var(--h) 90% 50% / .1); box-shadow: inset 0 0 0 1px hsl(var(--h) 100% 64% / .85), 0 0 1.1rem hsl(var(--h) 100% 60% / .22); }
+html[data-skin=command] .ni.on::before { display: none; }
+html[data-skin=command] .ni .bd, html[data-skin=command] .cnt { clip-path: none; border-radius: 999px; background: hsl(var(--h) 60% 26% / .85); color: hsl(var(--h) 100% 82%); text-shadow: none; font: 700 .72rem Onest; min-width: 1.5rem; height: 1.4rem; box-shadow: inset 0 0 0 1px hsl(var(--h) 80% 55% / .45); }
+
+/* ---- cards: softer, rounded rows like the reference feed ---- */
+html[data-skin=command] .cm-card { border-radius: .5rem; border-color: hsl(var(--h) 70% 50% / .28); }
+html[data-skin=command] .gm-g, html[data-skin=command] .rm-item, html[data-skin=command] .gm-pr { border-radius: .4rem; }
+html[data-skin=command] .offl { border-radius: .5rem; }
+
+/* the status pill already is the plate: drop the module's own frame inside it */
+html[data-skin=command] #top .msg .mod { border: 0 !important; background: none !important; height: auto; padding: 0; clip-path: none; box-shadow: none; }
+html[data-skin=command] #top .msg .mod::before, html[data-skin=command] #top .msg .mod::after { display: none; }
+/* state colour: the whole core stays in the cyan family (green is kept for "on" switches and OK states) */
+html[data-skin=command] .mic { background: var(--cyan); }
+html[data-skin=command] .mic::before { background: radial-gradient(circle, hsl(var(--h) 70% 22%), hsl(calc(var(--navy-h) + 1) calc(76% * var(--ns)) 7%)); }
+
+/* ======================= controls in the reference style: rounded, thin cyan outline, soft glow ======================= */
+html[data-skin=command] :is(.cm-try, .btn) { border-radius: .6rem; clip-path: none !important; text-transform: none; font: 600 .86rem Onest; letter-spacing: .01em; padding: .5rem 1.15rem; color: hsl(var(--h) 100% 90%);
+  background: linear-gradient(180deg, hsl(var(--h) 65% 21% / .78), hsl(calc(var(--navy-h) + 2) calc(72% * var(--ns)) 10% / .92)) !important;
+  box-shadow: inset 0 0 0 1px hsl(var(--h) 100% 62% / .55), 0 0 .9rem hsl(var(--h) 100% 60% / .1) !important; transition: box-shadow .18s, transform .1s, filter .15s; }
+html[data-skin=command] :is(.cm-try, .btn)::before, html[data-skin=command] :is(.cm-try, .btn)::after { display: none; }
+html[data-skin=command] :is(.cm-try, .btn):hover { box-shadow: inset 0 0 0 1px var(--cyan), 0 0 1.2rem hsl(var(--h) 100% 60% / .38) !important; color: #fff; }
+html[data-skin=command] .cm-try.danger { color: #ffe2b0; background: linear-gradient(180deg, rgba(120, 78, 12, .6), rgba(40, 26, 8, .92)) !important; box-shadow: inset 0 0 0 1px rgba(255, 179, 71, .75), 0 0 .9rem rgba(255, 179, 71, .12) !important; }
+html[data-skin=command] .btn.on { color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber), 0 0 1rem rgba(255, 179, 71, .25) !important; }
+html[data-skin=command] .cm-try.done { box-shadow: inset 0 0 0 1px var(--green), 0 0 1rem rgba(61, 245, 172, .25) !important; }
+
+/* chips and tags: pills */
+html[data-skin=command] :is(.rm-chip, .cm-sug button, .cm-ph, .sugg button, .ex-badge) { clip-path: none !important; border-radius: 999px; border: 0 !important;
+  background: hsl(var(--h) 60% 22% / .55) !important; box-shadow: inset 0 0 0 1px hsl(var(--h) 80% 58% / .35) !important; color: hsl(var(--h) 100% 90%); }
+html[data-skin=command] :is(.sugg button, .cm-sug button, .rm-chip)::before, html[data-skin=command] :is(.sugg button, .cm-sug button, .rm-chip)::after { display: none; }
+html[data-skin=command] :is(.rm-chip, .cm-sug button, .cm-ph, .sugg button):hover { box-shadow: inset 0 0 0 1px var(--cyan), 0 0 .9rem hsl(var(--h) 100% 60% / .28) !important; }
+html[data-skin=command] .rm-chip.on { background: var(--amber) !important; color: #1a1000; box-shadow: 0 0 .9rem rgba(255, 179, 71, .35) !important; }
+html[data-skin=command] .ex-badge.on { background: rgba(61, 245, 172, .14) !important; box-shadow: inset 0 0 0 1px rgba(61, 245, 172, .5) !important; color: var(--green); }
+
+/* inputs */
+html[data-skin=command] :is(.rm-in, .cm-search) { clip-path: none; border-radius: .7rem; border: 1px solid hsl(var(--h) 70% 52% / .38); background: hsl(calc(var(--navy-h) + 2) calc(70% * var(--ns)) 8% / .85); }
+html[data-skin=command] :is(.rm-in:focus, .cm-search:focus-within) { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 0 1.1rem hsl(var(--h) 100% 60% / .3); }
+html[data-skin=command] .rm-in.bad { box-shadow: 0 0 0 1px #ff5a72; }
+
+/* switches: pill track and pill thumb, both words stay visible */
+html[data-skin=command] :is(.tgl, .gmode) .sw { clip-path: none; border-radius: 999px; background: hsl(calc(var(--navy-h) + 2) calc(70% * var(--ns)) 8%); box-shadow: inset 0 0 0 1px hsl(var(--h) 60% 45% / .4); }
+html[data-skin=command] :is(.tgl, .gmode) .sw::after { clip-path: none; border-radius: 999px; }
+html[data-skin=command] .tgl.on .sw { box-shadow: inset 0 0 0 1px rgba(61, 245, 172, .5), 0 0 .8rem rgba(61, 245, 172, .25); }
+html[data-skin=command] .gmode.on .sw { box-shadow: inset 0 0 0 1px rgba(255, 179, 71, .55), 0 0 .8rem rgba(255, 179, 71, .25); }
+
+/* microphone orb with halo rings */
+html[data-skin=command] .mic { clip-path: none; border-radius: 50%; box-shadow: 0 0 0 .4rem hsl(var(--h) 100% 60% / .08), 0 0 0 .85rem hsl(var(--h) 100% 60% / .04), 0 0 1.5rem hsl(var(--h) 100% 60% / .45); }
+html[data-skin=command] .mic::before { clip-path: none; border-radius: 50%; }
+
+/* icon tiles and list rows */
+html[data-skin=command] :is(.ico, .gm-ini) { border-radius: .55rem; clip-path: none; }
+html[data-skin=command] :is(.cm-cat, .cm-cat.on) { border-radius: .5rem; }
+html[data-skin=command] .ib::after { border-radius: 0; }
+
+/* header: round control strip, round status pill, clock with equal-size seconds */
+html[data-skin=command] #top .tools::before, html[data-skin=command] #top .tools::after { clip-path: none; border-radius: .9rem; }
+html[data-skin=command] #top .msg::before, html[data-skin=command] #top .msg::after { clip-path: none; border-radius: 999px; }
+html[data-skin=command] #top .clock #clk { font-size: 1.95rem; letter-spacing: .04em; }
+html[data-skin=command] #top .clock .ss { font-size: inherit; margin-left: 0; color: inherit; opacity: .8; font-weight: 700; }
+html[data-skin=command] #top .clock .ss::before { content: ":"; }
+/* the older plate rules force border-radius: 0 !important on some of these */
+html[data-skin=command] :is(.rm-chip, .cm-sug button, .cm-ph, .sugg button, .ex-badge) { border-radius: 999px !important; }
+html[data-skin=command] :is(.cm-try, .btn) { border-radius: .6rem !important; }
+
+/* ======================= switches without words: a pill with a sliding, glowing thumb ======================= */
+html[data-skin=command] :is(.tgl, .gmode) .sw, html[data-skin=command] .offl .tgl .sw { display: block; width: 3rem; height: 1.6rem; }
+html[data-skin=command] :is(.tgl, .gmode) .sw b { display: none; }
+html[data-skin=command] :is(.tgl, .gmode) .sw::after { top: .2rem; bottom: .2rem; left: .2rem; width: 1.2rem; background: hsl(var(--h) 30% 60%); box-shadow: none; transition: left .22s cubic-bezier(.3, 1.3, .5, 1), background .18s, box-shadow .18s; }
+html[data-skin=command] .tgl.on .sw::after { left: calc(100% - 1.4rem); background: var(--green); box-shadow: 0 0 .65rem var(--green); }
+html[data-skin=command] .gmode.on .sw::after { left: calc(100% - 1.4rem); background: var(--amber); box-shadow: 0 0 .65rem var(--amber); }
+html[data-skin=command] .tgl.on .sw { background: rgba(61, 245, 172, .16); }
+html[data-skin=command] .gmode.on .sw { background: rgba(255, 179, 71, .16); }
+html[data-skin=command] .offl .ar { gap: .3rem; padding: .3rem .25rem .3rem .45rem; } html[data-skin=command] .offl .tgl .sw { width: 2.5rem; }
+
+/* title block stays legible over the bright mesh */
+html[data-skin=command] .brand .sub, html[data-skin=command] .st { text-shadow: 0 0 .4rem #020c1c, 0 0 .9rem #020c1c, 0 0 1.4rem #020c1c; }
+html[data-skin=command] .brand .sub { color: hsl(var(--h) 100% 84%); font-weight: 600; }
+
+/* ======================= header geometry: nothing may overlap at any width ======================= */
+/* the clock sits over the core column; the status pill gets only the room left of it */
+html[data-skin=command] #top .msg { max-width: calc((100% - var(--sidew) - var(--gap)) / 2 - 7.2rem); }
+html[data-skin=command] #top .clock .secbar { width: 8.6rem; align-self: center; }
+/* wide windows keep the date's side lines, so the clock block is wider: leave it more room */
+@media (min-width: 1400px) { html[data-skin=command] #top .msg { max-width: calc((100% - var(--sidew) - var(--gap)) / 2 - 10.2rem); } }
+
+/* ======================= tidy-up from the 1280x720 review ======================= */
+html[data-skin=command] .fz-rule { display: none; }                                   /* edge ruler: stray ticks next to the strip and at the panel edges */
+html[data-skin=command] #top { min-height: 4.9rem; }                                  /* the clock is taller than the controls and is positioned absolutely: give it room */
+html[data-skin=command] #top .clock #clk { font-size: 1.8rem; line-height: 1.05; }
+html[data-skin=command] #top .clock #date { margin-bottom: .05rem; }
+html[data-skin=command] .wxover::before { background: linear-gradient(100deg, rgba(2, 10, 26, .85), rgba(2, 10, 26, .55) 55%, transparent 88%); }   /* the moon must not cut through the text */
+
+/* clock: centred over the whole header, set in a rounded plate like the other header controls */
+html[data-skin=command] #top .clock { left: 50%; padding: .38rem 1.5rem .42rem; border: 1px solid hsl(var(--h) 90% 60% / .4); border-radius: 1.1rem; background: linear-gradient(180deg, hsl(calc(var(--navy-h) + -1) calc(70% * var(--ns)) 15% / .9), hsl(calc(var(--navy-h) + 3) calc(76% * var(--ns)) 8% / .95)); box-shadow: inset 0 1px 0 hsl(var(--h) 100% 80% / .12), 0 0 1.2rem hsl(var(--h) 100% 55% / .12); }
+html[data-skin=command] #top .clock::before, html[data-skin=command] #top .clock::after { display: none; }
+html[data-skin=command] #top .clock #date { margin-bottom: .12rem; }
+html[data-skin=command] #top .clock .secbar { width: 100%; margin: .3rem 0 0; }
+html[data-skin=command] #top .msg { max-width: calc(50% - 9.2rem); }
+@media (min-width: 1400px) { html[data-skin=command] #top .msg { max-width: calc(50% - 10rem); } }
+html[data-skin=command] #top .clock { padding: .26rem 1.4rem .3rem; }
+html[data-skin=command] #top .clock #clk { font-size: 1.65rem; }
+html[data-skin=command] #top .clock .secbar { margin-top: .22rem; }
+
+/* clock: centred on the whole window (the nav column is outside the header); neighbours are capped so they never reach it */
+html[data-skin=command] #top .clock { left: calc(50% - (var(--navw) + var(--gap)) / 2); }
+html[data-skin=command] #top .msg { max-width: calc(50% - (var(--navw) + var(--gap)) / 2 - 9.4rem); }
+@media (min-width: 1400px) { html[data-skin=command] #top .msg { max-width: calc(50% - (var(--navw) + var(--gap)) / 2 - 10.2rem); } }

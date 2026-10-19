@@ -26,6 +26,23 @@ def _calendar_next(handler, text_lower):
     from actions.calendar_ics import next_events_summary
     handler.speak(next_events_summary(None))
 
+def _calendar_add(handler, text_lower):
+    """"Добавь в календарь завтра в 15:00 встреча с Аней": the phrase is parsed by actions/calendar_quick.py, the event goes to the user's own events."""
+    from actions import calendar_hub, calendar_quick
+    q = calendar_quick.parse_phrase(calendar_quick.voice_phrase(text_lower))
+    if not q['title']:
+        handler.speak('Не расслышал название. Скажите, например: добавь в календарь завтра в 15:00 встреча с Аней.')
+        return
+    if not q['date']:
+        handler.speak(f'Когда это будет? Скажите, например: добавь в календарь завтра в 15:00 {q["title"].lower()}.')
+        return
+    try:
+        calendar_hub.add_local({'title': q['title'], 'date': q['date'], 'time': q['time'], 'end_time': q['end_time'], 'all_day': not q['time'], 'repeat': q['repeat'], 'weekdays': q['weekdays']})
+    except calendar_hub.CalendarError:
+        handler.speak('Не получилось добавить событие. Проверьте дату и время.')
+        return
+    handler.speak(f'Добавил в календарь: {q["title"]}, {calendar_quick.spoken_when(q["date"], q["time"], q["repeat"])}.')
+
 def _inbox_unread(handler, text_lower):
     import threading
     handler.speak("Проверяю почту...")
@@ -38,12 +55,8 @@ def _inbox_unread(handler, text_lower):
 def _mail_compose(handler, text_lower):
     handler.speak(spk('mail.opening'))
     try:
-        from ui import hud as _hud_mod
-        _h = _hud_mod._hud
-        if _h and hasattr(_h, 'root'):
-            from ui.dialogs.mail_compose_dlg import open_compose_dialog
-            _h.root.after(0, lambda: open_compose_dialog(_h, _h.root))
-        else:
+        from ui_next import host
+        if not host.open_mail_compose():
             handler.speak(spk('mail.not_loaded'))
     except Exception:
         handler.speak(spk('mail.error_v2'))
@@ -54,6 +67,7 @@ _INTEGRATIONS_ACTIONS = {
     'vpn_reminder': _vpn_reminder,
     'health_disks': _health_disks,
     'calendar_next': _calendar_next,
+    'calendar_add': _calendar_add,
     'inbox_unread': _inbox_unread,
     'mail_compose': _mail_compose,
 }

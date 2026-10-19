@@ -2,6 +2,7 @@ import threading
 import time
 import os
 from typing import Optional
+from core.safe import swallow as _swallow
 try:
     import truck_telemetry as _tt
     _AVAILABLE = True
@@ -29,7 +30,7 @@ def _tlog(msg: str) -> None:
         with open(_LOG_PATH, "a", encoding="utf-8") as _f:
             _f.write(f"{msg}\n")
     except Exception:
-        pass
+        _swallow()
 def _force_init() -> bool:
     try:
         from multiprocessing.shared_memory import SharedMemory as _SM
@@ -55,7 +56,7 @@ def _force_init() -> bool:
                     _tti._telemetry_sdk_version = ver
                     return True
             except Exception as _ve:
-                pass
+                _swallow()
         _tti._mem = mem
         _tti._telemetry_sdk_version = v1_12
         return True
@@ -251,5 +252,5 @@ def get_gear() -> Optional[int]:
         if bool(d.get("reverse", False)) is True:
             return -1
     except Exception:
-        pass
+        _swallow()
     return None

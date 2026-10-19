@@ -15,20 +15,18 @@ _COLOR_BY_CMD = {
 
 
 def handle_reactor(handler, cmd: str, text_lower: str, amount) -> None:
-    from ui import hud as _hud
-    h = getattr(_hud, '_hud', None)
-    if not h:
-        handler.speak(spk('hud.not_running'))
-        return
+    from ui_next import host
     if cmd in _COLOR_BY_CMD:
-        color = _COLOR_BY_CMD[cmd]
-        h._hud_queue.put(lambda c=color: h._set_reactor_color(c))
+        ok = host.reactor('color', _COLOR_BY_CMD[cmd])
     elif cmd == 'reactor_reset':
-        h._hud_queue.put(lambda: h._reset_reactor_color())
+        ok = host.reactor('reset')
     elif cmd == 'reactor_pulse':
-        h._hud_queue.put(lambda: h._trigger_reactor_pulse())
+        ok = host.reactor('pulse')
     elif cmd == 'reactor_glitch':
-        h._hud_queue.put(lambda: h._trigger_reactor_glitch())
+        ok = host.reactor('glitch')
     else:
         return
-    handler.play_response()
+    if ok:
+        handler.play_response()
+    else:
+        handler.speak(spk('hud.not_running'))

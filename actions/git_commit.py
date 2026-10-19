@@ -19,7 +19,7 @@ def _get_all_recent_workspaces() -> list[str]:
     appdata = os.environ.get('APPDATA', '')
     import urllib.parse
     import sqlite3
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     # 1. JetBrains IDEs
     jb_path = Path(appdata) / 'JetBrains'

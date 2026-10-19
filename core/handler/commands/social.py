@@ -4,6 +4,7 @@ from core.speech import speak
 from core.nlp import format_time_russian
 from core.nlp.ukrainian import format_time_ukrainian
 from core.responses import pick_response
+from core.safe import swallow as _swallow
 
 
 def _time_now(handler, text_lower, lang):
@@ -85,7 +86,7 @@ def _system_insult(handler, text_lower, lang):
         from core.speech import warmup_tts
         warmup_tts()
     except Exception:
-        pass
+        _swallow()
     text_ign = text_lower.replace('джарвис', '').replace('джарвіс', '').strip()
     if lang == 'uk':
         if any(w in text_ign for w in ['дурн', 'ідіот', 'тупий', 'дебіл', 'тормоз', 'кретин']):

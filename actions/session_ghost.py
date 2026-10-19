@@ -414,9 +414,10 @@ def restore_session(session_name, play_response_func):
                 elif data.get('exe') and data.get('url'):
                     subprocess.Popen([data['exe'], data['url']], creationflags=8)
                 else:
-                    os.startfile(saved_url)
+                    from core.safe_open import open_user_link
+                    open_user_link(saved_url)
             elif item_type == 'app':
-                if data.get('type') == 'folder' and data.get('path'):
+                if data.get('type') == 'folder' and data.get('path') and os.path.isdir(str(data['path'])):
                     os.startfile(data['path'])
                 elif data.get('type') == 'folder_clsid' and data.get('path'):
                     subprocess.Popen(['explorer.exe', '/root,', str(data['path'])], creationflags=8)

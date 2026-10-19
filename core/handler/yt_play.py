@@ -65,11 +65,11 @@ def resolve_and_play_youtube(handler, query: str, is_music: bool, is_video: bool
     try:
         candidates = search_youtube_candidates(yt_query, limit=5)
     except Exception as e:
-        print(f'[YT-PLAY] candidate search error: {e}', flush=True)
+        _log.debug(f'[YT-PLAY] candidate search error: {e}')
         _log.warning('candidate search error: %s', e)
     if candidates:
         n_with_thumb = sum(1 for c in candidates if c.get('thumbnail'))
-        print(f'[YT-PLAY] found {len(candidates)} candidates, {n_with_thumb} with a thumbnail url', flush=True)
+        _log.debug(f'[YT-PLAY] found {len(candidates)} candidates, {n_with_thumb} with a thumbnail url')
         _log.info('found %d candidates, %d with a thumbnail url', len(candidates), n_with_thumb)
 
     def _play_url(url: str) -> None:
@@ -96,29 +96,14 @@ def resolve_and_play_youtube(handler, query: str, is_music: bool, is_video: bool
             handler._set_interactive(None)
 
         try:
-            from ui import hud as _hud_mod
-            h = getattr(_hud_mod, '_hud', None)
-            if h:
-                def _open_picker():
-                    try:
-                        from ui.dialogs.yt_picker_dlg import open_yt_picker
-                        print(f'[YT-PLAY] opening picker with {len(candidates)} candidates', flush=True)
-                        open_yt_picker(h, candidates, _on_pick, _on_pick_timeout, _on_pick_cancel, timeout_sec=20.0)
-                    except Exception as e:
-                        print(f'[YT-PLAY] picker open error: {e}', flush=True)
-                        _log.warning('picker open error: %s', e)
-                        _on_pick_timeout()
-                # Set interactive state and speak the prompt *before* queuing
-                # the window onto the UI thread — the window still appears
-                # essentially immediately (hud._hud_queue is drained on the
-                # next Tk idle tick), while the prompt plays out loud in
-                # parallel instead of delaying it.
-                handler._set_interactive('yt_pick_ask', {}, timeout=20.0)
+            from ui_next import host
+            handler._set_interactive('yt_pick_ask', {}, timeout=20.0)
+            if host.open_yt_picker(candidates, _on_pick, _on_pick_timeout, _on_pick_cancel, timeout_sec=20.0):
                 handler.speak(spk('yt_picker.prompt'))
-                h._hud_queue.put(_open_picker)
                 return
+            handler._set_interactive(None)
         except Exception as e:
-            _log.warning('picker schedule error: %s', e)
-        # HUD unavailable — fall through to instant top-result playback below.
+            _log.warning('picker error: %s', e)
+        # no window: fall through to instant top-result playback below.
 
     _play_url(candidates[0]['url'])

@@ -2,6 +2,7 @@ import re
 import time
 from actions import keysend
 from core.system import app_state
+from core.safe import swallow as _swallow
 DICTATION_STOP_WORDS = [
     'закончили', 'стоп диктовка', 'стоп диктовку', 'хватит', 'конец диктовки',
     'заверши диктовку', 'прекрати', 'стоп',
@@ -28,7 +29,7 @@ def _type_text(text: str):
     try:
         pyperclip.copy(old if old else '')
     except Exception:
-        pass
+        _swallow()
 def handle_dictation_text(text: str) -> dict:
     text_lower = text.lower().strip()
     if any((text_lower == sw or text_lower.startswith(sw) for sw in DICTATION_STOP_WORDS)):

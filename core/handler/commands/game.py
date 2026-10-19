@@ -6,6 +6,7 @@ from core.system import app_state
 from core.speech import speak, normalize_for_tts
 from core.responses import spk
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 _log = _get_logger('game')
 def apply_game_profile(handler, profile, msg_name):
     from actions.game_input_parts.profile import get_loaded_profile_stem
@@ -16,12 +17,12 @@ def apply_game_profile(handler, profile, msg_name):
     from actions.game_input import load_profile
     ok, msg = load_profile(profile)
     if ok:
-        if app_state.game_mode and (app_state.game_profile == msg):
+        _on, _profile = app_state.game_snapshot()
+        if _on and (_profile == msg):
             app_state.jarvis_active = True
             app_state.last_command_time = time.time()
             return
-        app_state.game_mode = True
-        app_state.game_profile = msg
+        app_state.set_game(True, msg)
         app_state.jarvis_active = True
         app_state.last_command_time = time.time()
         try:
@@ -30,20 +31,20 @@ def apply_game_profile(handler, profile, msg_name):
             if _eng is not None:
                 _eng.drain_transcribe_queue(keep=1)
         except Exception:
-            pass
+            _swallow()
         hint = 'Говорите заклинания.' if 'hogwarts' in profile.lower() else 'Говорите команды.'
         speak(f'Игровой режим активирован. Профиль: {msg}. {hint}')
         try: handler.asr.set_vad_mode(True)
-        except Exception: pass
+        except Exception: _swallow()
         try:
             from actions.game_input import get_hotwords
             hw = get_hotwords() + ['джарвис', 'джервис', 'жарвис', 'джарвиса', 'сэр']
             threading.Thread(target=handler.asr.reload_with_hotwords, args=(hw,), daemon=True).start()
-        except Exception: pass
+        except Exception: _swallow()
         try:
             from actions.game_audio import game_matcher
             game_matcher.set_profile(profile)
-        except Exception: pass
+        except Exception: _swallow()
         if 'euro_truck_simulator_2' in profile.lower():
             try:
                 from features.ets2 import monitor as ets2_monitor
@@ -124,9 +125,9 @@ def start_game_selection_flow(handler, query=None):
                                 speak('Запускаю Euro Truck Simulator 2 через Steam.')
                                 return
                             except Exception:
-                                pass
+                                _swallow()
                     except Exception:
-                        pass
+                        _swallow()
                     return
                 break
         games = scan_all_games()
@@ -164,7 +165,7 @@ def _do_launch(handler, game_info):
     from actions.system import activate_game_mode
     handler.play_response('game'); time.sleep(0.3)
     try: activate_game_mode()
-    except Exception: pass
+    except Exception: _swallow()
     exe_path = find_game_executable(game_info.install_dir, game_info.name)
     _log.debug('_do_launch exe_path=%r', exe_path)
     if exe_path: subprocess.Popen([exe_path], cwd=os.path.dirname(exe_path), creationflags=8)
@@ -198,12 +199,11 @@ def _timer_set(text_lower):
         '', text_norm
     ).strip()
     label = label_raw if len(label_raw) > 2 else ''
-    hud = getattr(app_state, 'hud', None)
-    duration_str = set_timer(secs, label, speak, hud)
+    duration_str = set_timer(secs, label, speak)
     speak(f'Таймер запущен на {duration_str}. Предупрежу заблаговременно.')
 
 def _timer_add(text_lower):
-    from core.nlp import extract_duration_seconds, format_duration_russian
+    from core.nlp import extract_duration_seconds, format_remaining_russian
     from actions.game_timer import add_time, get_status
     secs = extract_duration_seconds(text_lower)
     if secs <= 0:
@@ -211,23 +211,33 @@ def _timer_add(text_lower):
         return
     if add_time(secs):
         remaining = get_status()
-        if remaining and remaining >= 60:
-            speak(f'Добавлено. Осталось {format_duration_russian(remaining // 60)}.')
-        else:
-            speak('Добавлено.')
+        speak(f'Добавлено. Осталось {format_remaining_russian(remaining)}.' if remaining else 'Добавлено.')
     else:
         speak('Таймер не запущен.')
 
+def _timer_sub(text_lower):
+    from core.nlp import extract_duration_seconds, format_remaining_russian
+    from actions.game_timer import sub_time, get_status
+    secs = extract_duration_seconds(text_lower)
+    if secs <= 0:
+        speak('Скажите сколько убавить, например: убавь пять минут от таймера.')
+        return
+    if get_status() is None:
+        speak('Таймер не запущен.')
+    elif sub_time(secs):
+        remaining = get_status()
+        speak(f'Убавлено. Осталось {format_remaining_russian(remaining)}.' if remaining else 'Убавлено.')
+    else:
+        speak('На таймере осталось не больше этого. Скажите «отмени таймер», если он не нужен.')
+
 def _timer_status(text_lower):
     from actions.game_timer import get_status
-    from core.nlp import format_duration_russian
+    from core.nlp import format_remaining_russian
     remaining = get_status()
     if remaining is None:
         speak('Таймер не запущен.')
-    elif remaining < 60:
-        speak('Осталось меньше минуты.')
     else:
-        speak(f'Осталось {format_duration_russian(remaining // 60)}.')
+        speak(f'Осталось {format_remaining_russian(remaining)}.')
 
 def _timer_cancel(text_lower):
     from actions.game_timer import cancel_timer
@@ -239,6 +249,7 @@ def _timer_cancel(text_lower):
 _TIMER_ACTIONS = {
     'timer_set': _timer_set,
     'timer_add': _timer_add,
+    'timer_sub': _timer_sub,
     'timer_status': _timer_status,
     'timer_cancel': _timer_cancel,
 }

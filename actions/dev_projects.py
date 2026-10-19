@@ -91,6 +91,10 @@ _KNOWN_EDITORS: list[tuple[str, str, list[str], list[str]]] = [
 ]
 
 
+import logging
+_log = logging.getLogger(__name__)
+
+
 def detect_installed_editors() -> list[tuple[str, str]]:
     """Return list of (cmd_key, display_name) for editors found on this machine."""
     import shutil
@@ -333,7 +337,7 @@ def open_project(project: dict) -> tuple[bool, str]:
         return False, f'path not found: {path}'
     editor_key = project.get('editor') or get_default_editor() or ''
     cmd = _resolve_editor_cmd(editor_key)
-    print(f'[work] opening "{project.get("name")}" | editor={editor_key} | cmd={cmd} | path={path}', flush=True)
+    _log.debug(f'[work] opening "{project.get("name")}" | editor={editor_key} | cmd={cmd} | path={path}')
     if not cmd:
         return False, f'editor not found: {editor_key}'
 
@@ -421,16 +425,21 @@ def search_projects_on_disk(query: str, max_results: int = 20) -> list[str]:
     )
 
 
+def _sql_text(value: str) -> str:
+    """A literal for the Windows Search SQL: quotes doubled, LIKE wildcards and brackets neutralised."""
+    return ''.join(' ' if c in '%_[]' else c for c in str(value)).replace("'", "''")
+
+
 def _search_win32com(variants: list[str], max_results: int) -> list[str]:
     """Windows Search Index via win32com — ~50ms when index covers the folder."""
     try:
         import win32com.client
         like_clauses = ' OR '.join(
-            f"System.FileName LIKE '%{v}%'" for v in variants if v
+            f"System.FileName LIKE '%{_sql_text(v)}%'" for v in variants if v
         )
         # System.Kind = 'directory' is the correct value (not 'folder')
         sql = (
-            f"SELECT TOP {max_results} System.ItemPathDisplay "
+            f"SELECT TOP {int(max_results)} System.ItemPathDisplay "  # nosec B608
             f"FROM SystemIndex "
             f"WHERE System.Kind = 'directory' AND ({like_clauses})"
         )

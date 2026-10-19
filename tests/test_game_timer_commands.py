@@ -38,7 +38,7 @@ def test_timer_set_starts_timer_with_parsed_duration(monkeypatch):
     monkeypatch.setattr(game_cmd, 'speak', spoken)
     captured = []
     monkeypatch.setattr('actions.game_timer.set_timer',
-                         lambda secs, label, speak_fn, hud: captured.append((secs, label)) or '10 минут')
+                         lambda secs, label, speak_fn: captured.append((secs, label)) or '10 минут')
 
     game_cmd._timer_set('поставь таймер на 10 минут')
 
@@ -52,7 +52,7 @@ def test_timer_set_extracts_label_from_remaining_text(monkeypatch):
     monkeypatch.setattr(game_cmd, 'speak', _Speaks())
     captured = []
     monkeypatch.setattr('actions.game_timer.set_timer',
-                         lambda secs, label, speak_fn, hud: captured.append(label) or 'ok')
+                         lambda secs, label, speak_fn: captured.append(label) or 'ok')
 
     game_cmd._timer_set('поставь таймер на 5 минут заварка чая')
 
@@ -116,14 +116,14 @@ def test_timer_status_no_timer_running(monkeypatch):
     assert spoken == ['Таймер не запущен.']
 
 
-def test_timer_status_under_a_minute(monkeypatch):
+def test_timer_status_under_a_minute_names_the_seconds(monkeypatch):
     spoken = _Speaks()
     monkeypatch.setattr(game_cmd, 'speak', spoken)
     monkeypatch.setattr('actions.game_timer.get_status', lambda: 45)
 
     game_cmd._timer_status('сколько осталось')
 
-    assert spoken == ['Осталось меньше минуты.']
+    assert spoken == ['Осталось сорок пять секунд.']
 
 
 def test_timer_status_reports_minutes(monkeypatch):
@@ -133,7 +133,7 @@ def test_timer_status_reports_minutes(monkeypatch):
 
     game_cmd._timer_status('сколько осталось')
 
-    assert spoken and 'Осталось' in spoken[0]
+    assert spoken == ['Осталось пять минут.']
 
 
 # ── _timer_cancel ─────────────────────────────────────────────────────────

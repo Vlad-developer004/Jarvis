@@ -10,6 +10,7 @@ from email.header import decode_header
 from html import unescape
 from email.message import EmailMessage
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 _log = _get_logger('mail')
 from email.parser import BytesParser
 from email.policy import default as email_policy
@@ -22,42 +23,17 @@ from config_pack.config import get_settings_path, get_secrets_path
 # reinstall silently wipes (the bundled data/ folder gets overwritten).
 _SETTINGS_PATH = Path(get_settings_path())
 
-def _update_env_var(key: str, value: str):
-    """Safely update or add a variable in the secrets file. Uses
-    get_secrets_path() — the same file llm_processor._load_api_key() and the
-    startup loader read from (see config_pack.config.get_secrets_path's
-    docstring) — instead of an ad-hoc '.env' path, so a saved mail password
-    is actually found again on the next run."""
-    try:
-        env_path = Path(get_secrets_path())
-        lines = []
-        if env_path.exists():
-            lines = env_path.read_text(encoding='utf-8').splitlines()
-        
-        found = False
-        new_line = f'{key}="{value}"'
-        for i, line in enumerate(lines):
-            if line.strip().startswith(f'{key}='):
-                lines[i] = new_line
-                found = True
-                break
-        
-        if not found:
-            if lines and lines[-1].strip():
-                lines.append('')
-            lines.append(new_line)
-            
-        env_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-        # Also update os.environ for the current session
-        os.environ[key] = value
-    except Exception as e:
-        _log.error('Error updating .env: %s', e, exc_info=True)
+def _update_env_var(key: str, value: str) -> bool:
+    """Sets a variable in the secrets file (config.get_secrets_path(): the file the startup loader, llm_processor and the
+    settings screens all read), atomically and with the value escaped; see core.secrets_store."""
+    from core.secrets_store import set_secret
+    return set_secret(key, value, get_secrets_path())
 def _load_settings() -> dict:
     try:
         if _SETTINGS_PATH.exists():
             return json.loads(_SETTINGS_PATH.read_text(encoding='utf-8'))
     except Exception:
-        pass
+        _swallow()
     return {}
 def _is_gmail_address(email: str) -> bool:
     e = email.lower().strip()
@@ -267,7 +243,7 @@ def unread_count() -> tuple[bool, str]:
         try:
             conn.logout()
         except Exception:
-            pass
+            _swallow()
         return True, f'Непрочитанных писем: {n}.'
     except Exception as ex:
         return False, f'Не удалось подключиться к почте. {format_mail_error(ex)}'
@@ -283,7 +259,7 @@ def list_recent_messages(limit: int = 40) -> tuple[bool, str | list[dict]]:
             try:
                 conn.logout()
             except Exception:
-                pass
+                _swallow()
             return True, []
         uids = data[0].split()
         if len(uids) > limit:
@@ -294,7 +270,7 @@ def list_recent_messages(limit: int = 40) -> tuple[bool, str | list[dict]]:
         typ_f, msgdata = conn.uid(
             'fetch',
             uid_set,
-            '(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE MESSAGE-ID)])',
+            '(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE MESSAGE-ID)])',
         )
         rows: list[dict] = []
         if typ_f == 'OK' and msgdata:
@@ -311,6 +287,7 @@ def list_recent_messages(limit: int = 40) -> tuple[bool, str | list[dict]]:
                     hdr_str = item[0].decode('ascii', errors='ignore') if isinstance(item[0], bytes) else str(item[0])
                     m_uid = re.search(r'UID\s+(\d+)', hdr_str, re.IGNORECASE)
                     uid_s = m_uid.group(1) if m_uid else ''
+                    unread = not re.search(r'FLAGS\s*\([^)]*\\Seen', hdr_str, re.IGNORECASE)
                     line = f'{subj or "(без темы)"} — {from_[:60]}'
                     rows.append(
                         {
@@ -320,13 +297,14 @@ def list_recent_messages(limit: int = 40) -> tuple[bool, str | list[dict]]:
                             'date': date_,
                             'message_id': mid,
                             'list_line': line,
+                            'unread': unread,
                         }
                     )
         rows.reverse()
         try:
             conn.logout()
         except Exception:
-            pass
+            _swallow()
         return True, rows
     except Exception as ex:
         return False, format_mail_error(ex)
@@ -339,7 +317,7 @@ def _part_text(part) -> str:
             return pl.decode(part.get_content_charset() or 'utf-8', errors='replace')
     return ''
 
-_ZERO_WIDTH_RE = re.compile(r'[­​-‏⁠﻿ ]')
+_ZERO_WIDTH_RE = re.compile(r'[\u00ad\u200b-\u200f\u2060\ufeff\u2007]')
 # Marketing emails often hide a preheader/spacer block via inline
 # display:none|visibility:hidden|font-size:0 — never a <script>/<style> tag,
 # so it survives naive tag-stripping and leaks its zero-width padding chars.
@@ -428,12 +406,13 @@ def fetch_message_body(uid: str) -> tuple[bool, str | dict]:
         try:
             conn.logout()
         except Exception:
-            pass
+            _swallow()
         return True, {
             'subject': subj,
             'from': from_,
             'to': to_,
             'body': body,
+            'date': (msg.get('Date') or '').strip(),
             'message_id': mid,
             'references': refs,
             'reply_to': reply_to,
@@ -455,16 +434,16 @@ def delete_message_by_uid(uid: str) -> tuple[bool, str]:
             try:
                 conn.logout()
             except Exception:
-                pass
+                _swallow()
             return False, 'Сервер не принял удаление (IMAP STORE).'
         try:
             conn.expunge()
         except Exception:
-            pass
+            _swallow()
         try:
             conn.logout()
         except Exception:
-            pass
+            _swallow()
         return True, 'Письмо удалено.'
     except Exception as ex:
         return False, format_mail_error(ex)
@@ -493,6 +472,7 @@ def send_message(
     in_reply_to: str = '',
     references: str = '',
     attachments: list[Path] | None = None,
+    html: str = '',
 ) -> tuple[bool, str]:
     cfg = get_resolved_mail_config()
     if not cfg:
@@ -518,6 +498,8 @@ def send_message(
         if not plain and attachments:
             plain = 'Во вложении.'
         msg.set_content(plain, charset='utf-8')
+        if html:
+            msg.add_alternative(html, subtype='html', charset='utf-8')
         for p in attachments or []:
             path = Path(p)
             if not path.is_file():

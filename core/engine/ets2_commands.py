@@ -9,6 +9,7 @@ import threading as _threading_mod
 from core.system import app_state
 from core.logging_setup import get_logger as _get_logger
 from core.nlp.commands import normalize_numbers
+from core.safe import swallow as _swallow
 
 _log = _get_logger('ets2_commands')
 _REFUEL_STOP = _threading_mod.Event()
@@ -42,7 +43,7 @@ def _confirm_rest_duration(hours: int) -> None:
             import pyautogui as _pag
             _pag.press('enter')
         except Exception:
-            pass
+            _swallow()
         speak_async('Подтверждаю отдых.')
 
 def _greeting_for_game_minutes(minutes: int | None) -> str:
@@ -113,7 +114,7 @@ def _wake_up_truck(slept_hours: int | None, wake_minutes: int | None = None) -> 
             speak_async(add_pauses(f'{greeting} Отдохнули знатно — спали {format_duration_russian(slept_hours * 60)}. Заводим тягач и трогаемся.'))
         cast_command('подготовь тягач', fuzzy_threshold=0.9)
     except Exception:
-        pass
+        _swallow()
 def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
     def _speak(msg: str):
         try:
@@ -127,7 +128,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
         data = _tget()
     except ImportError: return
 
-    print(f"[RECOGNITION] Executing telemetry action: {action!r} (Source text: {text!r})", flush=True)
+    _log.debug(f"[RECOGNITION] Executing telemetry action: {action!r} (Source text: {text!r})")
     if action == 'telemetry_diag':
         from actions.ets2_telemetry import is_available as _ia, _read_raw as _rr
         if not _ia():
@@ -260,7 +261,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 direction = 'Повышаю' if target_kmh > current_kmh else 'Снижаю'
                 _speak(f'{direction} круиз до {target_kmh} км/ч.')
         except Exception:
-            pass
+            _swallow()
 
         from actions.game_input import cruise_set_speed as _css
         ok, actual = _css(target_kmh, current_kmh)
@@ -297,7 +298,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 direction_text = 'Увеличиваю' if delta_kmh > 0 else 'Снижаю'
                 _speak(f'{direction_text} круиз до {target} км/ч.')
         except Exception:
-            pass
+            _swallow()
             
         from actions.game_input import cruise_set_speed as _css
         ok, actual = _css(target, base_snapped)
@@ -378,7 +379,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                         target = limit if (limit and limit > 30) else speed
                         from actions.game_input_parts.driving import cruise_set_speed
                         cruise_set_speed(int(target), speed, auto_mode=False)
-            except Exception: pass
+            except Exception: _swallow()
         except Exception:
             _speak('Не удалось включить авто-круиз.')
     elif action == 'auto_cruise_off':
@@ -387,7 +388,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
             _mon.set_auto_cruise(False, by_user=True)
             _speak('Авто-круиз выключен. Управляйте круиз-контролем вручную.')
         except Exception:
-            pass
+            _swallow()
     elif action == 'go_to_sleep':
         # ETS2 1.60: Enter no longer sleeps directly - it opens the "Otdykh" dialog
         # with a duration slider that the game always opens at its 9h default
@@ -428,7 +429,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 import pyautogui as _pag
                 _pag.press('enter')
             except Exception:
-                pass
+                _swallow()
             return
         if hours is None:
             from core.address import get_address as _ga
@@ -444,11 +445,11 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
         try:
             from actions.game_input import unload_profile
             unload_profile()
-        except Exception: pass
+        except Exception: _swallow()
         try:
             from features.planetbase import monitor as pb_monitor
             pb_monitor.stop()
-        except Exception: pass
+        except Exception: _swallow()
         try:
             import pyautogui as _pag
             _pag.hotkey('alt', 'f4')
@@ -457,7 +458,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 import subprocess
                 subprocess.Popen(['taskkill', '/F', '/IM', 'eurotrucks2.exe'],
                                  creationflags=0x08000000)
-            except Exception: pass
+            except Exception: _swallow()
     elif action == 'refuel_start':
         import threading as _threading
         import time as _time
@@ -533,7 +534,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                     from actions.game_input import get_binding
                     keysend.key_up(get_binding('refuel', 'r'))
                 except Exception:
-                    pass
+                    _swallow()
                 _speak(f'Ошибка заправки: {_re}')
         _threading.Thread(target=_refuel_loop, daemon=True, name='ets2-refuel').start()
     elif action == 'refuel_stop':
@@ -554,16 +555,16 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
             from actions.game_input import press_robust
             try:
                 if not bool(data.get('parkBrake')):
-                    print(f"[INPUT] Pressing key: {hb_key!r} (duration=0.1s)", flush=True)
+                    _log.debug(f"[INPUT] Pressing key: {hb_key!r} (duration=0.1s)")
                     try:
                         keysend.key_down(hb_key)
                         time.sleep(0.1)
                         keysend.key_up(hb_key)
                     except Exception as e:
-                        print(f"[INPUT] Error pressing {hb_key!r}: {e}", flush=True)
+                        _log.debug(f"[INPUT] Error pressing {hb_key!r}: {e}")
                     time.sleep(0.25)
             except Exception:
-                pass
+                _swallow()
             try:
                 from actions.ets2_telemetry import get_wipers as _gw
                 for _ in range(3):
@@ -572,7 +573,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                     press_robust(wip_key)
                     time.sleep(0.15)
             except Exception:
-                pass
+                _swallow()
             try:
                 from actions.ets2_telemetry import get_lights_parking as _gp, get_lights_low as _gl, get_lights_high as _gh
                 if _gh() is True:
@@ -585,29 +586,28 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                     time.sleep(0.10)
                     press_robust(lights_key)
             except Exception:
-                pass
+                _swallow()
             try:
                 if bool(data.get('engineEnabled')):
                     press_robust(eng_key)
                     time.sleep(0.25)
             except Exception:
-                pass
+                _swallow()
             try:
                 press_robust(action_key)
                 time.sleep(0.25)
                 press_robust(action_key)
             except Exception:
-                pass
+                _swallow()
             try:
                 press_robust(trailer_key)
             except Exception:
-                pass
+                _swallow()
             _speak('Рейс завершён. Тягач заглушен, свет и дворники выключены. Груз передан.')
         except Exception:
             _speak('Не удалось выполнить сценарий завершения рейса.')
     elif action == 'install_plugin':
         try:
             from actions.ets2_telemetry_installer import run_installer
-            from ui import hud
-            run_installer(tk_root=hud._hud.root if hud._hud else None)
-        except Exception: pass
+            run_installer()
+        except Exception: _swallow()

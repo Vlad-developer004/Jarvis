@@ -8,8 +8,9 @@ from core.speech import stop_speaking, is_speaking
 from core.nlp import _normalize_stt, extract_all_commands
 from core.nlp.commands import CANON_SIMPLE, normalize_numbers
 from core.nlp.semantic import classify_intent, _CYR_VOWELS
-from ui.voice_prompt_bridge import try_consume_voice_prompt
+from ui_next.voice_prompt import try_consume_voice_prompt
 from core.engine.ets2_commands import _handle_telemetry_action
+from core.safe import swallow as _swallow
 
 _log = _get_logger('recognition')
 
@@ -111,7 +112,12 @@ _TIMER_SET_RE = re.compile(
     r'|\bтаймер\s+на\s+\w',
     re.IGNORECASE
 )
-_TIMER_ADD_RE = re.compile(r'\b(добавь|продли)\b.{0,25}\bтаймер\b', re.IGNORECASE)
+_TIMER_ADD_RE = re.compile(r'\b(добавь|продли)\b.{0,25}\bтаймер\w*', re.IGNORECASE)   # \w*: "к таймеру", "в таймер"
+from actions.currency_pairs import build_pattern as _currency_pattern, is_watch_phrase as _is_watch_phrase
+from actions.calendar_quick import is_add_phrase as _is_calendar_add     # "добавь в календарь завтра в 15:00 встреча"
+from actions.media_phrases import route as _cinema_route                 # "перемотай на 5 минут назад", "что сейчас играет"
+_CURRENCY_RE = re.compile(r'\b(?:курс\w*|скільки\s+коштує|сколько\s+сто(?:ит|ят)|почем|почём)\b.{0,40}?\b(?:' + _currency_pattern() + ')', re.IGNORECASE)   # "курс юаня", "сколько стоит доллар в лирах\
+_TIMER_SUB_RE = re.compile(r'\b(убавь|отними|уменьши|сократи)\b.{0,25}\bтаймер\w*', re.IGNORECASE)
 _TIMER_CANCEL_RE = re.compile(r'\b(отмени|сбрось|скасуй)\b.{0,10}\bтаймер\b', re.IGNORECASE)
 _TIMER_STATUS_RE = re.compile(r'\bсколько\b.{0,20}\b(осталось|залишилось)\b', re.IGNORECASE)
 # App volume: "громкость/звук <app> на <n>" — must bypass ML (misclassified as vol_zero/vol_set)
@@ -174,7 +180,7 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
         if _canon_hit_pre:
             return [(_canon_hit_pre, text)]
     except Exception:
-        pass
+        _swallow()
     # Wake words must never reach the semantic classifier — they get misclassified
     if _WAKE_RE.search(text.lower()):
         return [('wake', text)]
@@ -190,6 +196,15 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
     # Timer rules — bypass semantic model until rebuild
     if _TIMER_ADD_RE.search(text):
         return [('timer_add', text)]
+    if _is_calendar_add(text):
+        return [('calendar_add', text)]
+    _cin = _cinema_route(text)
+    if _cin:
+        return [(_cin, text)]
+    if _CURRENCY_RE.search(text) or _is_watch_phrase(text):
+        return [('currency_rate', text)]
+    if _TIMER_SUB_RE.search(text):
+        return [('timer_sub', text)]
     if _TIMER_CANCEL_RE.search(text):
         return [('timer_cancel', text)]
     if _TIMER_STATUS_RE.search(text):
@@ -225,7 +240,7 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
         if _canon_hit:
             return [(_canon_hit, text)]
     except Exception:
-        pass
+        _swallow()
     # Guard: if any qa keyword appears in the first 4 words → qa_search regardless of classifier
     _QA_WORDS = {'скажи', 'расскажи', 'поясни', 'объясни', 'розкажи', 'відповідай', 'ответь', 'відповіди'}
     _tl_strip = text.lower().strip()
@@ -239,7 +254,7 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
                 return []
             return [(intent, text)]
     except Exception:
-        pass
+        _swallow()
     # Fallback to rule-based matcher when semantic returns None or fails
     try:
         cmds = extract_all_commands(text)
@@ -248,7 +263,7 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
         if cmds:
             return cmds
     except Exception:
-        pass
+        _swallow()
     # Last resort: neither CANON_SIMPLE nor the classifier nor the rule-based
     # matcher recognised anything. Instead of staying silent, hand the raw
     # text to the local LLM as free-form chat — same 2-word/vowel guard as
@@ -264,7 +279,7 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
             if not module_enabled('llm_chat_fallback'):
                 return []
         except Exception:
-            pass
+            _swallow()
         return [('llm_chat', text)]
     return []
 
@@ -283,11 +298,16 @@ def handle_recognized_text(text: str, handler):
             _wait_until_not_speaking()
     text = text.strip()
     if not text: return
+    try:  # the window's feed (no-op while the bridge is not running)
+        from ui_next import bridge as _ui_bridge
+        _ui_bridge.heard(text)
+    except Exception:
+        _swallow()
     try:
         if try_consume_voice_prompt(text):
             return
     except Exception:
-        pass
+        _swallow()
     if app_state.game_mode:
         app_state.last_command_time = time.time()
     if handler.interactive_state:
@@ -353,7 +373,7 @@ def handle_recognized_text(text: str, handler):
             # Jarvis control
             'game_mode_off', 'jarvis_exit', 'restart_jarvis', 'listen_off', 'listen_on',
             # Timer
-            'timer_set', 'timer_status', 'timer_cancel', 'timer_add',
+            'timer_set', 'timer_status', 'timer_cancel', 'timer_add', 'timer_sub',
             # Misc useful in-game
             'how_are_you', 'praise',
         })
@@ -412,7 +432,7 @@ def handle_recognized_text(text: str, handler):
                     print(f"[SEMANTIC] Context filter: ignoring '{text_lower[:60]}'", flush=True)
                     return
             except Exception:
-                pass
+                _swallow()
     if not app_state.jarvis_active:
         cmds_early = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
         early_allowed = {'show_hud', 'show_help', 'mail_compose', 'qa_search'}
@@ -480,7 +500,7 @@ def handle_recognized_text(text: str, handler):
                     handler.speak(f'Открываю — {matched.get("name", "")}.')
                 return
         except Exception:
-            pass
+            _swallow()
         cmds = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
         # If wake word ate the whole command, strip it and re-parse the remainder
         if cmds and all(c == 'wake' for c, _ in cmds):
@@ -549,7 +569,7 @@ def flush_final(asr, handler, transcribe_queue: _queue_mod.Queue):
                     from core.voice_debug_log import voice_event
                     voice_event(f'QUEUE_EVICT oldest x{evicted} sec={len(audio) / 2 / _RATE:.2f}')
                 except Exception:
-                    pass
+                    _swallow()
             return
         except _queue_mod.Full:
             try:
@@ -564,4 +584,4 @@ def flush_final(asr, handler, transcribe_queue: _queue_mod.Queue):
             from core.voice_debug_log import voice_event
             voice_event(f'QUEUE_FULL dropped sec={len(audio) / 2 / _RATE:.2f} evicted={evicted}')
         except Exception:
-            pass
+            _swallow()

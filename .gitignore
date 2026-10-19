@@ -46,3 +46,8 @@ data/update/
 
 data/intent_model_onnx_quant/
 
+
+# Tauri shell build output and generated schemas
+ui_next/shell/src-tauri/target/
+ui_next/shell/src-tauri/gen/
+

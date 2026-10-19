@@ -42,23 +42,8 @@ def handle_song(handler, cmd, text_lower):
 
     def _show_song_card(res: dict) -> None:
         try:
-            import time as _time
-            import ui.hud_ai_window as _aiw
-            from ui.hud_ai_window import show_ai_window, update_ai_window_text, set_ai_window_image, hide_ai_window
+            from ui_next.host import show_ai_window, update_ai_window_text, set_ai_window_image, hide_ai_window
             show_ai_window(res.get('title') or 'Песня', fetch_image=False)
-            # show_ai_window() only *queues* the window's creation onto the
-            # Tk thread (hud.root.after(0, ...)) and returns immediately —
-            # calling update_ai_window_text/set_ai_window_image/hide_ai_window
-            # right after, before Tk has actually processed that callback,
-            # means _window_instance is still None and each of those calls
-            # silently no-ops (they all guard on "if _window_instance").  That
-            # produced an empty card that never got its hide_ai_window timer
-            # started either, so it just sat there forever. Wait (briefly)
-            # for the window to actually exist before touching it.
-            for _ in range(50):  # up to ~1s
-                if getattr(_aiw, '_window_instance', None) is not None:
-                    break
-                _time.sleep(0.02)
             lines = []
             if res.get('artist'):
                 lines.append(f"Исполнитель: {res['artist']}")

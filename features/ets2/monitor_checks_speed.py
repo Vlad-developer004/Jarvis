@@ -12,6 +12,7 @@ from .phrases import (
     event_gear_high_rpm, event_gear_low_rpm, event_cruise_on, event_cruise_off,
     event_blinker_on, event_rain_no_lights, event_lights_aux_front, event_lights_aux_roof,
 )
+from core.safe import swallow as _swallow
 
 def _check_gear_advice(state: _MonitorState, data: dict, speed_kmh: float) -> None:
     from .monitor import _speak, bump_driving_stat
@@ -126,6 +127,6 @@ def _check_adaptive_lights(state: _MonitorState, data: dict, engine_on: bool) ->
                 if data_check and not data_check.get("lightsBeamLow"):
                     press_robust(l_key)
             except Exception:
-                pass
+                _swallow()
 
 

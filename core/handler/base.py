@@ -7,6 +7,7 @@ from core.speech import (
     is_speaking as _is_speaking_check, is_tts_playing_audio as _is_tts_audio_check,
 )
 from core.responder import Responder
+from core.safe import swallow as _swallow
 _RESPONDER_MAX = 12
 RESPONSES = {
     'wake': ['Д+а, {addr}.', 'Всегд+а к в+ашим усл+угам, {addr}.', 'Сл+ушаю, {addr}.'],
@@ -101,7 +102,7 @@ class BaseHandler:
             from core.speech import warmup_tts
             warmup_tts()
         except Exception:
-            pass
+            _swallow()
         self.asr.reset()
     def speak(self, text: str, wait: bool = False, persist: bool = True):
         if self.silent_mode: return

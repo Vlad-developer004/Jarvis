@@ -4,6 +4,7 @@ from core.speech import speak, normalize_for_tts
 from core.nlp import _normalize_stt
 from core.logging_setup import get_logger as _get_logger
 from core.address import get_address as _ga
+from core.safe import swallow as _swallow
 _log = _get_logger('interactive')
 # States that expect an explicit yes/no answer — semantic Layer 0 confirm intercept must be active.
 _YES_NO_STATES = frozenset({'game_watcher_suggest', 'game_confirm', 'work_confirm', 'llm_action_confirm'})
@@ -24,12 +25,12 @@ def _sem_cmd(text: str, is_waiting_answer: bool = False) -> str:
         if parsed:
             return parsed[0][0] or ''
     except Exception:
-        pass
+        _swallow()
     try:
         from core.nlp.semantic import classify_intent
         return classify_intent(text, is_waiting_answer=is_waiting_answer) or ''
     except Exception:
-        pass
+        _swallow()
     try:
         from core.nlp import match_command
         return match_command(text) or ''
@@ -302,7 +303,7 @@ def _parse_yt_pick_ordinal(words: list[str], fuzzy_threshold: int = 82) -> int |
     return best_idx if best_score >= fuzzy_threshold else None
 
 def _state_yt_pick_ask(handler, text_lower, words, data, global_cmd):
-    from ui.dialogs.yt_picker_dlg import select_index, cancel_picker, is_picker_open
+    from ui_next.host import select_index, cancel_picker, is_picker_open
     if not is_picker_open():
         # The window already resolved itself (click or its own timeout) —
         # nothing left for this state to do, stop waiting on more voice input.
@@ -487,9 +488,7 @@ def _state_reminder_ask(handler, text_lower, words, data, global_cmd):
     if delay > 0:
         from features.reminder import schedule_reminder
         from core.handler.commands.system import _fmt_delay
-        from core.system import app_state
-        hud = getattr(app_state, 'hud', None)
-        schedule_reminder(delay, 'о чём-то', handler.speak, hud)
+        schedule_reminder(delay, 'о чём-то', handler.speak)
         handler.speak(_spk('reminder.set_ok', delay=_fmt_delay(delay)))
     else:
         handler.speak(_spk('reminder.ask_time'))
@@ -523,22 +522,20 @@ def _state_qa_clarify(handler, text_lower, words, data, global_cmd):
         return {'new_state': 'qa_clarify', 'new_data': data, 'timeout': 30.0}
     handler.play_response('loading')
     try:
-        from ui.hud_ai_window import cancel_hide_ai_window
+        from ui_next.host import cancel_hide_ai_window
         cancel_hide_ai_window()
     except Exception:
-        pass
+        _swallow()
     try:
         from core.speech import warmup_tts
         warmup_tts()
-    except Exception: pass
+    except Exception: _swallow()
     # We now pass the user's new question and the previous turn directly.
     # The LLM prompt handles relevance and topic changes automatically.
     def _task():
-        from ui import hud
-        has_hud = hud._hud is not None
         try:
             from features.qa.llm_processor import wrap_llm_stream
-            from ui.hud_ai_window import show_ai_window, update_ai_window_text, hide_ai_window
+            from ui_next.host import show_ai_window, update_ai_window_text, hide_ai_window
 
             active_subject = [context]
             def _on_sub(sub):
@@ -560,9 +557,6 @@ def _state_qa_clarify(handler, text_lower, words, data, global_cmd):
                 curr_text = "".join(full_ans).strip()
                 update_ai_window_text(curr_text)
 
-                if has_hud:
-                    display_text = curr_text if len(curr_text) < 65 else "..." + curr_text[-62:]
-                    hud._hud.root.after(0, lambda t=display_text: hud._hud.show_msg_stream(t))
 
                 # If buffer is long, allow splitting at commas/semicolons/dashes to speak faster
                 active_marks = marks
@@ -583,19 +577,16 @@ def _state_qa_clarify(handler, text_lower, words, data, global_cmd):
                 handler.speak(buffer.strip(), persist=False)
             final_ans = "".join(full_ans).strip()
             if final_ans:
-                if has_hud: hud._hud.root.after(2000, hud._hud.hide_msg_stream)
                 hide_ai_window(delay_ms=8000)
                 next_context = active_subject[0] if active_subject[0] else text_clean
                 new_history = history + [{'role': 'user', 'content': text_clean}, {'role': 'assistant', 'content': final_ans}]
                 handler._set_interactive('qa_clarify', {'context': next_context, 'last_ans': final_ans, 'history': new_history}, timeout=30.0)
             else:
                 speak('Извините, не удалось найти информацию.')
-                if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)
                 hide_ai_window(delay_ms=0)
         except Exception as e:
             _log.error(f"[QA_CLARIFY_STREAM] Error: {e}")
             speak('Извините, произошла ошибка.')
-            if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)
             hide_ai_window(delay_ms=0)
 
     threading.Thread(target=_task, daemon=True).start()

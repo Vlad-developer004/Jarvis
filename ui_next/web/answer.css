@@ -1,0 +1,16 @@
+/* Answer card (answer.js): a floating card in the bottom right corner; it never takes the focus and does not block the screen behind it. */
+.an { position: fixed; right: 1.2rem; bottom: 1.2rem; z-index: 60; width: min(24rem, calc(100vw - 2.4rem)); max-height: min(26rem, 60vh); display: flex; flex-direction: column; overflow: hidden;
+  background: linear-gradient(165deg, hsl(var(--h) 55% 12% / .96), hsl(var(--h) 60% 7% / .97)); border: 1px solid hsl(var(--h) 65% 50% / .55); border-radius: .9rem; box-shadow: 0 .8rem 2.4rem #0009, 0 0 1.6rem hsl(var(--h) 80% 50% / .18);
+  opacity: 0; transform: translateY(.8rem); transition: opacity .25s ease, transform .25s ease; }
+.an.in { opacity: 1; transform: none; }
+.an-x { position: absolute; top: .35rem; right: .45rem; z-index: 2; width: 1.7rem; height: 1.7rem; border: 0; border-radius: 50%; background: hsl(var(--h) 50% 8% / .7); color: #cfe6f7; font-size: 1.15rem; line-height: 1; cursor: pointer; }
+.an-x:hover { background: hsl(var(--h) 60% 30%); color: #fff; }
+.an-pic { position: relative; flex: none; height: 11rem; overflow: hidden; background: hsl(var(--h) 50% 8%); border-bottom: 1px solid hsl(var(--h) 50% 50% / .3); }
+.an-pic::before, .an-pic::after { content: ''; position: absolute; inset: 0; background: var(--src) center / cover no-repeat; }
+.an-pic::before { inset: -12px; filter: blur(14px) brightness(.55); }
+.an-pic::after { background-size: contain; }   /* the whole picture, never cropped; the blurred copy fills the sides */
+.an-b { display: flex; flex-direction: column; min-height: 0; padding: .8rem 1rem .9rem; }
+.an-t { margin: 0 1.6rem .4rem 0; font: 700 .78rem Onest; letter-spacing: .1em; text-transform: uppercase; color: var(--cyan); }
+.an-txt { overflow-y: auto; color: #e6f3fb; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; scrollbar-width: thin; scrollbar-color: hsl(var(--h) 40% 40% / .6) transparent; }
+.an-vid { color: var(--dim); font-size: .74rem; margin-top: .4rem; }
+@media (prefers-reduced-motion: reduce) { .an { transition: none; } }

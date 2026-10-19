@@ -1,0 +1,37 @@
+/* Games screen. Same tokens and card language as the Commands and Reminders screens. */
+#games { grid-area: view; display: none; padding: 0; min-height: 0; position: relative; }
+#app[data-view=games] { grid-template-columns: var(--navw) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "nav top" "nav view"; }
+#app[data-view=games] #hero, #app[data-view=games] #bottom, #app[data-view=games] #side { display: none; }
+#app[data-view=games] #games { display: flex; flex-direction: column; }
+html[data-tier=mini] #app[data-view=games] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top" "view" "nav"; }
+
+.gm-body { flex: 1; min-height: 0; overflow-y: auto; padding: .6rem 1.2rem 1.4rem; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: .9rem; align-content: start; scrollbar-width: thin; scrollbar-color: hsl(var(--h) 40% 40% / .6) transparent; }
+.gm-col { display: flex; flex-direction: column; gap: .9rem; min-width: 0; }
+
+/* game mode card */
+.gm-mode { display: flex; align-items: center; gap: 1rem; }
+.gm-mode .gmst { flex: 1; min-width: 0; } .gm-mode .gmst b { display: block; font: 700 1.5rem Tektur; letter-spacing: .04em; color: #fff; } .gm-mode .gmst b.on { color: var(--amber); }
+.gm-mode .gmst span { display: block; margin-top: .2rem; color: var(--dim); font-size: .85rem; line-height: 1.4; }
+.gm-prof { color: #cfe8f8; font-size: .9rem; } .gm-prof b { color: var(--amber); font-weight: 600; }
+.gm-hint { color: var(--dim); font-size: .82rem; line-height: 1.5; }
+
+/* profiles */
+.gm-pl { display: flex; flex-direction: column; gap: .5rem; }
+.gm-pr { display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; background: hsl(var(--h) calc(55% * var(--sk)) 14% / .7); border-left: 3px solid var(--green); }
+.gm-pr.off { border-left-color: hsl(var(--h) 20% 40%); opacity: .75; }
+.gm-pr > div { flex: 1; min-width: 0; } .gm-pr b { display: block; font-weight: 600; color: #fff; } .gm-pr small { color: var(--dim); font-size: .8rem; }
+
+/* library */
+.gm-tools { display: flex; align-items: center; gap: .6rem; }
+.gm-tools .cm-search { flex: 1; height: 2.6rem; }
+.gm-lib { display: flex; flex-direction: column; gap: .45rem; }
+.gm-g { display: flex; align-items: center; gap: .8rem; padding: .5rem .7rem; background: hsl(var(--h) calc(55% * var(--sk)) 14% / .7); border-left: 3px solid hsl(var(--h) calc(60% * var(--sk)) 50% / .6); transition: background .12s, border-color .12s; }
+.gm-g:hover { background: hsl(var(--h) calc(60% * var(--sk)) 20% / .85); border-left-color: var(--cyan); }
+.gm-ini { flex: none; width: 2.4rem; height: 2.4rem; display: grid; place-items: center; font: 700 .95rem Tektur; color: #fff; background: hsl(var(--gh, 210) 55% 30% / .8); clip-path: polygon(.4rem 0, 100% 0, 100% calc(100% - .4rem), calc(100% - .4rem) 100%, 0 100%, 0 .4rem); }
+.gm-g > div { flex: 1; min-width: 0; } .gm-g b { display: block; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .gm-g small { color: var(--dim); font-size: .78rem; }
+.gm-g .cm-try { padding: .35rem .85rem; flex: none; }
+.gm-more { align-self: center; color: var(--dim); font-size: .82rem; padding: .3rem; }
+
+@media (max-width: 60rem) { .gm-body { grid-template-columns: 1fr; } }
+.gm-ini.has { background: hsl(var(--gh, 210) 40% 12% / .7); padding: .2rem; }
+.gm-ini img { width: 100%; height: 100%; object-fit: contain; }

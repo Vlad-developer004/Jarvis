@@ -172,7 +172,7 @@ class JarvisEngine:
                 # interval, not by unrelated timers.
                 if not _tts_recently:
                     try:
-                        from ui import hud as _hud
+                        from ui_next import host as _hud
                         if _hud.STATE and _hud.STATE.mode == _hud.HudState.SPEAKING:
                             _hud.STATE.mode = _hud.HudState.IDLE
                     except Exception: pass
@@ -180,7 +180,7 @@ class JarvisEngine:
                     from core.audio_utils import is_jarvis_output_headphones
                     if not is_jarvis_output_headphones() and not app_state.game_mode:
                         try:
-                            from ui import hud as _hud
+                            from ui_next import host as _hud
                             if _hud.STATE and _hud.STATE.mode != _hud.HudState.SPEAKING:
                                 _hud.STATE.mode = _hud.HudState.SPEAKING
                         except Exception: pass
@@ -208,7 +208,7 @@ class JarvisEngine:
                     if not self.speaking and (not app_state.dictation_mode) and (not self.handler.interactive_state) and (not self.handler.is_speaking):
                         app_state.jarvis_active = False
                         try:
-                            from ui import hud as _hud
+                            from ui_next import host as _hud
                             if _hud.STATE: _hud.STATE.mode = _hud.HudState.IDLE
                         except Exception: pass
                 if not self.speaking and not self.handler.is_speaking:
@@ -246,7 +246,7 @@ class JarvisEngine:
                         for _pb in self.pre_buf: self.asr.accept(_pb)
                         self.asr.accept(data); self.pre_buf.clear()
                         try:
-                            from ui import hud as _hud
+                            from ui_next import host as _hud
                             if _hud.STATE and not self.handler.is_tts_audio_playing:
                                 _hud.STATE.mode = _hud.HudState.LISTENING
                         except Exception: pass

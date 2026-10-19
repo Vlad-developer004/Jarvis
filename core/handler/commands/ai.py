@@ -3,6 +3,7 @@ from features.qa import search_answer
 from core.responses import spk
 from core.speech.tts import strip_speech_markup
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 _log = _get_logger('ai')
 def handle_ai(handler, cmd, text_lower, amount):
     if cmd == 'llm_chat':
@@ -50,26 +51,24 @@ def handle_ai(handler, cmd, text_lower, amount):
 
         handler.play_response('loading')
         try:
-            from ui.hud_ai_window import cancel_hide_ai_window
+            from ui_next.host import cancel_hide_ai_window
             cancel_hide_ai_window()
         except Exception:
-            pass
+            _swallow()
         # Set interactive state immediately so follow-up questions during TTS playback are caught
         handler._set_interactive('qa_clarify', {'context': q, 'last_ans': ''}, timeout=120.0)
         try:
             from core.speech import warmup_tts
             warmup_tts()
         except Exception:
-            pass
+            _swallow()
 
         def _task():
-            from ui import hud
-            has_hud = hud._hud is not None
             
             try:
                 # 1. Start streaming
                 from features.qa.llm_processor import wrap_llm_stream
-                from ui.hud_ai_window import show_ai_window, update_ai_window_text, hide_ai_window
+                from ui_next.host import show_ai_window, update_ai_window_text, hide_ai_window
                 
                 active_subject = [""]
                 def _on_sub(sub):
@@ -105,10 +104,6 @@ def handle_ai(handler, cmd, text_lower, amount):
                     update_ai_window_text(curr_text)
 
                     # Update HUD (word-by-word/chunk-by-chunk)
-                    if has_hud:
-                        # Limit HUD text length to avoid overflow, show last ~60 chars if long
-                        display_text = curr_text if len(curr_text) < 65 else "..." + curr_text[-62:]
-                        hud._hud.root.after(0, lambda t=display_text: hud._hud.show_msg_stream(t))
                     
                     # If buffer is long, allow splitting at commas/semicolons/dashes to speak faster
                     active_marks = marks
@@ -135,8 +130,6 @@ def handle_ai(handler, cmd, text_lower, amount):
                 final_ans = "".join(full_ans).strip()
                 if final_ans:
                     # Finalize visual state
-                    if has_hud:
-                        hud._hud.root.after(2000, hud._hud.hide_msg_stream)
                     hide_ai_window(delay_ms=5000)
                     # Set up interactive follow-up. 'history' carries the
                     # real (question, answer) turns for this topic — grown
@@ -147,13 +140,11 @@ def handle_ai(handler, cmd, text_lower, amount):
                     handler._set_interactive('qa_clarify', {'context': next_context, 'last_ans': final_ans, 'history': history}, timeout=30.0)
                 else:
                     handler.speak(spk('ai.no_answer'))
-                    if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)
                     hide_ai_window(delay_ms=0)
  
             except Exception as e:
                 _log.error(f"[AI_STREAM] Error: {e}")
                 handler.speak(spk('ai.error'))
-                if has_hud: hud._hud.root.after(0, hud._hud.hide_msg_stream)
                 hide_ai_window(delay_ms=0)
 
         threading.Thread(target=_task, daemon=True).start()

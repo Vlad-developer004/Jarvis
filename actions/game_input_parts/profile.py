@@ -4,6 +4,7 @@ import time
 from actions import keysend
 from core.nlp.commands import normalize_numbers as _nn
 from pathlib import Path
+from core.safe import swallow as _swallow
 try:
     import pydirectinput as _input
     _input.PAUSE = 0
@@ -17,6 +18,10 @@ _entries: list[dict] = []
 _flat: list[tuple[str, dict, str, int]] = []
 _bindings: dict = {}
 _last_cast: dict[str, float] = {}
+import logging
+_log = logging.getLogger(__name__)
+
+
 def get_loaded_profile_stem() -> str:
     return _loaded_stem
 def press_robust(key: str, duration: float = 0.15):
@@ -27,15 +32,15 @@ def press_robust(key: str, duration: float = 0.15):
     if not key:
         return
     try:
-        print(f"[INPUT] Pressing key: {key!r} (duration={duration}s)", flush=True)
+        _log.debug(f"[INPUT] Pressing key: {key!r} (duration={duration}s)")
         keysend.hold(key, duration)
     except Exception as e:
-        print(f"[INPUT] Error pressing {key!r}: {e}", flush=True)
+        _log.debug(f"[INPUT] Error pressing {key!r}: {e}")
         # Fallback to simple press if hold fails or the key name is unrecognized
         try:
             keysend.press(key)
         except Exception:
-            pass
+            _swallow()
 def get_binding(name: str, default: str = '') -> str:
     val = _bindings.get(name, default)
     return default if val == 'MACRO' else val
@@ -137,7 +142,7 @@ def load_profile(profile_name: str) -> tuple[bool, str]:
             bundled = Path(get_project_root()) / 'data' / 'game_profiles' / f'{profile_name}.json'
             merge_bundled_spells(path, bundled)
         except Exception:
-            pass
+            _swallow()
     try:
         raw_text = path.read_text(encoding='utf-8')
         clean_text = _strip_json_comments(raw_text)

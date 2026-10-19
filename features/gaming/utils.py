@@ -3,6 +3,7 @@ import re
 import json
 from rapidfuzz import fuzz
 from typing import Optional, Dict
+from core.safe import swallow as _swallow
 GAME_CACHE_FILE = os.path.join('data', 'game_cache.json')
 def _load_game_cache() -> Dict[str, str]:
     if os.path.exists(GAME_CACHE_FILE):
@@ -10,7 +11,7 @@ def _load_game_cache() -> Dict[str, str]:
             with open(GAME_CACHE_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception:
-            pass
+            _swallow()
     return {}
 def _save_game_cache(cache: Dict[str, str]):
     try:
@@ -18,7 +19,7 @@ def _save_game_cache(cache: Dict[str, str]):
         with open(GAME_CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass
+        _swallow()
 _GAME_CACHE_MEM = _load_game_cache()
 def find_game_executable(install_dir: str, game_name: str) -> Optional[str]:
     if not install_dir or not os.path.exists(install_dir):
@@ -111,6 +112,10 @@ def fuzzy_find_game(games, query: str):
     if not games:
         return None
     query = query.lower().strip()
+    # A one- or two-letter fragment (a noisy "о", "ну") is a substring of almost any title, so partial_ratio
+    # scored it 100 and launched a random game while Jarvis waited for the answer to "which game?".
+    if len(re.sub(r'[\W_]+', '', query)) < 3:
+        return None
     trans_query = transliterate_cyrillic_to_latin(query)
     best_match = None
     best_score = 0

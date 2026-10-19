@@ -1,6 +1,8 @@
 """Tests for core/handler/commands/reactor.py (HUD reactor color/pulse
 effects) and browser.py (tab management) — previously untested.
 """
+import pytest
+
 import core.handler.commands.reactor as reactor_cmd
 import core.handler.commands.browser as browser_cmd
 
@@ -32,45 +34,42 @@ class _FakeHud:
         pass
 
 
-def _make_hud():
-    h = _FakeHud()
-    h._hud_queue = _FakeHud._Queue(h)
-    h._set_reactor_color = lambda c: h.queued.append(('color', c))
-    h._reset_reactor_color = lambda: None
-    h._trigger_reactor_pulse = lambda: None
-    h._trigger_reactor_glitch = lambda: None
-    return h
+@pytest.fixture
+def window(monkeypatch):
+    """Stands in for the window: records the reactor effects the command sends and says whether a window is connected."""
+    from ui_next import host
+    sent = []
+    state = {'connected': True}
+    monkeypatch.setattr(host, 'reactor', lambda op, color='': sent.append((op, color)) or state['connected'])
+    return sent, state
 
 
 # ── reactor.py ────────────────────────────────────────────────────────────
 
-def test_reactor_color_command_queues_color_change(monkeypatch):
-    import ui.hud as hud_mod
-    fake_hud = _make_hud()
-    monkeypatch.setattr(hud_mod, '_hud', fake_hud)
+def test_reactor_color_command_sends_the_color(window):
+    sent, _ = window
     handler = _FakeHandler()
 
     reactor_cmd.handle_reactor(handler, 'reactor_color_red', 'сделай реактор красным', 0)
 
-    assert len(fake_hud.queued) == 1
+    assert sent == [('color', 'red')]
     assert handler.play_response_calls
 
 
-def test_reactor_reset_queues_reset(monkeypatch):
-    import ui.hud as hud_mod
-    fake_hud = _make_hud()
-    monkeypatch.setattr(hud_mod, '_hud', fake_hud)
+def test_reactor_reset_pulse_and_glitch(window):
+    sent, _ = window
     handler = _FakeHandler()
 
-    reactor_cmd.handle_reactor(handler, 'reactor_reset', 'сбрось цвет реактора', 0)
+    for cmd in ('reactor_reset', 'reactor_pulse', 'reactor_glitch'):
+        reactor_cmd.handle_reactor(handler, cmd, 'x', 0)
 
-    assert len(fake_hud.queued) == 1
-    assert handler.play_response_calls
+    assert sent == [('reset', ''), ('pulse', ''), ('glitch', '')]
+    assert len(handler.play_response_calls) == 3
 
 
-def test_reactor_command_without_hud_running_speaks_error(monkeypatch):
-    import ui.hud as hud_mod
-    monkeypatch.setattr(hud_mod, '_hud', None)
+def test_reactor_command_without_a_window_speaks_error(window):
+    _, state = window
+    state['connected'] = False
     handler = _FakeHandler()
 
     reactor_cmd.handle_reactor(handler, 'reactor_color_red', 'сделай реактор красным', 0)
@@ -79,15 +78,13 @@ def test_reactor_command_without_hud_running_speaks_error(monkeypatch):
     assert handler.play_response_calls == []
 
 
-def test_reactor_unknown_command_does_nothing(monkeypatch):
-    import ui.hud as hud_mod
-    fake_hud = _make_hud()
-    monkeypatch.setattr(hud_mod, '_hud', fake_hud)
+def test_reactor_unknown_command_does_nothing(window):
+    sent, _ = window
     handler = _FakeHandler()
 
     reactor_cmd.handle_reactor(handler, 'not_a_reactor_cmd', 'что угодно', 0)
 
-    assert fake_hud.queued == []
+    assert sent == []
     assert handler.play_response_calls == []
 
 

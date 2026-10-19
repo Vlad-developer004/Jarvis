@@ -31,7 +31,7 @@ def _download_file(url: str, prefix: str) -> str | None:
         import requests
         cache_dir = os.path.join(tempfile.gettempdir(), 'jarvis_ai_images')
         os.makedirs(cache_dir, exist_ok=True)
-        h = hashlib.md5(url.encode('utf-8')).hexdigest()
+        h = hashlib.md5(url.encode('utf-8'), usedforsecurity=False).hexdigest()
         ext = '.png' if '.png' in url.lower() else '.jpg'
         path = os.path.join(cache_dir, f'{prefix}_{h}{ext}')
         if not os.path.exists(path):
@@ -55,7 +55,7 @@ def _download_video(url: str) -> str | None:
         import yt_dlp
         cache_dir = os.path.join(tempfile.gettempdir(), 'jarvis_ai_images')
         os.makedirs(cache_dir, exist_ok=True)
-        h = hashlib.md5(url.encode('utf-8')).hexdigest()
+        h = hashlib.md5(url.encode('utf-8'), usedforsecurity=False).hexdigest()
         outtmpl = os.path.join(cache_dir, f'nasa_vid_{h}.%(ext)s')
         existing = [f for f in os.listdir(cache_dir) if f.startswith(f'nasa_vid_{h}.')]
         if existing:

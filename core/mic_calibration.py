@@ -4,6 +4,7 @@ import os
 import numpy as np
 from pathlib import Path
 from config_pack.config import get_data_path
+from core.safe import swallow as _swallow
 
 _PROFILE_PATH = Path(get_data_path('mic_profile.json'))
 _REQUIRED_SAMPLES = 5
@@ -53,15 +54,15 @@ def find_best_rate(pa_instance, chunk_ms: int = 32, device_index=None) -> int:
                     d = s.read(chunk, exception_on_overflow=False)
                     vals.append(rms_int16(d))
                 except Exception:
-                    pass
+                    _swallow()
             try:
                 s.close()
             except Exception:
-                pass
+                _swallow()
             if vals:
                 results[rate] = float(np.percentile(vals, 70))
         except Exception:
-            pass
+            _swallow()
     if not results:
         return 16000
     best = min(results, key=results.get)
@@ -76,7 +77,7 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
             from core.speech import speak
             speak(text)
         except Exception:
-            pass
+            _swallow()
     def _wait():
         _wait_tts_done(extra_sec=0.4)
     def _beep():
@@ -90,7 +91,7 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
             import winsound
             winsound.Beep(950, 150)
         except Exception:
-            pass
+            _swallow()
         time.sleep(0.15)  # let the beep's tail clear the mic before measuring
     import random as _rnd
     _ok_phrases = [
@@ -118,7 +119,7 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
                     data = stream.read(chunk, exception_on_overflow=False)
                     rms_vals.append(rms_int16(data))
                 except Exception:
-                    pass
+                    _swallow()
             if rms_vals:
                 rms_arr = np.array(rms_vals)
                 peak_rms = float(np.percentile(rms_arr, 85))
@@ -140,7 +141,7 @@ def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, 
             data = stream.read(chunk, exception_on_overflow=False)
             noise_vals.append(rms_int16(data))
         except Exception:
-            pass
+            _swallow()
     if noise_vals:
         noise_arr = np.array(noise_vals)
         noise_floor = float(np.percentile(noise_arr, 75))
@@ -198,7 +199,7 @@ def calibrate_noise_simple(stream, chunk: int, chunk_ms: int) -> int:
             data = stream.read(chunk, exception_on_overflow=False)
             vals.append(rms_int16(data))
         except Exception:
-            pass
+            _swallow()
     if not vals:
         return int(MIN_THRESH)
     arr       = np.array(vals)

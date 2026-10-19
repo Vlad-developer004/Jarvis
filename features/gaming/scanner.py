@@ -4,6 +4,7 @@ import json
 import subprocess
 import winreg
 from typing import List
+from core.safe import swallow as _swallow
 class GameInfo:
     def __init__(self, name: str, launcher: str, launch_uri: str, last_played: int=0, install_dir: str=''):
         self.name = name
@@ -37,7 +38,7 @@ def get_steam_games() -> List[GameInfo]:
                     if apps_path not in libraries and os.path.exists(apps_path):
                         libraries.append(apps_path)
         except Exception:
-            pass
+            _swallow()
     for lib in libraries:
         if not os.path.exists(lib): continue
         for entry in os.listdir(lib):
@@ -77,31 +78,49 @@ def get_epic_games() -> List[GameInfo]:
                         games.append(GameInfo(name=name, launcher='Epic Games', launch_uri=f'com.epicgames.launcher://apps/{namespace}%3A{catalog_id}%3A{app_name}?action=launch&silent=true', last_played=0, install_dir=install_location or ''))
             except Exception: continue
     return games
+def _read_game_config(install_dir: str):
+    """(display name, app id) from an Xbox/Microsoft Store game's MicrosoftGame.config, or None when the package is not a game."""
+    from defusedxml import ElementTree as ET
+    cfg = os.path.join(install_dir, 'MicrosoftGame.config')
+    if not install_dir or not os.path.isfile(cfg):
+        return None
+    try:
+        root = ET.parse(cfg).getroot()
+    except Exception:
+        return None
+    visuals = root.find('ShellVisuals')
+    name = (visuals.get('DefaultDisplayName') if visuals is not None else '') or ''
+    exe = root.find('ExecutableList/Executable')
+    app_id = (exe.get('Id') if exe is not None else '') or 'Game'
+    return name, app_id
 def get_xbox_games() -> List[GameInfo]:
+    """Games installed through the Xbox app / Microsoft Store. Only packages that ship a MicrosoftGame.config count:
+    filtering by publisher alone returns every Microsoft system package (Paint, runtimes, codecs)."""
     games = []
     try:
         ps_script = (
-            'Get-AppxPackage | Where-Object {$_.Name -like "*Game*" -or '
-            '$_.PublisherId -eq "8wekyb3d8bbwe"} | '
-            'Select-Object Name, PackageFamilyName, InstallLocation'
+            "Get-AppxPackage | Where-Object { -not $_.IsFramework -and $_.InstallLocation -and "
+            "(Test-Path -LiteralPath (Join-Path $_.InstallLocation 'MicrosoftGame.config')) } | "
+            "Select-Object Name, PackageFamilyName, InstallLocation | ConvertTo-Json -Compress"
         )
         result = subprocess.run(
             ['powershell', '-NoProfile', '-Command', ps_script],
-            capture_output=True, text=True, shell=False,
+            capture_output=True, text=True, shell=False, encoding='utf-8', errors='replace',
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
         )
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            if len(lines) > 2:
-                for line in lines[2:]:
-                    parts = re.split(r'\s{2,}', line.strip())
-                    if len(parts) >= 2:
-                        name, family_name = parts[0], parts[1]
-                        install_dir = parts[2] if len(parts) > 2 else ''
-                        if any(x in name.lower() for x in ['overlay', 'identity', 'provider', 'services', 'bar', 'mclive']): continue
-                        launch_uri = f'shell:AppsFolder\\{family_name}!Game'
-                        games.append(GameInfo(name=name, launcher='Xbox', launch_uri=launch_uri, last_played=0, install_dir=install_dir))
-    except Exception: pass
+        out = result.stdout.strip()
+        if result.returncode == 0 and out:
+            data = json.loads(out)
+            for pkg in (data if isinstance(data, list) else [data]):
+                install_dir = pkg.get('InstallLocation') or ''
+                cfg = _read_game_config(install_dir)
+                if cfg is None:
+                    continue
+                title, app_id = cfg
+                name = title if title and not title.startswith('ms-resource:') else pkg.get('Name', '')
+                if name:
+                    games.append(GameInfo(name=name, launcher='Xbox', launch_uri=f"shell:AppsFolder\\{pkg['PackageFamilyName']}!{app_id}", last_played=0, install_dir=install_dir))
+    except Exception: _swallow()
     return games
 _GAMES_CACHE: List[GameInfo] = []
 _LAST_SCAN: float = 0

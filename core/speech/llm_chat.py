@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 
 _log = _get_logger('llm_chat')
 
@@ -252,7 +253,7 @@ def _get_model_path() -> str:
         if custom and os.path.isfile(custom):
             return custom
     except Exception:
-        pass
+        _swallow()
     return _MODEL_PATH
 
 
@@ -400,7 +401,7 @@ class LocalChatModel:
                 try:
                     on_done()
                 except Exception:
-                    pass
+                    _swallow()
         threading.Thread(target=_bg, daemon=True, name='LlmChatWarmup').start()
 
     # ── Conversation context ─────────────────────────────────────────────

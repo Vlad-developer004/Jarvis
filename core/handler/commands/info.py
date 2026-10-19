@@ -1,19 +1,16 @@
 import threading
 from core.responses import spk
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 _log = _get_logger('info')
 
 def _currency_rate(handler, cmd, text_lower):
-    from actions.currency import get_rate, CURRENCY_ALIASES
-    target = 'usd'
-    # sort longest first to avoid 'btc' matching before 'bitcoin'
-    for alias in sorted(CURRENCY_ALIASES, key=len, reverse=True):
-        if alias in text_lower:
-            target = CURRENCY_ALIASES[alias]
-            break
-    _log.debug('currency: text=%r → target=%s', text_lower, target)
+    """"курс юаня" prices that currency in the user's home currency (setting `currency_base`); "курс юаня к лире" names both."""
+    from actions.currency_pairs import WATCH, get_rate_pair, get_watch_summary, resolve
+    target, base = resolve(text_lower)
+    _log.debug('currency: text=%r -> %s in %s', text_lower, target, base)
     def _rate_task():
-        ok, res, url = get_rate(target)
+        ok, res, url = get_watch_summary(base) if target == WATCH else get_rate_pair(target, base)
         if ok and url:
             import webbrowser
             webbrowser.open(url)
@@ -151,7 +148,7 @@ def _nasa_apod(handler, cmd, text_lower):
         # spoken (see actions/nasa.py's module docstring for why).
         display_text = f"{r['title']}\n\n{r['explanation']}"
         try:
-            from ui.hud_ai_window import show_ai_window, update_ai_window_text, set_ai_window_image, set_ai_window_video, hide_ai_window
+            from ui_next.host import show_ai_window, update_ai_window_text, set_ai_window_image, set_ai_window_video, hide_ai_window
             show_ai_window('NASA · Картинка дня', fetch_image=False)
             update_ai_window_text(display_text)
             if r['media_type'] == 'video':
@@ -188,7 +185,7 @@ def _system_specs(handler, cmd, text_lower):
                 ).decode('utf-8', errors='ignore')
                 lines = [l.strip() for l in output.split('\n') if l.strip()]
                 if lines: gpu = lines[0]
-            except Exception: pass
+            except Exception: _swallow()
 
             res = f"Конфигурация системы: Процессор {cpu}. Оперативная память {ram} гигабайт. Видеокарта {gpu}."
             handler.speak(res)

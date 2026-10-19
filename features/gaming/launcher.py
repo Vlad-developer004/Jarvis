@@ -2,6 +2,7 @@ import os
 import winreg
 import time
 from typing import Dict
+from core.safe import swallow as _swallow
 def wait_for_launcher_window(launcher_name: str, timeout: float = 15.0) -> bool:
     import pygetwindow as gw
     title_map = {
@@ -53,7 +54,7 @@ def get_available_launchers() -> Dict[str, str]:
             path, _ = winreg.QueryValueEx(key, 'InstallDir')
             exe = os.path.join(path, 'UbisoftConnect.exe')
             if os.path.exists(exe): ubi_exe = exe
-    except Exception: pass
+    except Exception: _swallow()
     if not ubi_exe:
         p = 'C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\UbisoftConnect.exe'
         if os.path.exists(p): ubi_exe = p
@@ -64,13 +65,13 @@ def get_available_launchers() -> Dict[str, str]:
             path, _ = winreg.QueryValueEx(key, 'client')
             exe = os.path.join(path, 'GalaxyClient.exe')
             if os.path.exists(exe): gog_exe = exe
-    except Exception: pass
+    except Exception: _swallow()
     if gog_exe: launchers['GOG Galaxy'] = gog_exe
     xbox_exists = False
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\XboxApp.exe', 0, winreg.KEY_READ) as key:
             xbox_exists = True
-    except Exception: pass
+    except Exception: _swallow()
     if not xbox_exists:
         if os.path.exists(os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Microsoft', 'WindowsApps', 'XboxApp.exe')):
             xbox_exists = True

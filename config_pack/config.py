@@ -1,6 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
+from core.safe import swallow as _swallow
 
 def get_project_root() -> str:
     import sys
@@ -29,7 +30,7 @@ def get_data_path(filename: str) -> str:
             os.makedirs(os.path.dirname(appdata_file), exist_ok=True)
             if os.path.isfile(bundled_file):
                 shutil.copy2(bundled_file, appdata_file)
-        except Exception: pass
+        except Exception: _swallow()
     
     os.makedirs(os.path.dirname(appdata_file), exist_ok=True)
     return appdata_file
@@ -45,7 +46,7 @@ def get_data_dir(dirname: str) -> str:
             os.makedirs(os.path.dirname(appdata_dir), exist_ok=True)
             # Copy entire directory content
             shutil.copytree(bundled_dir, appdata_dir, dirs_exist_ok=True)
-        except Exception: pass
+        except Exception: _swallow()
         
     os.makedirs(appdata_dir, exist_ok=True)
     return appdata_dir
@@ -72,7 +73,7 @@ def _load_secrets() -> None:
             if os.path.exists(p):
                 load_dotenv(p, override=False)
         except Exception:
-            pass
+            _swallow()
 _load_secrets()
 _ROOT = get_project_root()
 MODEL_PATH = os.path.join(_ROOT, 'models', 'sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16')
@@ -111,7 +112,7 @@ def _read_stt_engine() -> str:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return engine
     except Exception:
-        pass
+        _swallow()
     cpu_phys = os.cpu_count() or 2
     return 'vosk' if cpu_phys <= 2 else 'gigaam'
 STT_ENGINE = _read_stt_engine()
@@ -124,7 +125,7 @@ def _read_tts_warmup() -> bool:
                 data = json.load(f)
             return bool(data.get('tts_warmup', True))
     except Exception:
-        pass
+        _swallow()
     return True
 TTS_WARMUP = _read_tts_warmup()
 def _read_auto_update_enabled() -> bool:
@@ -135,7 +136,7 @@ def _read_auto_update_enabled() -> bool:
                 data = json.load(f)
             return bool(data.get('auto_update_enabled', True))
     except Exception:
-        pass
+        _swallow()
     return True
 AUTO_UPDATE_ENABLED = _read_auto_update_enabled()
 def _read_max_saved_videos() -> int:
@@ -146,7 +147,7 @@ def _read_max_saved_videos() -> int:
                 data = json.load(f)
             return int(data.get('max_saved_videos', 10))
     except Exception:
-        pass
+        _swallow()
     return 10
 MAX_SAVED_VIDEOS = _read_max_saved_videos()
 
@@ -158,7 +159,7 @@ def _read_tts_unload_timeout() -> float:
                 data = json.load(f)
             return float(data.get('tts_unload_timeout', 300.0))
     except Exception:
-        pass
+        _swallow()
     return 300.0
 TTS_UNLOAD_TIMEOUT = _read_tts_unload_timeout()
 
@@ -170,7 +171,7 @@ def _read_wake_word_mode() -> str:
                 data = json.load(f)
             return str(data.get('wake_word_mode', 'continuous'))
     except Exception:
-        pass
+        _swallow()
     return 'continuous'
 WAKE_WORD_MODE = _read_wake_word_mode()
 
@@ -186,6 +187,6 @@ def _read_wake_active_timeout() -> float:
                 data = json.load(f)
             return float(data.get('wake_active_timeout_sec', 30.0))
     except Exception:
-        pass
+        _swallow()
     return 30.0
 WAKE_ACTIVE_TIMEOUT_SEC = _read_wake_active_timeout()

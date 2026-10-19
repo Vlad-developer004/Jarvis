@@ -1,6 +1,7 @@
 import numpy as np
 import json
 from pathlib import Path
+from core.safe import swallow as _swallow
 _RATE = 16000
 _N_MFCC = 13
 _N_FILTERS = 26
@@ -77,7 +78,7 @@ class GameAudioMatcher:
                         loaded[name] = prepared
                 self._vecs = loaded
             except Exception as e:
-                pass
+                _swallow()
     def clear(self):
         self._vecs = {}
         self._profile = ''
@@ -101,7 +102,7 @@ class GameAudioMatcher:
             payload = {k: [vec.tolist() for vec in vals] for k, vals in self._vecs.items()}
             self._path().write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
         except Exception as e:
-            pass
+            _swallow()
         ready = self.ready_count()
     def match(self, audio_bytes: bytes) -> tuple[str, float] | None:
         ready = {n: v for n, v in self._vecs.items() if len(v) >= _MIN_SAMPLES}

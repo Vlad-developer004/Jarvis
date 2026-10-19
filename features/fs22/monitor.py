@@ -19,6 +19,7 @@ from core.system import get_foreground_process_name
 from features.gaming_common.real_break import RealBreakTracker
 from features.fs22.config import REAL_BREAK_THRESHOLDS_MIN, POLL_INTERVAL
 from features.fs22.phrases_fs22 import event_real_break_reminder, session_report_text
+from core.safe import swallow as _swallow
 
 _log = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def _save_fs22_session_snapshot() -> None:
         elapsed_min = (time.time() - _session_start) / 60.0 if _session_start > 0 else 0.0
         save_session(elapsed_min)
     except Exception:
-        pass
+        _swallow()
 
 
 def start():

@@ -171,6 +171,9 @@ def check_internet_speed() -> str:
         return 'Не удалось проверить скорость интернета. Возможно проблемы с DNS или таймаутом.'
 def get_my_ip() -> str:
     import requests
+    from core.netpolicy import ip_lookup_allowed
+    if not ip_lookup_allowed():
+        return "Определение IP адреса выключено в настройках."
     try:
         ip = requests.get('https://api.ipify.org', timeout=5).text
         return f"Ваш внешний IP адрес: {ip}"

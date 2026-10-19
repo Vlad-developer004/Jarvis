@@ -3,6 +3,7 @@ import time
 import os
 import requests
 from config_pack.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, get_project_root
+from core.safe import swallow as _swallow
 GUARD_INTERVAL = 4
 ALERT_COOLDOWN = 30
 DNN_CONF_THRESH = 0.6
@@ -32,11 +33,20 @@ def _ensure_dnn_downloaded():
     for path, url in ((_DNN_PROTOTXT, _DNN_PROTOTXT_URL), (_DNN_WEIGHTS, _DNN_WEIGHTS_URL)):
         if os.path.exists(path):
             continue
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        from core.download import pinned_hash, require_https, sha256_file
+        req = urllib.request.Request(require_https(url), headers={'User-Agent': 'Mozilla/5.0'})
         tmp = path + '.part'
-        with urllib.request.urlopen(req, timeout=90) as r, open(tmp, 'wb') as f:
-            import shutil as _shutil
-            _shutil.copyfileobj(r, f, length=1024 * 1024)
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r, open(tmp, 'wb') as f:
+                import shutil as _shutil
+                _shutil.copyfileobj(r, f, length=1024 * 1024)
+            want = pinned_hash(os.path.basename(path))
+            if want and sha256_file(tmp) != want:
+                raise ValueError('checksum mismatch for ' + os.path.basename(path))
+        except BaseException:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            raise
         os.replace(tmp, path)
 def _face_net():
     global _dnn_net
@@ -110,16 +120,15 @@ def _alert(image_path):
             url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto'
             with open(image_path, 'rb') as photo:
                 requests.post(url, data={'chat_id': TELEGRAM_CHAT_ID, 'caption': 'Обнаружен посторонний!'}, files={'photo': photo}, timeout=5)
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            from core.redact import describe_error
+            logging.getLogger(__name__).warning('guard: Telegram alert failed: %s', describe_error(e))
     try:
-        from ui import hud as _hud_mod
-        h = getattr(_hud_mod, '_hud', None)
-        if h:
-            from ui.dialogs.guard_alert_dlg import show_guard_alert
-            h._hud_queue.put(lambda: show_guard_alert(h, image_path))
+        from ui_next import host
+        host.show_guard_alert(image_path)
     except Exception:
-        pass
+        _swallow()
     from core.speech.sound import play_alert_sound
     play_alert_sound('red_alert')
     from core.speech import speak
@@ -169,6 +178,8 @@ def _guard_loop():
         import shutil
         shutil.move(tmp, _INTRUDER_PATH)
         threading.Thread(target=_alert, args=(_INTRUDER_PATH,), daemon=True).start()
+def is_active() -> bool:
+    return _guard_active
 def start_guard():
     global _guard_active, _guard_thread, _stop_flag, _owner_faces, _recognizer
     if _guard_active:
@@ -216,5 +227,5 @@ def stop_guard():
         try:
             os.remove(_INTRUDER_PATH)
         except Exception:
-            pass
+            _swallow()
     return (True, 'OK')

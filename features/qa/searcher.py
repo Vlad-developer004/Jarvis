@@ -1,4 +1,5 @@
 from .llm_processor import ask_llm
+from core.safe import swallow as _swallow
 
 def search_answer(query: str, raw_query: str='', context: str='', last_ans: str='', stream: bool = False,
                    history: list[dict] = None):
@@ -14,8 +15,8 @@ def search_answer(query: str, raw_query: str='', context: str='', last_ans: str=
         context, query = parts[0].strip(), parts[1].strip()
 
     try:
-        return ask_llm(topic=context, question=query, last_ans=last_ans, stream=stream, history=history)
-    except Exception: pass
+        return ask_llm(topic=context, question=query, last_ans=last_ans, stream=stream, history=history, announce=True)
+    except Exception: _swallow()
     
     if stream: return iter([])
     return ''

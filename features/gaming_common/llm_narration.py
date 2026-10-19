@@ -4,6 +4,7 @@ had near-identical settings/API-key checks around different system prompts
 and prompt builders (those stay per-game — only the boilerplate moves here).
 """
 from core.logging_setup import get_logger
+from core.safe import swallow as _swallow
 
 _log = get_logger('gaming_common.llm')
 
@@ -17,7 +18,7 @@ def _load_settings() -> dict:
             with open(sp, encoding='utf-8') as f:
                 return json.load(f)
     except Exception:
-        pass
+        _swallow()
     return {}
 
 

@@ -329,10 +329,13 @@ def open_file(path: str) -> tuple[bool, str]:
         except Exception as e:
             return (False, str(e))
     if ext not in _IDE_OPEN_EXTS:
-        # Non-code, non-office files: safe to startfile
+        # Non-code, non-office files: startfile, except for files that would run code
         try:
-            os.startfile(p)
+            from core.safe_open import open_user_file
+            open_user_file(p)
             return (True, p)
+        except PermissionError:
+            return (False, 'Исполняемые файлы я не запускаю по команде')
         except Exception as e:
             return (False, str(e))
     # Code/IDE files: NEVER use os.startfile — it would run the interpreter

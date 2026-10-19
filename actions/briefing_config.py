@@ -3,6 +3,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 from config_pack.config import get_settings_path
+from core.safe import swallow as _swallow
 _SETTINGS_PATH = Path(get_settings_path())
 _DEFAULT = {
     'include_greeting': True,
@@ -36,5 +37,5 @@ def load_briefing_prefs() -> dict:
                     elif isinstance(v, bool):
                         out[k] = v
     except Exception:
-        pass
+        _swallow()
     return out

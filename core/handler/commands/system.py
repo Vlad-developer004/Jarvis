@@ -1,6 +1,7 @@
 import threading
 from core.system import app_state
 from core.responses import spk
+from core.safe import swallow as _swallow
 def _fmt_delay(seconds: int) -> str:
     from core.nlp import format_duration_russian, get_russian_plural
     if seconds < 60:
@@ -51,18 +52,9 @@ def _sys_cleanup_deep(handler, text_lower, amount):
             orphan_freed, orphan_errors = delete_candidates(paths)
             _speak_done(basic_freed + orphan_freed, basic_errors + orphan_errors)
 
-        def _open_dialog():
-            from ui.hud import _hud
-            from ui.dialogs.cleanup_review_dlg import open_cleanup_review
-            if _hud is not None:
-                open_cleanup_review(_hud, candidates, _on_confirm)
-
-        try:
-            from ui.hud import _hud as _h
-            if _h is not None:
-                _h._hud_queue.put(_open_dialog)
-        except Exception:
-            pass
+        from ui_next import host
+        if not host.open_cleanup(candidates, _on_confirm):
+            handler.speak(spk('hud.not_running'))
 
     handler.speak(spk('system.cleanup_deep_scan'))
     threading.Thread(target=_scan_and_review, daemon=True, name='jarvis-cleanup-deep').start()
@@ -102,23 +94,12 @@ def _sys_bluetooth_toggle(handler, text_lower, amount):
     enabled = not any(w in text_lower for w in ['отключи', 'выключи', 'выруби', 'офф', 'стоп'])
     if toggle_bluetooth(enabled): handler.play_response()
 
-def _set_hud_guard_status(active: bool) -> None:
-    try:
-        from ui import hud as _hud_mod
-        h = getattr(_hud_mod, '_hud', None)
-        if h:
-            from ui.hud_camera import set_guard_status
-            h._hud_queue.put(lambda: set_guard_status(h, active))
-    except Exception:
-        pass
-
 def _sys_guard_on(handler, text_lower, amount):
     from features.guard import start_guard
     handler.speak(spk('guard.activating'))
     ok, res = start_guard()
     if ok:
         handler.speak(spk('guard.on'))
-        _set_hud_guard_status(True)
     else:
         handler.speak(spk('guard.on_error', res=res))
 
@@ -127,7 +108,6 @@ def _sys_guard_off(handler, text_lower, amount):
     ok, res = stop_guard()
     if ok:
         handler.speak(spk('guard.off'))
-        _set_hud_guard_status(False)
     else:
         handler.speak(spk('guard.not_active'))
 
@@ -153,23 +133,16 @@ def _sys_keyboard_unlock(handler, text_lower, amount):
 
 def _sys_jarvis_exit(handler, text_lower, amount):
     handler.speak(spk("shutdown.now"), wait=True)
-    import os; os._exit(0)
+    from ui_next import host
+    host.exit_now(0)
 
 def _sys_show_hud(handler, text_lower, amount):
-    try:
-        from ui.hud import show_hud
-        show_hud()
-    except Exception:
-        pass
+    from ui_next import host
+    host.show_window()
 
 def _sys_show_help(handler, text_lower, amount):
-    try:
-        from ui.hud import _hud as _h
-        from ui.dialogs.welcome_dlg import open_welcome
-        if _h is not None:
-            _h._hud_queue.put(lambda: open_welcome(_h, force=True))
-    except Exception:
-        pass
+    from ui_next import host
+    host.open_wizard()
 
 def _sys_restart_jarvis(handler, text_lower, amount):
     # wait=True blocks until the phrase actually finishes playing, instead
@@ -183,9 +156,10 @@ def _sys_restart_jarvis(handler, text_lower, amount):
         else:
             subprocess.Popen([sys.executable] + sys.argv)
     except Exception:
-        pass
+        _swallow()
     finally:
-        _os._exit(0)
+        from ui_next import host
+        host.exit_now(0)
 
 def _sys_listen_off(handler, text_lower, amount):
     app_state.ignore_mode = True
@@ -223,8 +197,7 @@ def _sys_reminder(handler, text_lower, amount):
         handler._set_interactive('reminder_ask', {}, timeout=30.0)
         return
     msg = extract_reminder_text(text_lower)
-    hud = getattr(app_state, 'hud', None)
-    schedule_reminder(delay, msg, handler.speak, hud)
+    schedule_reminder(delay, msg, handler.speak)
     handler.speak(spk("reminder.set_ok", delay=_fmt_delay(delay)))
 
 _SYSTEM_ACTIONS = {

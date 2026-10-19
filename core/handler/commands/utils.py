@@ -59,7 +59,7 @@ def _command_get(handler, text_lower):
     if get_command(name): handler.play_response()
 
 def _command_delete(handler, text_lower):
-    from ui.dialogs.name_dlg import ask_text
+    from ui_next.host import ask_text
     name = text_lower.replace('удали', '').replace('команду', '').replace('сотри', '').strip()
     if not name:
         name = ask_text(
@@ -87,7 +87,7 @@ def _git_commit(handler, text_lower):
             return
 
         # 2. Show dialog with file selection and options
-        from ui.dialogs.git_stage_dlg import ask_git_stage
+        from ui_next.host import ask_git_stage
         dlg_res = ask_git_stage(repo, status)
 
         if dlg_res is None:

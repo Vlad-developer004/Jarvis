@@ -8,6 +8,7 @@ import json
 import os
 import time
 from config_pack.config import get_settings_path
+from core.safe import swallow as _swallow
 
 
 def _history_path(filename: str) -> str:
@@ -35,4 +36,4 @@ def save_json(filename: str, fields: dict) -> None:
         with open(p, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass
+        _swallow()

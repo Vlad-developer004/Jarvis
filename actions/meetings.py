@@ -3,6 +3,7 @@ import json
 import webbrowser
 from pathlib import Path
 from config_pack.config import get_settings_path
+from core.safe import swallow as _swallow
 # Same file the rest of the app reads/writes (%APPDATA%\Jarvis\...) — a
 # project-relative path here would never see this setting (and gets wiped
 # by a rebuild).
@@ -12,7 +13,7 @@ def _load() -> dict:
         if _SETTINGS_PATH.exists():
             return json.loads(_SETTINGS_PATH.read_text(encoding='utf-8'))
     except Exception:
-        pass
+        _swallow()
     return {}
 def _save(data: dict) -> None:
     _SETTINGS_PATH.parent.mkdir(exist_ok=True)

@@ -89,28 +89,25 @@ from core.speech.asr_manager import ASRManager
 
 asr = ASRManager(STT_ENGINE, RATE, MODEL_PATH, SILERO_VAD_PATH)
 i18n.register_asr(asr)
-_hud = None
-
-def _run_hud():
-    global _hud
-    from ui.hud_themes import apply_theme
-    apply_theme()
-    from ui import hud as _m
-    _hud = _m
-    def _delayed_bind():
-        try:
-            from ui.hud_state import STATE, HudState
-            STATE.mode = HudState.LOADING
-            _engine_ready.wait()
-            STATE.mode = HudState.IDLE
-            _m._UPDATE_ASR_CALLBACK = engine.update_params
-            from config_pack.config import JARVIS_VOLUME
-            from core.system import play_early_greeting
-            play_early_greeting(JARVIS_VOLUME)
-        except Exception as e:
-            _log.critical('HUD_BIND error: %s', e, exc_info=True)
-    _threading.Thread(target=_delayed_bind, daemon=True).start()
-    _m.start()
+def _run_ui():
+    """The window is a separate process (ui_next/shell.py): the core only feeds it through the bridge. The bridge starts at once, so the
+    window shows the loading state while the models load; the handler is given to it when the engine is ready."""
+    from ui_next import bridge as _ui_bridge, host as _host, shell as _shell
+    _host.STATE.mode = _host.HudState.LOADING
+    try:
+        _ui_bridge.start(None)
+        if _os.environ.get('JARVIS_NO_WINDOW') != '1':
+            if _shell.launch():
+                _shell.watch(lambda: _host.exit_now(0))       # the tray menu's Quit ends the assistant too
+    except Exception as e:
+        _log.critical('UI start error: %s', e, exc_info=True)
+    _engine_ready.wait()
+    try:
+        _host.STATE.mode = _host.HudState.IDLE
+        _ui_bridge.set_handler(handler)
+        play_early_greeting(JARVIS_VOLUME)
+    except Exception as e:
+        _log.critical('UI bind error: %s', e, exc_info=True)
 
 def _background_init():
     global engine, handler, asr, pa, stream
@@ -142,11 +139,6 @@ def _background_init():
         def _on_nlp_done():
             app_state.nlp_loading = False
             print('[INIT] Semantic model ready.', flush=True)
-            try:
-                if app_state.hud is not None:
-                    app_state.hud.root.after(0, app_state.hud._draw_bot_strip)
-            except Exception:
-                pass
         try:
             from core.nlp.semantic import warmup_async as _sem_warmup_async
             _sem_warmup_async(on_done=_on_nlp_done)
@@ -186,11 +178,10 @@ def _background_init():
             # even relaunching just said "already running". At least tell
             # them something is wrong instead of infinite silence.
             try:
-                from ui import hud as _hud
-                from ui.hud_constants import _RED
+                from ui_next import host as _hud
                 _hud.notify('mic_open_failed',
                              'Не удалось открыть микрофон — проверьте устройство в Настройках и перезапустите Jarvis',
-                             _RED)
+                             _hud.RED)
             except Exception:
                 pass
             return
@@ -261,13 +252,7 @@ def _background_init():
                     start_calendar_reminders(handler)
                 except Exception as e:
                     _log.error('calendar_ics failed: %s', e, exc_info=True)
-            if module_enabled('updater'):
-                try:
-                    from core.system import start_updater
-                    _threading.Thread(target=start_updater, daemon=True).start()
-                except Exception as e:
-                    _log.error('updater failed: %s', e, exc_info=True)
-            if AUTO_UPDATE_ENABLED and getattr(sys, 'frozen', False):
+            if AUTO_UPDATE_ENABLED and module_enabled('updater') and getattr(sys, 'frozen', False):
                 try:
                     from core.system import app_updater
                     _threading.Thread(target=app_updater.start, daemon=True).start()
@@ -301,7 +286,7 @@ def _background_init():
 
 if __name__ == '__main__':
     _mp_mod.freeze_support()
-    _threading.Thread(target=_run_hud, daemon=True).start()
+    _threading.Thread(target=_run_ui, daemon=True).start()
 
     init_thread = _threading.Thread(target=_background_init, daemon=True)
     init_thread.start()
@@ -312,6 +297,11 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     finally:
+        try:
+            from ui_next import shell as _shell
+            _shell.stop()
+        except Exception:
+            pass
         if stream:
             stream.close()
         if pa:

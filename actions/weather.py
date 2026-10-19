@@ -2,6 +2,7 @@ import time
 import concurrent.futures
 from core.i18n import get_language
 from config_pack.config import get_settings_path
+from core.safe import swallow as _swallow
 
 _weather_cache = {}
 _CACHE_TTL_SEC = 600
@@ -58,6 +59,9 @@ def _parse_geo_json(name: str, data: dict) -> tuple[float, float, str] | None:
     if lat is None or lon is None:
         return None
     return (float(lat), float(lon), str(city))
+from core.netpolicy import ip_lookup_allowed
+
+
 def _ip_geolocation(headers: dict, timeout: float = 2.0) -> tuple[float, float, str] | None:
     import requests, subprocess, os
     lang = get_language()
@@ -86,18 +90,21 @@ def _ip_geolocation(headers: dict, timeout: float = 2.0) -> tuple[float, float, 
                     # Fetch nearest beautiful town name from a quick IP API fallback
                     city_name = 'Ваша локація' if lang == 'uk' else 'Ваша локация'
                     try:
+                        if not ip_lookup_allowed():
+                            return (lat_val, lon_val, city_name)
                         resp = requests.get(f"https://ipwho.is/?lang={lang}", headers=headers, timeout=2.0)
                         if resp.status_code == 200:
                             city_name = resp.json().get('city') or city_name
-                    except Exception: pass
+                    except Exception: _swallow()
                     return (lat_val, lon_val, city_name)
         except Exception:
-            pass
+            _swallow()
 
     # 2. Fallback to IP Geolocation Providers if Windows Location Service is off/unavailable
-    providers = (
+    if not ip_lookup_allowed():
+        return None
+    providers = (      # https only: a plain-http answer can be swapped on the way
         ("ipwho", f"https://ipwho.is/?lang={lang}"),
-        ("ip-api", f"http://ip-api.com/json/?lang={lang}"),
         ("ipapi", "https://ipapi.co/json/"),
     )
     def fetch_one(pair: tuple[str, str]) -> tuple[float, float, str] | None:
@@ -118,7 +125,7 @@ def _ip_geolocation(headers: dict, timeout: float = 2.0) -> tuple[float, float, 
                     if r:
                         return r
                 except Exception:
-                    pass
+                    _swallow()
         except TimeoutError:
             pass
     return None
@@ -159,7 +166,7 @@ def _save_last_location(lat: float, lon: float, city: str) -> None:
         with open(p, 'w', encoding='utf-8') as f:
             json.dump(s, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass
+        _swallow()
 # wttr.in uses WWO codes (differ from WMO). Maps to (ru_desc, uk_desc, icon, color).
 _WTTR_CODE_MAP: dict[int, tuple[str, str, str, str]] = {
     113: ('Ясно',                    'Ясно',                     '☀',  '#ffcc00'),
@@ -285,7 +292,7 @@ def get_weather_hud() -> dict:
                     res = geo_data['results'][0]
                     lat, lon, city_name = res['latitude'], res['longitude'], res.get('name', manual_city)
             except Exception:
-                pass
+                _swallow()
 
         if lat is None:
             last = _load_last_location()
@@ -299,7 +306,7 @@ def get_weather_hud() -> dict:
                     if resolved:
                         city_name = resolved
                 except Exception:
-                    pass
+                    _swallow()
             else:
                 geo = _ip_geolocation(headers, timeout=1.5)
                 if geo:
@@ -323,7 +330,7 @@ def get_weather_hud() -> dict:
             sunset = resp['daily']['sunset'][0][-5:]
         except Exception:
             sunrise = sunset = '—:—'
-        data = {'ok': True, 'city': city_name, 'lat': lat, 'lon': lon, 'sunrise': sunrise, 'sunset': sunset, 'temp': int(round(w['temperature_2m'])), 'feels': int(round(w['apparent_temperature'])), 'desc': _get_wmo_desc(code, lang), 'icon': icon, 'color': color, 'wind': round(w.get('wind_speed_10m', 0), 1), 'humidity': int(w.get('relative_humidity_2m', 0)), 'pressure': pressure_mmhg, 'updated_ts': time.time()}
+        data = {'ok': True, 'city': city_name, 'lat': lat, 'lon': lon, 'sunrise': sunrise, 'sunset': sunset, 'temp': int(round(w['temperature_2m'])), 'feels': int(round(w['apparent_temperature'])), 'desc': _get_wmo_desc(code, lang), 'code': code, 'icon': icon, 'color': color, 'wind': round(w.get('wind_speed_10m', 0), 1), 'humidity': int(w.get('relative_humidity_2m', 0)), 'pressure': pressure_mmhg, 'updated_ts': time.time()}
     except Exception:
         # open-meteo failed — try wttr.in as fallback
         if lat is not None:
@@ -332,7 +339,7 @@ def get_weather_hud() -> dict:
                 _hud_cache[cache_key] = data
                 return data
             except Exception:
-                pass
+                _swallow()
         # Both APIs failed — return stale cache rather than showing error
         stale = _hud_cache.get(cache_key)
         if stale and stale.get('ok'):
@@ -413,7 +420,7 @@ def _save_today_temp(temp: int) -> None:
             with open(p, 'w', encoding='utf-8') as f:
                 json.dump(s, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass
+        _swallow()
 def _yesterday_compare_text(temp: int, lang: str) -> str:
     from datetime import date, timedelta
     snap = _load_yesterday_temp()
@@ -521,7 +528,7 @@ def resolve_location(city: str | None, lang: str) -> tuple[float | None, float |
                 result = geo_data['results'][0]
                 lat, lon, city_name = result['latitude'], result['longitude'], result.get('name', city)
         except Exception:
-            pass
+            _swallow()
 
         if lat is None:
             return (None, None, city)

@@ -5,6 +5,7 @@ import pygetwindow as gw
 from core.system import app_state as _jarvis_state
 from actions.app_launcher import open_app, SYSTEM_WHITELIST
 from actions.system_control import _get_active_power_plan, KILL_PROCESSES
+from core.safe import swallow as _swallow
 POWER_PLAN_FILE = os.path.join('data', 'previous_power_plan.txt')
 _GAME_PREFS_PATH = os.path.join('data', 'game_mode_prefs.json')
 def _load_game_mode_prefs() -> dict:
@@ -15,7 +16,7 @@ def _load_game_mode_prefs() -> dict:
                 d = json.load(f)
                 return d if isinstance(d, dict) else {}
     except Exception:
-        pass
+        _swallow()
     return {}
 def _game_keep_title(title_lower: str, prefs: dict) -> bool:
     try:
@@ -25,7 +26,7 @@ def _game_keep_title(title_lower: str, prefs: dict) -> bool:
                 if isinstance(s, str) and s.strip() and s.strip().lower() in title_lower:
                     return True
     except Exception:
-        pass
+        _swallow()
     return False
 def open_work() -> tuple[bool, str]:
     ok, msg = open_app('antigravity')
@@ -49,7 +50,7 @@ def activate_game_mode() -> tuple[bool, str]:
                 w.close()
                 closed += 1
             except Exception:
-                pass
+                _swallow()
         if closed:
             results.append(f'Закрыто окон: {closed}')
             time.sleep(0.5)
@@ -75,7 +76,7 @@ def activate_game_mode() -> tuple[bool, str]:
             )
             results.append('RAM очищена')
         except Exception:
-            pass
+            _swallow()
         current_plan = _get_active_power_plan()
         high_perf_guid = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
         if current_plan and current_plan != high_perf_guid:
@@ -83,19 +84,19 @@ def activate_game_mode() -> tuple[bool, str]:
                 with open(POWER_PLAN_FILE, 'w') as f:
                     f.write(current_plan)
             except Exception:
-                pass
+                _swallow()
         try:
             subprocess.run(['powercfg', '/setactive', high_perf_guid], capture_output=True, creationflags=134217728)
             results.append('Питание: высокая производительность')
         except Exception:
-            pass
+            _swallow()
         summary = '; '.join(results) if results else 'Готово'
         _jarvis_state.game_mode = True
         try:
             from core.system import set_process_priority
             set_process_priority('high')
         except Exception:
-            pass
+            _swallow()
         return (True, summary)
     except Exception as e:
         return (False, str(e))
@@ -108,7 +109,7 @@ def deactivate_game_mode() -> tuple[bool, str]:
                 with open(POWER_PLAN_FILE, 'r') as f:
                     plan_to_restore = f.read().strip()
         except Exception:
-            pass
+            _swallow()
         if plan_to_restore:
             try:
                 subprocess.run(['powercfg', '/setactive', plan_to_restore], capture_output=True, creationflags=134217728)
@@ -116,7 +117,7 @@ def deactivate_game_mode() -> tuple[bool, str]:
                 if os.path.exists(POWER_PLAN_FILE):
                     os.remove(POWER_PLAN_FILE)
             except Exception:
-                pass
+                _swallow()
         else:
             try:
                 r = subprocess.run(['powercfg', '/list'], capture_output=True, text=True, creationflags=134217728)
@@ -134,34 +135,34 @@ def deactivate_game_mode() -> tuple[bool, str]:
                 subprocess.run(['powercfg', '/setactive', target_guid], capture_output=True, creationflags=134217728)
                 results.append(f'Питание: {plan_name}')
             except Exception:
-                pass
+                _swallow()
         summary = '; '.join(results) if results else 'Готово'
         try:
             from features.ets2 import monitor as ets2_monitor
             ets2_monitor.stop()
         except Exception:
-            pass
+            _swallow()
         try:
             from features.planetbase import monitor as pb_monitor
             pb_monitor.stop()
         except Exception:
-            pass
+            _swallow()
         try:
             from features.fs22 import monitor as fs22_monitor
             fs22_monitor.stop()
         except Exception:
-            pass
+            _swallow()
         try:
             from core.system import set_process_priority
             set_process_priority('normal')
         except Exception:
-            pass
+            _swallow()
         _jarvis_state.game_mode = False
         try:
             from actions.game_input import unload_profile
             unload_profile()
         except Exception:
-            pass
+            _swallow()
         return (True, summary)
     except Exception as e:
         return (False, str(e))

@@ -158,7 +158,7 @@ def test_create_folder_with_only_location_clause_prompts_for_name_there(monkeypa
     downloads.mkdir()
     monkeypatch.setattr(files_cmd, 'get_context_path', lambda h: str(tmp_path))
     asked = []
-    monkeypatch.setattr('ui.dialogs.name_dlg.ask_text',
+    monkeypatch.setattr('ui_next.host.ask_text',
                          lambda **kw: asked.append(kw) or None)
     handler = _FakeHandler()
 

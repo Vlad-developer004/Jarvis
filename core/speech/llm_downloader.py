@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core.logging_setup import get_logger
+from core.safe import swallow as _swallow
 
 _log = get_logger('llm_downloader')
 
@@ -115,6 +116,10 @@ def download_default_model(
             # GGUF (see validate_gguf_model's docstring) — verify in a
             # throwaway subprocess before the real download ever replaces
             # a working model file.
+            from core.download import pinned_hash, sha256_file
+            want = pinned_hash(dest.name)
+            if want and sha256_file(tmp) != want:
+                raise RuntimeError('Скачанный файл не совпал с контрольной суммой.')
             from core.speech.llm_chat import validate_gguf_model
             valid, vmsg = validate_gguf_model(str(tmp))
             if not valid:
@@ -134,14 +139,14 @@ def download_default_model(
                     if tmp.exists():
                         tmp.unlink()
                 except Exception:
-                    pass
+                    _swallow()
             _downloading = False
             _lock.release()
             if on_done:
                 try:
                     on_done(ok, msg)
                 except Exception:
-                    pass
+                    _swallow()
 
     threading.Thread(target=_work, daemon=True, name='llm_model_download').start()
     return True

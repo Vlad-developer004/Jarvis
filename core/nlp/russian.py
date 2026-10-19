@@ -1,4 +1,5 @@
 import re
+from core.safe import swallow as _swallow
 try:
     from num2words import num2words
 except ImportError:
@@ -22,11 +23,29 @@ def format_time_russian(hours: int, minutes: int, add_stress: bool = True) -> st
             m_text = num2words(minutes, lang='ru', gender='feminine')
             m_form = get_russian_plural(minutes, m_titles)
             return f"{h_text} {h_form} {m_text} {m_form}"
-        except Exception: pass
+        except Exception: _swallow()
     h_form = get_russian_plural(hours, h_titles)
     if minutes == 0: return f"{hours} {h_form}"
     m_form = get_russian_plural(minutes, m_titles)
     return f"{hours} {h_form} {minutes} {m_form}"
+def format_remaining_russian(total_sec: int) -> str:
+    """Exact time left, e.g. 291 -> "четыре минуты пятьдесят одна секунда". Seconds are dropped from an hour up."""
+    total_sec = max(0, int(total_sec))
+    hours, rest = divmod(total_sec, 3600)
+    minutes, seconds = divmod(rest, 60)
+    if hours:
+        seconds = 0
+
+    def words(n, gender):
+        return num2words(n, lang='ru', gender=gender) if num2words else str(n)
+    parts = []
+    if hours:
+        parts.append(f"{words(hours, 'masculine')} {get_russian_plural(hours, ['час', 'часа', 'часов'])}")
+    if minutes:
+        parts.append(f"{words(minutes, 'feminine')} {get_russian_plural(minutes, ['минута', 'минуты', 'минут'])}")
+    if seconds or not parts:
+        parts.append(f"{words(seconds, 'feminine')} {get_russian_plural(seconds, ['секунда', 'секунды', 'секунд'])}")
+    return " ".join(parts)
 def format_duration_russian(minutes_total: int, add_stress: bool = True) -> str:
     hours = minutes_total // 60
     minutes = minutes_total % 60

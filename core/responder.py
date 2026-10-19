@@ -1,4 +1,5 @@
 import wave
+from core.safe import swallow as _swallow
 class Responder:
     def __init__(self, pa, wav_path: str):
         self.pa = pa
@@ -39,18 +40,18 @@ class Responder:
         except OSError as e:
             pass
         except Exception as e:
-            pass
+            _swallow()
         finally:
             import time
             time.sleep(0.2)
             try:
                 out.stop_stream()
             except Exception:
-                pass
+                _swallow()
             try:
                 out.close()
             except Exception:
-                pass
+                _swallow()
     def close(self):
         self._bytes = None
         self.pa = None

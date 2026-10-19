@@ -9,6 +9,7 @@ import json
 import shutil
 from pathlib import Path
 from core.logging_setup import get_logger as _get_logger
+from core.safe import swallow as _swallow
 _log = _get_logger('asr')
 import numpy as np
 _CLEANUP_RE = re.compile(r'<\|.*?\|>')
@@ -26,7 +27,7 @@ def _onnx_threads() -> int:
             if val > 0:
                 return max(1, min(val, (os.cpu_count() or 2)))
     except Exception:
-        pass
+        _swallow()
     cpus = os.cpu_count() or 2
     if cpus >= 12:
         return 3
@@ -40,8 +41,8 @@ def _notify_model_download(active: bool, failed: bool = False) -> None:
     Jarvis simply not responding to voice with no visible cause. Never
     raises: must not affect ASR loading if the HUD isn't up yet."""
     try:
-        from ui import hud as _hud
-        from ui.hud_constants import _AMBER, _RED
+        from ui_next import host as _hud
+        from ui_next.host import AMBER as _AMBER, RED as _RED
         if failed:
             _hud.notify('stt_model',
                          f'Не удалось скачать модель распознавания речи — повторю через {_STT_RETRY_SECONDS // 60} мин',
@@ -51,7 +52,7 @@ def _notify_model_download(active: bool, failed: bool = False) -> None:
         else:
             _hud.clear_notify('stt_model')
     except Exception:
-        pass
+        _swallow()
 
 def _schedule_retry(instance, retry_fn, *, pending_attr: str = '_retry_pending',
                      seconds: float = _STT_RETRY_SECONDS) -> None:
@@ -73,7 +74,7 @@ def _schedule_retry(instance, retry_fn, *, pending_attr: str = '_retry_pending',
         try:
             retry_fn()
         except Exception:
-            pass
+            _swallow()
     t = threading.Timer(seconds, _retry)
     t.daemon = True
     t.start()
@@ -87,7 +88,8 @@ def _stream_download(url: str, filepath: str, timeout: int = 60) -> None:
     hard-crash the process natively on a malformed model instead of raising
     a catchable Python exception."""
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        from core.download import require_https
+        req = urllib.request.Request(require_https(url), headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=timeout) as response:
             content_length = response.getheader('Content-Length')
             expected_size = int(content_length) if content_length else None
@@ -97,6 +99,8 @@ def _stream_download(url: str, filepath: str, timeout: int = 60) -> None:
                 actual_size = os.path.getsize(filepath)
                 if actual_size < expected_size:
                     raise OSError(f"Download incomplete: got {actual_size} bytes, expected {expected_size} bytes")
+            from core.download import verify_pinned
+            verify_pinned(filepath)
     except Exception:
         if os.path.exists(filepath):
             try:
@@ -238,29 +242,18 @@ class ASR(_SileroVadMixin):
         if not os.path.exists(filepath):
             try:
                 _stream_download(url, filepath, timeout=90)
+                from core.download import safe_extract_tar, safe_extract_zip
                 if filename.endswith('.tar.bz2'):
+                    extract_root = _get_base_models_path().resolve()
+                    extract_root.mkdir(parents=True, exist_ok=True)
                     with tarfile.open(filepath, 'r:bz2') as tar:
-                        extract_root = _get_base_models_path().resolve()
-                        extract_root.mkdir(parents=True, exist_ok=True)
-                        def safe_extract(tar_obj, path='.', members=None, *, numeric_owner=False):
-                            root = Path(path).resolve()
-                            for member in tar_obj.getmembers():
-                                member_path = (root / member.name).resolve()
-                                try:
-                                    member_path.relative_to(root)
-                                except ValueError as exc:
-                                    raise Exception('Attempted Path Traversal in Tar File') from exc
-                            tar_obj.extractall(path, members, numeric_owner=numeric_owner)
-                        safe_extract(tar, str(extract_root))
+                        safe_extract_tar(tar, extract_root)
                 elif filename.endswith('.zip'):
                     extract_root = _get_base_models_path().resolve()
-                    abs_dest = str(extract_root)
                     with zipfile.ZipFile(filepath, 'r') as zip_ref:
-                        for member in zip_ref.namelist():
-                            if not os.path.abspath(os.path.join(abs_dest, member)).startswith(abs_dest + os.sep):
-                                raise Exception(f'Обнаружена попытка path traversal в zip: {member}')
-                        zip_ref.extractall(abs_dest)
-            except Exception:
+                        safe_extract_zip(zip_ref, extract_root)
+            except Exception as e:
+                _log.warning('Model download or unpacking failed (%s): %s', filename, e)
                 if os.path.exists(filepath): os.remove(filepath)
     def _ensure_models_downloaded(self):
         models_base = _get_base_models_path()
@@ -400,19 +393,14 @@ class ASR_Vosk(_SileroVadMixin):
             models_parent = m_dir.parent
             models_parent.mkdir(exist_ok=True)
             m_zip = models_parent / f"{model_cfg['dir']}.zip"
-            req = urllib.request.Request(model_cfg['url'], headers={'User-Agent': 'Mozilla/5.0'})
+            from core.download import require_https
+            req = urllib.request.Request(require_https(model_cfg['url']), headers={'User-Agent': 'Mozilla/5.0'})
             try:
                 with urllib.request.urlopen(req, timeout=120) as r, open(m_zip, 'wb') as f:
                     shutil.copyfileobj(r, f, length=1024 * 1024)
+                from core.download import safe_extract_zip
                 with zipfile.ZipFile(m_zip, 'r') as z:
-                    dest_root = models_parent.resolve()
-                    for member in z.infolist():
-                        member_path = (dest_root / member.filename).resolve()
-                        try:
-                            member_path.relative_to(dest_root)
-                        except ValueError as exc:
-                            raise RuntimeError(f'Blocked zip path traversal: {member.filename}') from exc
-                    z.extractall(str(dest_root))
+                    safe_extract_zip(z, models_parent.resolve())
                 m_zip.unlink(missing_ok=True)
                 _log.info('Vosk model download complete.')
                 _notify_model_download(active=False)
