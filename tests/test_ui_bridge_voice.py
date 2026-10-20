@@ -88,11 +88,22 @@ def test_llm_switch_goes_to_feature_modules(env, monkeypatch):
 def test_devices_selection_can_be_cleared(env, monkeypatch):
     applied = []
     import core.speech.tts as tts
-    monkeypatch.setattr(tts, 'apply_audio_devices', lambda output_device_name=None, input_device_index=None: (applied.append((output_device_name, input_device_index)) or (True, 'ok')))
-    assert vc.set_devices(2, 'Speakers')['applied'] is True and applied[-1] == ('Speakers', 2)
-    assert _file(env)['audio_input_device_index'] == 2
-    assert vc.set_devices(None, '')['ok'] and 'audio_input_device_index' not in _file(env) and 'audio_output_device_name' not in _file(env)
+    from core import native_audio
+    monkeypatch.setattr(native_audio, 'list_devices', lambda: {'ok': True, 'inputs': [{'index': 2, 'name': 'Mic X', 'default': False}], 'outputs': [{'index': 0, 'name': 'Speakers'}]})
+    monkeypatch.setattr(tts, 'apply_audio_devices', lambda output_device_name=None, input_device_name=None: (applied.append((output_device_name, input_device_name)) or (True, 'ok')))
+    assert vc.set_devices(2, 'Speakers')['applied'] is True and applied[-1] == ('Speakers', 'Mic X')
+    assert _file(env)['audio_input_device_name'] == 'Mic X' and 'audio_input_device_index' not in _file(env)
+    assert vc.scan_devices()['input'] == 2   # the saved name is found in the listing again
+    assert vc.set_devices(None, '')['ok'] and 'audio_input_device_name' not in _file(env) and 'audio_output_device_name' not in _file(env)
     assert applied[-1] == (None, None)
+
+
+def test_an_unknown_microphone_index_falls_back_to_the_system_default(env, monkeypatch):
+    import core.speech.tts as tts
+    from core import native_audio
+    monkeypatch.setattr(native_audio, 'list_devices', lambda: {'ok': True, 'inputs': [], 'outputs': []})
+    monkeypatch.setattr(tts, 'apply_audio_devices', lambda output_device_name=None, input_device_name=None: (True, 'ok'))
+    assert vc.set_devices(5, '')['ok'] and 'audio_input_device_name' not in _file(env)
 
 
 def test_command_routing(env):

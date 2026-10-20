@@ -9,6 +9,7 @@ models/
 dist/
 logs/
 installer_output/
+native/dist/
 
 *.pyc
 *.pyo
@@ -45,9 +46,13 @@ data/update_ready.json
 data/update/
 
 data/intent_model_onnx_quant/
+data/intent_model_onnx_quant_full/
 
 
 # Tauri shell build output and generated schemas
 ui_next/shell/src-tauri/target/
 ui_next/shell/src-tauri/gen/
 
+
+# Rust build output anywhere (the window shell, the native/ workspace)
+**/target/

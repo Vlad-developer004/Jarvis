@@ -5,8 +5,7 @@ import numpy as _np
 import collections as _collections
 import win32gui
 import ctypes
-import pyaudio
-from core.audio_utils import open_input_stream, open_input_stream_resilient, rms_int16
+from core.audio_utils import open_input, open_input_resilient, rms_int16
 from core import audio_ring
 from core.system import app_state
 from core.voice_debug_log import voice_event
@@ -23,15 +22,14 @@ _engine_singleton = None
 def get_engine():
     return _engine_singleton
 class JarvisEngine:
-    def __init__(self, pa: pyaudio.PyAudio, asr, handler):
-        self.pa = pa
+    def __init__(self, asr, handler):
         self.asr = asr
         self.handler = handler
         self.chunk = int(RATE * CHUNK_MS / 1000)
         self.silence_frames = max(1, VAD_SILENCE_MS // CHUNK_MS)
         self.game_silence_frames = max(1, GAME_SILENCE_MS // CHUNK_MS)
         self.transcribe_queue = _queue_mod.Queue(maxsize=64)
-        self.stream = open_input_stream_resilient(self.pa, RATE, self.chunk)
+        self.stream = open_input_resilient(RATE, self.chunk)
         audio_ring.configure(RATE)
         self.speaking = False
         self.had_voice = False
@@ -79,9 +77,9 @@ class JarvisEngine:
                 time.sleep(1.0 + attempt * 0.5)
                 # After the first attempt, stop retrying whatever (possibly
                 # stale/unplugged) device is saved in settings and force the
-                # live system default instead — see open_input_stream_resilient's
+                # live system default instead — see open_input_resilient's
                 # docstring in core/audio_utils.py for the same reasoning.
-                self.stream = open_input_stream(self.pa, RATE, self.chunk, force_default=(attempt > 0))
+                self.stream = open_input(RATE, self.chunk, force_default=(attempt > 0))
                 return True
             except Exception as _e:
                 _log.warning('Stream reopen attempt %d failed: %s', attempt + 1, _e)

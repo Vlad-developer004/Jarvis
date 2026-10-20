@@ -13,6 +13,7 @@ import re
 import shutil
 from datetime import date
 
+from actions import calendar_caldav as dav
 from actions import calendar_hub as hub
 from core import settings_io
 
@@ -199,12 +200,12 @@ def quick(text: str, day: str = '') -> dict:
 
 @_guard
 def caldav_find(server, user, password) -> dict:
-    return {'ok': True, 'calendars': hub.caldav_find(str(server or '').strip(), str(user or '').strip(), str(password or ''))}
+    return {'ok': True, 'calendars': dav.caldav_find(str(server or '').strip(), str(user or '').strip(), str(password or ''))}
 
 
 @_guard
 def caldav_add(server, user, password, picks) -> dict:
-    hub.caldav_add(str(server or '').strip(), str(user or '').strip(), str(password or ''), [p for p in picks if isinstance(p, dict)] if isinstance(picks, list) else [])
+    dav.caldav_add(str(server or '').strip(), str(user or '').strip(), str(password or ''), [p for p in picks if isinstance(p, dict)] if isinstance(picks, list) else [])
     _enable_module()
     return {'ok': True, 'state': get_state()}
 
@@ -212,7 +213,7 @@ def caldav_add(server, user, password, picks) -> dict:
 @_guard
 def add_event(data: dict) -> dict:
     if data.get('calendar'):                                                         # a CalDAV calendar instead of the own events
-        e = hub.caldav_create(str(data['calendar']), _fields(data))
+        e = dav.caldav_create(str(data['calendar']), _fields(data))
         _enable_module()
         return {'ok': True, 'event': e}
     e = hub.add_local(_fields(data))
@@ -223,7 +224,7 @@ def add_event(data: dict) -> dict:
 @_guard
 def update_event(eid: str, data: dict) -> dict:
     if data.get('src'):
-        return {'ok': True, 'event': hub.caldav_update(str(data['src']), str(data.get('href', '')), _fields(data))}
+        return {'ok': True, 'event': dav.caldav_update(str(data['src']), str(data.get('href', '')), _fields(data))}
     return {'ok': True, 'event': hub.update_local(str(eid), _fields(data))}
 
 
@@ -240,7 +241,7 @@ def reset_occurrence(eid: str, occ: str) -> dict:
 @_guard
 def delete_event(eid: str, only_date: str = '', src: str = '', href: str = '') -> dict:
     if src:
-        hub.caldav_delete(str(src), str(href))
+        dav.caldav_delete(str(src), str(href))
         return {'ok': True}
     return {'ok': True} if hub.delete_local(str(eid), str(only_date or '')) else {'ok': False, 'error': 'unknown_event'}
 

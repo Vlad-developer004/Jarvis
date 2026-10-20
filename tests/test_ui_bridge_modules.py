@@ -80,3 +80,14 @@ def test_briefing_keeps_foreign_keys_and_validates(env):
 
 def test_unknown_op(env):
     assert run(op='x')['error'] == 'bad_op'
+
+
+def test_no_ai_in_the_wizard_is_the_qa_switch_and_survives_a_profile_change(env):
+    # The wizard's "Без ИИ" tile: AI answers off on a profile that has them, back on when a provider is picked again.
+    r = run(op='profile', profile='full')
+    assert mod(r, 'qa')['on'] is True
+    r = run(op='module', key='qa', on=False)
+    assert mod(r, 'qa') == {'key': 'qa', 'on': False, 'preset': True, 'manual': True} and settings(env)['feature_modules'] == {'qa': False}
+    assert mod(run(op='profile', profile='full'), 'qa')['on'] is False
+    r = run(op='module', key='qa', on=True)
+    assert mod(r, 'qa')['on'] is True and settings(env)['feature_modules'] == {}

@@ -8,10 +8,28 @@ html[data-tier=mini] #app[data-view=cinema] { grid-template-columns: minmax(0, 1
 
 .ci-s { padding: .6rem 0 .5rem; border-top: 1px solid hsl(var(--h) 50% 50% / .14); } .ci-s:first-child { border-top: 0; padding-top: .2rem; }
 .ci-s .np-eq i { background: var(--cyan); } .ci-s.paused .np-eq i { background: var(--amber); }
-html:not([data-fx=lite]) .ci-s.playing .np-eq i { animation: np-eq .9s ease-in-out infinite; } .ci-s .np-eq i:nth-child(2) { animation-delay: -.3s !important; } .ci-s .np-eq i:nth-child(3) { animation-delay: -.6s !important; }
+/* the bars of the equalizer move from nowplaying.js */
 .ci-form { display: flex; flex-direction: column; gap: .7rem; padding-top: .3rem; } .ci-form label { display: flex; flex-direction: column; gap: .3rem; font-size: .78rem; color: hsl(var(--h) 70% 72%); font-weight: 600; } .ci-form input, .ci-form select { width: 100%; }
 .ci-row { display: flex; align-items: flex-end; gap: .8rem; flex-wrap: wrap; } .ci-form .ci-n { flex: 1 1 8rem; min-width: 8rem; max-width: 12rem; } .ci-kind { flex: none; }   /* wide enough for the placeholder next to the field's icon */
 .ci-sub { margin: .6rem 0 .2rem; color: var(--dim); font-size: .78rem; }
 .ci-def { font-style: normal; font-weight: 600; font-size: max(.7rem, 9px); color: var(--green); margin-left: .5rem; padding: .05rem .45rem; border: 1px solid hsl(150 60% 45% / .45); border-radius: 99px; }
 .ci-pre { padding: .3rem .8rem; border: 1px dashed hsl(var(--h) 60% 55% / .5); border-radius: 99px; background: transparent; color: #cfe6f7; font: 600 .8rem Onest; cursor: pointer; transition: background .15s, border-color .15s; } .ci-pre:hover { background: hsl(var(--h) 60% 30% / .45); border-style: solid; border-color: var(--cyan); }
 .ci-say { padding-right: .8rem; color: #cfe6f7; }
+
+/* player row: the title gets the full width, controls sit centred under it */
+.ci-s .np-top { flex-wrap: wrap; row-gap: .5rem; } .ci-s .np-eq { align-self: center; height: .9rem; }
+.ci-s .np-ctl { flex: 1 1 100%; justify-content: center; gap: .5rem; }
+.ci-s .np-t b { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; }
+.ci-s .np-ctl button svg { opacity: .8; } .ci-s .np-ctl button em { font-size: .58rem; top: 50%; left: 50%; transform: translate(-50%, -46%); }
+.ci-s .np-bar { margin-top: .3rem; }
+
+/* film / series choice as two cards */
+.ci-kinds { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.ci-k { display: flex; align-items: center; gap: .7rem; padding: .65rem .85rem; text-align: left; cursor: pointer; color: var(--dim); border-radius: .55rem; border: 1px solid hsl(var(--h) 50% 28% / .8); background: hsl(var(--h) 55% 7%); transition: border-color .15s, background .15s, color .15s, box-shadow .15s; }
+.ci-k span { display: flex; flex-direction: column; gap: .1rem; } .ci-k b { font: 700 .9rem Onest; color: #fff; } .ci-k small { font-size: .72rem; color: var(--dim); }
+.ci-k svg { flex: none; } .ci-k:hover { border-color: hsl(var(--h) 80% 55% / .7); color: var(--ink); }
+.ci-k.on { color: var(--cyan); border-color: var(--cyan); background: linear-gradient(160deg, hsl(var(--h) 85% 38% / .4), hsl(var(--h) 80% 20% / .35)); box-shadow: 0 0 .9rem hsl(var(--h) 100% 55% / .25), inset 0 0 0 1px hsl(var(--h) 100% 60% / .3); }
+.ci-k:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.ci-s .np-ctl .ci-sk { width: auto; height: 1.9rem; padding: 0 .7rem; border-radius: 99px; font: 700 .74rem Tektur; letter-spacing: .03em; color: #cfe6f7; border: 1px solid hsl(var(--h) 60% 50% / .4); }
+.ci-s .np-ctl .ci-sk:hover:not(:disabled) { border-color: var(--cyan); }
+.ci-n .stp { align-self: flex-start; }

@@ -28,8 +28,8 @@
   function sessionRow(s) {
     const playing = s.status === 'playing', p = NP.live(s);
     return `<div class="ci-s ${s.status}" data-id="${esc(s.id)}"><div class="np-top"><span class="np-eq" aria-hidden="true"><i></i><i></i><i></i></span><div class="np-t"><b title="${esc(s.title)}">${esc(s.title || 'Без названия')}</b><small>${esc([s.artist, s.app_name, playing ? '' : 'на паузе'].filter(Boolean).join(' · '))}</small></div>`
-      + `<div class="np-ctl"><button type="button" data-a="prev" title="Предыдущий"${s.can.prev ? '' : ' disabled'}>${NP.svg('prev')}</button><button type="button" data-a="seek" data-s="-10" title="Назад на 10 секунд"${s.can.seek ? '' : ' disabled'}>${NP.svg('back')}<em>10</em></button>`
-      + `<button type="button" class="np-main" data-a="toggle" title="${playing ? 'Пауза' : 'Играть'}">${NP.svg(playing ? 'pause' : 'play', 20)}</button><button type="button" data-a="seek" data-s="10" title="Вперёд на 10 секунд"${s.can.seek ? '' : ' disabled'}>${NP.svg('fwd')}<em>10</em></button>`
+      + `<div class="np-ctl"><button type="button" data-a="prev" title="Предыдущий"${s.can.prev ? '' : ' disabled'}>${NP.svg('prev')}</button><button type="button" class="ci-sk" data-a="seek" data-s="-10" title="Назад на 10 секунд"${s.can.seek ? '' : ' disabled'}>−10 с</button>`
+      + `<button type="button" class="np-main" data-a="toggle" title="${playing ? 'Пауза' : 'Играть'}">${NP.svg(playing ? 'pause' : 'play', 20)}</button><button type="button" class="ci-sk" data-a="seek" data-s="10" title="Вперёд на 10 секунд"${s.can.seek ? '' : ' disabled'}>+10 с</button>`
       + `<button type="button" data-a="next" title="Следующий"${s.can.next ? '' : ' disabled'}>${NP.svg('next')}</button></div></div>`
       + `<div class="np-bar${s.can.seek && s.dur ? '' : ' off'}" data-bar="1"><i style="width:${s.dur ? Math.min(100, p / s.dur * 100).toFixed(1) : 0}%"></i></div><div class="np-time"><span>${NP.fmt(p)}</span><span>${s.dur ? NP.fmt(s.dur) : ''}</span></div></div>`;
   }
@@ -43,8 +43,8 @@
     return U.card('var(--green)', 'search', 'Найти и включить',
       `<small class="vc-note">Откроется страница поиска в браузере. Голосом то же самое: «включи фильм Дюна на Netflix» или «найди сериал Шерлок, сезон 2 серия 3».</small>`
       + `<div class="ci-form"><label>Название<input id="ci-q" maxlength="200" placeholder="Например: Матрица" value="${esc(form.q)}" autocomplete="off"></label>`
-      + `<div class="ci-row"><div class="seg2 ci-kind" role="radiogroup" style="--n:2;--i:${kind === 'series' ? 1 : 0}"><button type="button" class="${kind === 'movie' ? 'on' : ''}" data-kind="movie" role="radio" aria-checked="${kind === 'movie'}">Фильм</button><button type="button" class="${kind === 'series' ? 'on' : ''}" data-kind="series" role="radio" aria-checked="${kind === 'series'}">Сериал</button></div>`
-      + (kind === 'series' ? `<label class="ci-n">Сезон<input id="ci-se" type="number" min="1" max="99" value="${esc(form.season)}" placeholder="любой"></label><label class="ci-n">Серия<input id="ci-ep" type="number" min="1" max="999" value="${esc(form.episode)}" placeholder="любая"></label>` : '') + `</div>`
+      + `<div class="ci-row"><div class="ci-kinds" role="radiogroup">${[['movie', 'Фильм', 'одним файлом', 'M4 5h16v14H4zM8 5v14M16 5v14M4 9h4M4 15h4M16 9h4M16 15h4'], ['series', 'Сериал', 'сезон и серия', 'M7 7h13v10H7zM4 10v9h13M10 4h10']].map(([v, t, h, d]) => `<button type="button" class="ci-k${kind === v ? ' on' : ''}" data-kind="${v}" role="radio" aria-checked="${kind === v}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg><span><b>${t}</b><small>${h}</small></span></button>`).join('')}</div>`
+      + (kind === 'series' ? `<label class="ci-n">Сезон<input id="ci-se" class="rm-in num" data-fld="1" type="number" min="1" max="99" value="${esc(form.season)}" placeholder="любой"></label><label class="ci-n">Серия<input id="ci-ep" class="rm-in num" data-fld="1" type="number" min="1" max="999" value="${esc(form.episode)}" placeholder="любая"></label>` : '') + `</div>`
       + `<label>Где искать<select id="ci-svc">${svcs.length ? svcs.map((s) => `<option value="${esc(s.id)}"${s.id === cur ? ' selected' : ''}>${esc(s.name)}</option>`).join('') : '<option value="">Обычный поиск в интернете</option>'}</select></label>`
       + `<div class="vc-actions">${btn('Открыть поиск', 'data-go="1"', 'primary')}${kind === 'series' ? btn('Когда новая серия', 'data-info="1"') : ''}${btn('В список', 'data-later="1"')}</div>${infoBox ? `<div class="vc-prev">${esc(infoBox.text)}${infoBox.cal ? `<div class="vc-actions">${btn('Добавить в календарь', 'data-incal="1"')}</div>` : ''}</div>` : ''}</div>`);
   }
@@ -67,7 +67,7 @@
   function modeCard() {
     const md = C.mode || { active: false, level: 30 };
     return U.card('var(--amber)', 'theme', 'Режим кино', `<small class="vc-note">Приглушает яркость экрана для просмотра и возвращает прежнюю при выключении. Голосом: «включи режим кино», «выключи режим кино».</small>`
-      + `<div class="ci-row"><label class="ci-n">Яркость, %<input id="ci-lv" type="number" min="5" max="80" value="${md.level}"></label><div class="vc-actions">${btn(md.active ? 'Выключить' : 'Включить', 'data-mode="1"', md.active ? '' : 'primary')}</div></div>${md.active ? '<div class="vc-note">Режим кино включён.</div>' : ''}`);
+      + `<div class="ci-row"><label class="ci-n">Яркость, %<input id="ci-lv" class="rm-in num" data-fld="1" type="number" min="5" max="80" value="${md.level}"></label><div class="vc-actions">${btn(md.active ? 'Выключить' : 'Включить', 'data-mode="1"', md.active ? '' : 'primary')}</div></div>${md.active ? '<div class="vc-note">Режим кино включён.</div>' : ''}`);
   }
   function servicesCard() {
     const rows = C.services.map((s) => `<div class="tl-row"><div class="tl-t"><b>${esc(s.name)}${s.id === C.default ? '<em class="ci-def">по умолчанию</em>' : ''}</b><small>${esc(s.domain)} · ${s.own_search ? 'свой поиск сервиса' : 'поиск по сайту через интернет'}</small></div><div class="tl-b">${s.id === C.default ? '' : btn('Основной', `data-def="${esc(s.id)}"`)}${btn('Убрать', `data-rm="${esc(s.id)}"`, 'tl-del')}</div></div>`).join('');
@@ -85,6 +85,7 @@
     const keep = ['ci-q', 'ci-se', 'ci-ep', 'ci-svc'].map((id) => $(id)).filter(Boolean); for (const e of keep) { if (e.id === 'ci-q') form.q = e.value; else if (e.id === 'ci-se') form.season = e.value; else if (e.id === 'ci-ep') form.episode = e.value; else form.svc = e.value; }
     body.innerHTML = `<div class="vc-grid"><div class="vc-col">${nowCard()}${libCard()}${laterCard()}</div><div class="vc-col">${findCard()}${modeCard()}${servicesCard()}${tipsCard()}</div></div>`;
     if (window.fzDropdown) window.fzDropdown.watch(body);
+    if (window.fzStepper) window.fzStepper.enhance(body);
   }
   function paintNow() {
     const box = $('ci-now'); if (!box || VIEW !== 'cinema') return;

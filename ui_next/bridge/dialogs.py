@@ -100,9 +100,16 @@ def ask_git_stage(repo_path, files):
         branches, current = list(get_branches(repo_path)), get_current_branch(repo_path)
     except Exception:
         branches, current = [], ''
-    rows = [{'file': _s(f.get('file'), 400), 'status': _s(f.get('status'), 20)} for f in files][:3000]
+    files = list(files)[:3000]
+    try:
+        from actions.git_extras import inspect_files, line_counts, suggest_message
+        warn, counts, suggest = inspect_files(repo_path, files), line_counts(repo_path, files), suggest_message(files)
+    except Exception:
+        warn, counts, suggest = {}, {}, ''
+    rows = [{'file': _s(f.get('file'), 400), 'status': _s(f.get('status'), 20), 'warn': warn.get(f.get('file'), {}).get('kind', ''),
+             'add': counts.get(f.get('file'), (0, 0))[0], 'del': counts.get(f.get('file'), (0, 0))[1]} for f in files]
     names = {r['file'] for r in rows}
-    data = {'repo': _s(repo_path, 400), 'files': rows, 'branches': [_s(b, 120) for b in branches][:300], 'current': _s(current, 120)}
+    data = {'repo': _s(repo_path, 400), 'files': rows, 'branches': [_s(b, 120) for b in branches][:300], 'current': _s(current, 120), 'suggest': _s(suggest, 200)}
 
     def validate(v):
         v = v if isinstance(v, dict) else {}

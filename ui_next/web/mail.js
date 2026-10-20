@@ -4,6 +4,7 @@
 // Links in letters open in the browser through `open_url`. Without a core it shows demo letters. Relies on globals of app.html: $, J, m, ic, esc, VIEW, setBadge.
 (() => {
   const NOW = Date.now() / 1000;
+  const DEMO_SNIPS = { d1: 'Подтверждаю встречу в пятницу в 15:00. Материалы во вложении, посмотрите повестку и смету.', d2: 'Сумма к оплате за хостинг: 1 240 ₽, оплатить до 25 октября.', d3: 'Максим, спасибо, договор посмотрел, есть пара вопросов по пункту 4.' };
   const DEMO_ROWS = [
     { uid: 'd1', subject: 'Встреча по проекту в пятницу', name: 'Анна Ковальчук', addr: 'anna@example.com', ts: NOW - 3600, unread: true, flagged: true, att: true },
     { uid: 'd2', subject: 'Счёт за октябрь', name: 'Hosting Team', addr: 'billing@example.com', ts: NOW - 86400, unread: true, flagged: false, att: false, html: true },
@@ -12,7 +13,7 @@
   const DEMO_TEXT = 'Здравствуйте!\n\nПодтверждаю встречу в пятницу в 15:00. Материалы: https://example.com/files/project-overview-and-timeline-for-the-next-quarter.pdf\n\nПожалуйста, посмотрите:\n- повестку\n- смету\n\nМаксим писал(а):\n> Давайте перенесём на вечер?\n> Мне так удобнее.\n\nС уважением,\nАнна\n-- \nАнна Ковальчук\nпроект-менеджер';
   const DEMO_HTML = '<!doctype html><meta charset=utf-8><style>body{margin:0;padding:18px 22px;background:#fff;color:#1c2733;font:14px/1.55 "Segoe UI",Arial,sans-serif}a{color:#0a63c9}.b{background:#eef4fb;border-radius:8px;padding:14px 16px;margin:12px 0}.n{font:700 26px Arial}.btn{display:inline-block;background:#0a63c9;color:#fff;padding:9px 16px;border-radius:6px;text-decoration:none}table{border-collapse:collapse;width:100%}td{padding:6px 8px;border-bottom:1px solid #dde6ef}</style><h2 style="margin:0 0 6px">Счёт за октябрь</h2><p>Здравствуйте! Сумма к оплате за хостинг:</p><div class=b><div class=n>1 240 ₽</div><div>оплатить до 25 октября</div></div><table><tr><td>Хостинг, тариф «Pro»</td><td align=right>990 ₽</td></tr><tr><td>Домен example.com</td><td align=right>250 ₽</td></tr></table><p><a class=btn href="#">Оплатить счёт</a></p><p style="color:#6b7c8d;font-size:12px">Это письмо создано автоматически.</p>';
   const FOLDER_NAMES = { inbox: 'Входящие', sent: 'Отправленные', drafts: 'Черновики', junk: 'Спам', trash: 'Корзина', archive: 'Архив' };
-  const FILTERS = [['all', 'Все'], ['unread', 'Непрочитанные'], ['flagged', 'Помеченные']];
+  const FILTERS = [['all', 'Все', 'list'], ['unread', 'Непрочитанные', 'unread'], ['flagged', 'Помеченные', 'star']];
   const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
   const SVG = (d, w = 1.9) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const I = {
@@ -20,13 +21,17 @@
     star: SVG('<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9L3.5 9.7l5.9-.8z"/>'), mail: SVG('<path d="M4 6h16v12H4zM4 7l8 6 8-6"/>'),
     open: SVG('<path d="M4 9l8-5 8 5v10H4zM4 9l8 6 8-6"/>'), archive: SVG('<path d="M4 5h16v4H4zM5 9v10h14V9M10 13h4"/>'), trash: SVG('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>'),
     clip: SVG('<path d="M20 11l-8.5 8.5a5 5 0 0 1-7-7L13 4a3.3 3.3 0 0 1 4.7 4.7L9.2 17.2a1.7 1.7 0 0 1-2.4-2.4L14.5 7"/>', 1.7), down: SVG('<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>'),
-    tune: SVG('<path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 5v4M7 15v4"/>'),
+    back: SVG('<path d="M15 5l-7 7 7 7"/>'), tune: SVG('<path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 5v4M7 15v4"/>'),
+    inbox: SVG('<path d="M4 13l2.5-7h11L20 13v6H4zM4 13h5l1 2h4l1-2h5"/>'), sent: SVG('<path d="M21 4L3 11l7 3 3 7zM10 14l5-5"/>'), drafts: SVG('<path d="M5 19l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L9 18zM14.5 6.5l3 3"/>'),
+    junk: SVG('<path d="M12 3l9 16H3zM12 10v4M12 17h.01"/>'), label: SVG('<path d="M4 5h9l7 7-7 7H4zM8 9h.01"/>'), refresh: SVG('<path d="M20 5v5h-5M4 19v-5h5M5.6 9A7.5 7.5 0 0 1 19 10M18.4 15A7.5 7.5 0 0 1 5 14"/>'),
+    edit: SVG('<path d="M5 19l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L9 18zM4 21h16"/>'), list: SVG('<path d="M4 7h16M4 12h16M4 17h16"/>'), unread: SVG('<path d="M4 6h16v12H4zM4 7l8 6 8-6"/><circle cx="19" cy="6" r="3" fill="currentColor" stroke="none"/>'),
     img: SVG('<path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"/>'), more: SVG('<path d="M6 12h.01M12 12h.01M18 12h.01" stroke-width="3"/>'),
   };
+  const KEYS = { reply: 'R', all: 'A', fwd: 'F', star: 'S', seen: 'U', archive: 'E', del: '#' };
   const root = $('mail'), listEl = $('ml-list'), readEl = $('ml-read'), toast = $('ml-toast'), modal = $('ml-modal'), mbox = $('ml-mbox');
   const S = { state: 'loading', email: '', folder: 'inbox', folders: ['inbox'], custom: [], picked: new Set(), filter: 'all', q: '', srv: '', rows: [], total: 0, more: false, unreadInbox: 0, sel: '', cur: null, reading: false, err: '',
     reply: null, drafts: {}, attach: [], sending: false, confirmDel: false, view: 'html', images: false, saved: {}, busy: false, loadingMore: false };
-  let toastTimer = 0, comp = null, searchTimer = 0, seq = 0, poll = 0, ready = false;
+  let snipTimer = 0, toastTimer = 0, comp = null, searchTimer = 0, seq = 0, poll = 0, ready = false;
   const TRUST_KEY = 'jarvis.mail.trusted';
   const trusted = () => { try { return new Set(JSON.parse(localStorage.getItem(TRUST_KEY) || '[]')); } catch (e) { return new Set(); } };
   const setTrust = (a, on) => { try { const t = trusted(); if (on) t.add(a); else t.delete(a); localStorage.setItem(TRUST_KEY, JSON.stringify([...t])); } catch (e) { /* storage unavailable */ } };
@@ -45,7 +50,29 @@
   const full = (ts) => { if (!ts) return ''; const d = new Date(ts * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
   const size = (b) => (b < 1024 ? `${b} Б` : b < 1048576 ? `${Math.round(b / 1024)} КБ` : `${(b / 1048576).toFixed(1)} МБ`);
   const plural = (n, a, b, c) => { const k = n % 100; return n % 10 === 1 && k !== 11 ? a : n % 10 >= 2 && n % 10 <= 4 && (k < 10 || k >= 20) ? b : c; };
-  const avatar = (name, addr) => `<span class="ml-av" style="--gh:${hue(addr || name)}">${esc(initials(name))}</span>`;
+  // Sender logos: the favicon of the sender's own domain (no third-party service), shown over the initials; a failed load leaves the initials.
+  const LOGO_KEY = 'jarvis.mail.logos', FREE = /^(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|pm|gmx|web|t-online|mail|bk|inbox|list|yandex|ya|rambler|ukr|i|meta|email|freenet|mailbox|posteo|tutanota|tuta|zoho|qq|163|126)\./i;
+  const logosOn = () => { try { return localStorage.getItem(LOGO_KEY) !== '0'; } catch (e) { return true; } };
+  const setLogos = (on) => { try { localStorage.setItem(LOGO_KEY, on ? '1' : '0'); } catch (e) { /* storage unavailable */ } };
+  const PAPER_KEY = 'jarvis.mail.paper';
+  const paperOn = () => { try { return localStorage.getItem(PAPER_KEY) === '1'; } catch (e) { return false; } };
+  const setPaper = (on) => { try { localStorage.setItem(PAPER_KEY, on ? '1' : '0'); } catch (e) { /* storage unavailable */ } };
+  const badLogo = new Set();
+  function logoHost(addr) {
+    const h = ((addr || '').split('@')[1] || '').toLowerCase().trim(); if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(h) || FREE.test(h)) return '';
+    const p = h.split('.'), n = p.length >= 3 && /^(co|com|org|net|gov|ac)$/.test(p[p.length - 2]) && p[p.length - 1].length === 2 ? 3 : 2;
+    return p.slice(-n).join('.');
+  }
+  // Free-mail senders have no site of their own: a small provider badge sits on the avatar corner instead.
+  const PROV = [[/^(gmail|googlemail)\./i, 'pv-g', '<svg viewBox="0 0 24 24"><path d="M3 7v11M21 7v11M3 7l9 7 9-7" fill="none" stroke="#ea4335" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
+    [/^(outlook|hotmail|live|msn)\./i, 'pv-o', 'O'], [/^(yahoo|ymail)\./i, 'pv-y', 'Y'], [/^(icloud|me|mac)\./i, 'pv-i', 'i'], [/^(proton|protonmail|pm)\./i, 'pv-p', 'P'], [/^(gmx|web)\./i, 'pv-x', 'G'], [/^(yandex|ya)\./i, 'pv-d', 'Я']];
+  const badge = (addr) => { const h = ((addr || '').split('@')[1] || '').toLowerCase(), p = logosOn() && PROV.find((x) => x[0].test(h)); return p ? `<i class="ml-pv ${p[1]}" title="${esc(h)}">${p[2]}</i>` : ''; };
+  function avatar(name, addr) {
+    const host = logosOn() ? logoHost(addr) : '';
+    return `<span class="ml-avb"><span class="ml-av" style="--gh:${hue(addr || name)}">${esc(initials(name))}${host && !badLogo.has(host) ? `<img class="ml-lg" data-host="${host}" src="https://${host}/favicon.ico" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async">` : ''}</span>${badge(addr)}</span>`;
+  }
+  const FT = { pdf: ['PDF', 'r'], doc: ['DOC', 'b'], docx: ['DOC', 'b'], odt: ['DOC', 'b'], xls: ['XLS', 'g'], xlsx: ['XLS', 'g'], csv: ['CSV', 'g'], ppt: ['PPT', 'o'], pptx: ['PPT', 'o'], zip: ['ZIP', 'y'], rar: ['ZIP', 'y'], '7z': ['ZIP', 'y'], png: ['IMG', 'p'], jpg: ['IMG', 'p'], jpeg: ['IMG', 'p'], gif: ['IMG', 'p'], webp: ['IMG', 'p'], txt: ['TXT', 'n'], ics: ['ICS', 'b'] };
+  const ftype = (n) => { const e = ((n || '').split('.').pop() || '').toLowerCase(); return FT[e] || [(e || 'FILE').slice(0, 4).toUpperCase(), 'n']; };
 
   // ---- plain text, formatted ----
   function inline(text) {
@@ -142,13 +169,16 @@
 
   // ---- rendering: list side ----
   function buildList() {
-    listEl.innerHTML = '<div class="ml-selbar" id="ml-selbar" hidden></div><div class="ml-top" id="ml-top"><div class="ml-fds" id="ml-fds"></div><div class="ml-search"><input id="ml-q" placeholder="Поиск по письмам" autocomplete="off"><button type="button" class="ml-adv" data-menu="adv" title="Расширенный поиск" aria-label="Расширенный поиск">' + I.tune + '</button></div><div class="ml-flts" id="ml-flts"></div></div><div class="ml-items" id="ml-items"></div>';
+    listEl.innerHTML = '<div class="ml-selbar" id="ml-selbar" hidden></div><div class="ml-top" id="ml-top"><div class="ml-fds" id="ml-fds"></div><div class="ml-search"><input id="ml-q" placeholder="Поиск по письмам" autocomplete="off"><button type="button" class="ml-adv" data-menu="adv" title="Расширенный поиск" aria-label="Расширенный поиск">' + I.tune + '</button></div><div class="ml-flts" id="ml-flts"></div><div class="ml-tb" id="ml-tb"><button type="button" class="ml-cbx" data-sel="tgl" title="Выбрать все" aria-label="Выбрать все"></button><button type="button" class="ml-tbb" data-sel="refresh" title="Обновить" aria-label="Обновить">' + I.refresh + '</button><span class="ml-sp"></span><span class="ml-pg" id="ml-pg"></span></div></div><div class="ml-items" id="ml-items"></div>';
   }
   function runSearch(q) {
     const i = $('ml-q'); i.value = q; i.dispatchEvent(new Event('input', { bubbles: true })); clearTimeout(searchTimer);
     S.q = q; S.srv = q.trim(); loadList({ silent: true }); paintItems();
   }
-  function paintAll() { paintHead(); paintFolders(); paintItems(); if (!S.cur || S.state !== 'ok') buildReader(); }
+  // A narrow window shows one pane at a time: the list, or the letter with a back button.
+  const syncPane = () => root.classList.toggle('show-read', S.state === 'ok' && !!S.sel);
+  const fitPane = () => { const px = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16; root.classList.toggle('narrow', root.clientWidth / px < 46); };
+  function paintAll() { paintHead(); paintFolders(); paintItems(); if (!S.cur || S.state !== 'ok') buildReader(); syncPane(); }
   function paintHead() {
     const un = S.unreadInbox ? `непрочитанных ${S.unreadInbox}` : '';
     $('ml-count').textContent = S.state === 'ok' ? [`${folderName(S.folder)}: ${S.total} ${plural(S.total, 'письмо', 'письма', 'писем')}`, S.folder === 'inbox' || !un ? un : '', m.connected ? '' : 'пример, ядро не подключено'].filter(Boolean).join(' · ') : '';
@@ -159,9 +189,9 @@
     const top = $('ml-top'); if (!top) return;
     top.hidden = S.state !== 'ok';
     const cur = S.custom.find((x) => x.id === S.folder);
-    $('ml-fds').innerHTML = S.folders.map((f) => `<button type="button" class="ml-fd${f === S.folder ? ' on' : ''}" data-fd="${f}">${FOLDER_NAMES[f]}${f === 'inbox' && S.unreadInbox ? `<i>${S.unreadInbox}</i>` : ''}</button>`).join('')
-      + (S.custom.length ? `<button type="button" class="ml-fd${cur ? ' on' : ''}" data-menu="labels">${esc(cur ? cur.name : 'Метки')}<b class="ml-caret"></b></button>` : '');
-    $('ml-flts').innerHTML = FILTERS.map(([k, t]) => `<button type="button" class="ml-fl${k === S.filter ? ' on' : ''}" data-fl="${k}">${t}</button>`).join('') + `<span class="ml-sp"></span><button type="button" class="ml-fl more" data-menu="list" title="Ещё" aria-label="Ещё">${I.more}</button>`;
+    $('ml-fds').innerHTML = S.folders.map((f) => `<button type="button" class="ml-fd${f === S.folder ? ' on' : ''}" data-fd="${f}" title="${FOLDER_NAMES[f]}" aria-label="${FOLDER_NAMES[f]}">${I[f === 'trash' ? 'trash' : f] || I.mail}<span>${FOLDER_NAMES[f]}</span>${f === 'inbox' && S.unreadInbox ? `<i>${S.unreadInbox > 999 ? '999+' : S.unreadInbox}</i>` : ''}</button>`).join('')
+      + (S.custom.length ? `<button type="button" class="ml-fd${cur ? ' on' : ''}" data-menu="labels" title="Метки">${I.label}<span>${esc(cur ? cur.name : 'Метки')}</span><b class="ml-caret"></b></button>` : '');
+    $('ml-flts').innerHTML = FILTERS.map(([k, t, ico]) => `<button type="button" class="ml-fl${k === S.filter ? ' on' : ''}" data-fl="${k}">${I[ico]}${t}</button>`).join('') + `<span class="ml-sp"></span><button type="button" class="ml-fl more" data-menu="list" title="Ещё" aria-label="Ещё">${I.more}</button>`;
   }
   function visibleRows() {
     const q = S.q.trim().toLowerCase();
@@ -174,19 +204,34 @@
     if (diff <= 0) return 'Сегодня'; if (diff === 1) return 'Вчера'; if (diff < 7) return 'На этой неделе';
     return d.getFullYear() === t.getFullYear() ? MONTH_FULL[d.getMonth()] : `${MONTH_FULL[d.getMonth()]} ${d.getFullYear()}`;
   }
+  // One-line previews: asked from the core in batches for the rows on screen, remembered per folder and letter.
+  const snips = new Map(), snipAsked = new Set();
+  const snipOf = (r) => snips.get(`${S.folder}:${r.uid}`) || (m.connected ? '' : DEMO_SNIPS[r.uid] || '');
+  async function wantSnips() {
+    if (!m.connected || S.state !== 'ok') return;
+    const folder = S.folder, need = visibleRows().map((r) => r.uid).filter((u) => !snipAsked.has(`${folder}:${u}`)).slice(0, 60);
+    if (!need.length) return;
+    need.forEach((u) => snipAsked.add(`${folder}:${u}`));
+    const r = await call({ op: 'snippets', folder, uids: need });
+    if (!r.ok) { need.forEach((u) => snipAsked.delete(`${folder}:${u}`)); return; }
+    for (const [u, t] of Object.entries(r.snips || {})) snips.set(`${folder}:${u}`, t);
+    if (folder === S.folder) paintItems(true);
+  }
   const CHECK = SVG('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 2.6);
-  const rowHtml = (r) => `<div class="ml-it${r.uid === S.sel ? ' on' : ''}${r.unread ? ' un' : ''}${S.picked.has(r.uid) ? ' pk' : ''}" role="button" tabindex="0" data-uid="${esc(r.uid)}"><span class="ml-avw" data-chk title="Выбрать">${avatar(r.name, r.addr)}<span class="ml-ck">${CHECK}</span></span><span class="ml-tx"><span class="ml-l1"><b>${esc(r.name || '(без отправителя)')}</b><time>${short(r.ts)}</time></span><span class="ml-l2">${esc(r.subject || '(без темы)')}</span></span><span class="ml-mk"><em class="mst${r.flagged ? ' fl' : ''}" data-star title="${r.flagged ? 'Снять пометку' : 'Пометить'}">${I.star}</em>${r.att ? `<em>${I.clip}</em>` : ''}${r.unread ? '<i class="ml-dot" aria-label="Не прочитано"></i>' : ''}</span><span class="ml-hv"><em data-star class="${r.flagged ? 'fl' : ''}" title="${r.flagged ? 'Снять пометку' : 'Пометить'}">${I.star}</em><em data-q="archive" title="В архив">${I.archive}</em><em data-q="del" title="Удалить">${I.trash}</em><em data-q="seen" title="${r.unread ? 'Прочитано' : 'Не прочитано'}">${r.unread ? I.open : I.mail}</em></span></div>`;
-  function paintItems() {
+  const rowHtml = (r) => `<div class="ml-it${r.uid === S.sel ? ' on' : ''}${r.unread ? ' un' : ''}${S.picked.has(r.uid) ? ' pk' : ''}" role="button" tabindex="0" data-uid="${esc(r.uid)}"><span class="ml-avw" data-chk title="Выбрать">${avatar(r.name, r.addr)}<span class="ml-ck">${CHECK}</span></span><span class="ml-tx"><span class="ml-l1"><b>${esc(r.name || '(без отправителя)')}</b><time>${short(r.ts)}</time></span><span class="ml-l2">${esc(r.subject || '(без темы)')}</span>${snipOf(r) ? `<span class="ml-l3">${esc(snipOf(r))}</span>` : ''}</span><span class="ml-mk"><em class="mst${r.flagged ? ' fl' : ''}" data-star title="${r.flagged ? 'Снять пометку' : 'Пометить'}">${I.star}</em>${r.att ? `<em>${I.clip}</em>` : ''}${r.unread ? '<i class="ml-dot" aria-label="Не прочитано"></i>' : ''}</span><span class="ml-hv"><em data-star class="${r.flagged ? 'fl' : ''}" title="${r.flagged ? 'Снять пометку' : 'Пометить'}">${I.star}</em><em data-q="archive" title="В архив">${I.archive}</em><em data-q="del" title="Удалить">${I.trash}</em><em data-q="seen" title="${r.unread ? 'Прочитано' : 'Не прочитано'}">${r.unread ? I.open : I.mail}</em></span></div>`;
+  function paintItems(fromSnips) {
     const el = $('ml-items'); if (!el) return;
     if (S.state === 'loading') { el.innerHTML = Array.from({ length: 7 }, () => '<div class="ml-sk"><i></i><span><b></b><b></b></span></div>').join(''); return; }
     if (S.state === 'none') { el.innerHTML = '<div class="ml-empty"><b>Почта не подключена</b>Добавьте адрес и пароль приложения, и здесь появятся письма.<button class="cm-try primary" id="ml-connect">Подключить почту</button></div>'; return; }
     if (S.state === 'error') { el.innerHTML = `<div class="ml-empty"><b>Не удалось получить письма</b>${esc(S.err)}<button class="cm-try" id="ml-retry">Повторить</button></div>`; return; }
     const rows = visibleRows(), keep = el.scrollTop; let day = '';
+    const pg = $('ml-pg'); if (pg) pg.textContent = rows.length ? `1–${rows.length} из ${Math.max(S.total, rows.length)}` : '';
     el.innerHTML = (rows.length ? rows.map((r) => { const g = dayLabel(r.ts), head = g !== day ? `<div class="ml-day">${g}</div>` : ''; day = g; return head + rowHtml(r); }).join('')
       : `<div class="ml-empty">${S.q.trim() ? 'Ничего не найдено' : S.filter !== 'all' ? 'В этом фильтре писем нет' : 'Здесь пусто'}</div>`)
       + (S.more && !S.q.trim() ? `<button type="button" class="ml-more" id="ml-more"${S.loadingMore ? ' disabled' : ''}>${S.loadingMore ? 'Загружаю…' : `Показать ещё (${Math.max(0, S.total - S.rows.length)})`}</button>` : '');
     if (window.MailX) window.MailX.paintSel();
     el.scrollTop = keep;
+    if (!fromSnips) { clearTimeout(snipTimer); snipTimer = setTimeout(wantSnips, 250); }
   }
 
   // ---- rendering: reader ----
@@ -196,22 +241,22 @@
     if (!c) { readEl.innerHTML = '<div class="ml-hint">' + ic('mail', 'var(--ic)', 40) + '<b>Выберите письмо слева</b><span>Текст появится здесь, отвечать можно сразу под ним.</span></div>'; return; }
     if (c.error) { readEl.innerHTML = `<div class="ml-empty"><b>Не удалось открыть письмо</b>${esc(c.error)}<button class="cm-try" id="ml-retry-msg">Повторить</button></div>`; return; }
     readEl.innerHTML = '<header class="ml-rh" id="ml-rh"></header><div class="ml-files" id="ml-files" hidden></div><div class="ml-note" id="ml-note" hidden></div><div class="ml-bd" id="ml-bd"></div><div class="ml-reply" id="ml-rp" hidden></div>';
-    paintHeader(); paintFiles(); paintBody(); paintReply();
+    syncPane(); readEl.scrollTop = 0; paintHeader(); paintFiles(); paintBody(); paintReply();
   }
   const toLine = (c) => { const l = (c.to || []).map((x) => x.name || x.addr); const cc = (c.cc || []).map((x) => x.name || x.addr); return (l.length ? `Кому: ${l.slice(0, 3).join(', ')}${l.length > 3 ? ` и ещё ${l.length - 3}` : ''}` : '') + (cc.length ? ` · Копия: ${cc.slice(0, 2).join(', ')}${cc.length > 2 ? '…' : ''}` : ''); };
   function paintHeader() {
     const h = $('ml-rh'); if (!h || !S.cur) return; const c = S.cur, row = S.rows.find((x) => x.uid === c.uid) || {}, loaded = !c.head;
     const can = { trash: S.folders.includes('trash') && S.folder !== 'trash', archive: S.folders.includes('archive') && S.folder !== 'archive' };
-    const btn = (d, icon, label, cls = '', title = '') => `<button type="button" class="ml-ab ${cls}" data-do="${d}" title="${esc(title || label)}"${loaded ? '' : ' disabled'}>${icon}<span>${label}</span></button>`;
-    h.innerHTML = `<h3>${esc(c.subject || '(без темы)')}</h3><div class="ml-from">${avatar(c.name, c.addr)}<div><span class="ml-nm"><b>${esc(c.name)}</b>${loaded && c.unsub ? '<button type="button" class="ml-unsub" data-do="unsub">Отписаться</button>' : ''}</span><small>${esc(c.addr)} · ${esc(full(c.ts))}</small>${loaded && toLine(c) ? `<small class="ml-to2">${esc(toLine(c))}</small>` : ''}</div></div>
-      <div class="ml-bar">${S.folder === 'drafts' ? btn('edit', I.reply, 'Изменить', 'pri', 'Продолжить письмо') : `${btn('reply', I.reply, 'Ответить', 'pri')}${btn('all', I.all, 'Всем', '', 'Ответить всем')}${btn('fwd', I.fwd, 'Переслать')}`}<span class="ml-sp"></span>
+    const btn = (d, icon, label, cls = '', title = '') => `<button type="button" class="ml-ab ${cls}" data-do="${d}" title="${esc((title || label) + (KEYS[d] ? ' · ' + KEYS[d] : ''))}"${loaded ? '' : ' disabled'}>${icon}<span>${label}</span></button>`;
+    h.innerHTML = `<button type="button" class="ml-back" data-do="back">${I.back}Назад</button><h3>${esc(c.subject || '(без темы)')}</h3><div class="ml-from">${avatar(c.name, c.addr)}<div><span class="ml-nm"><b>${esc(c.name)}</b>${loaded && c.unsub ? '<button type="button" class="ml-unsub" data-do="unsub">Отписаться</button>' : ''}</span><small>${esc(c.addr)} · ${esc(full(c.ts))}</small>${loaded && toLine(c) ? `<small class="ml-to2">${esc(toLine(c))}</small>` : ''}</div></div>
+      <div class="ml-bar">${S.folder === 'drafts' ? btn('edit', I.reply, 'Изменить', 'pri', 'Продолжить письмо') : `${btn('reply', I.reply, 'Ответить', 'pri')}${btn('all', I.all, 'Всем', 'ic', 'Ответить всем')}${btn('fwd', I.fwd, 'Переслать', 'ic')}`}<span class="ml-sp"></span>
         ${btn('star', I.star, '', `ic${row.flagged ? ' on' : ''}`, row.flagged ? 'Снять пометку' : 'Пометить')}${btn('seen', row.unread ? I.open : I.mail, '', 'ic', row.unread ? 'Отметить прочитанным' : 'Отметить непрочитанным')}
         ${can.archive ? btn('archive', I.archive, '', 'ic', 'В архив') : ''}${btn('del', I.trash, S.confirmDel ? 'Удалить навсегда?' : '', `ic${S.confirmDel ? ' ask' : ''}`, can.trash ? 'В корзину' : 'Удалить навсегда')}${btn('more', I.more, '', 'ic', 'Ещё')}</div>`;
   }
   function paintFiles() {
     const el = $('ml-files'); if (!el || !S.cur) return; const fs = S.cur.files || [];
     el.hidden = !fs.length;
-    el.innerHTML = fs.map((f, i) => { const sv = S.saved[`${S.cur.uid}:${i}`]; return `<button type="button" class="ml-file${sv ? ' done' : ''}" data-save="${i}" title="${sv ? 'Показать в папке' : 'Сохранить в Загрузки'}">${I.clip}<b>${esc(f.name)}</b><small>${size(f.size)}</small><span>${sv ? 'в папке' : I.down}</span></button>`; }).join('');
+    el.innerHTML = fs.map((f, i) => { const sv = S.saved[`${S.cur.uid}:${i}`]; const [tx, tc] = ftype(f.name); return `<button type="button" class="ml-file${sv ? ' done' : ''}" data-save="${i}" title="${sv ? 'Показать в папке' : 'Сохранить в Загрузки'}"><i class="ml-ft t-${tc}">${tx}</i><b>${esc(f.name)}</b><small>${size(f.size)}</small><span>${sv ? 'в папке' : I.down}</span></button>`; }).join('');
   }
   function paintBody() {
     const bd = $('ml-bd'), c = S.cur; if (!bd || !c) return;
@@ -223,21 +268,33 @@
       const addr = (c.addr || '').toLowerCase(), tr = trusted().has(addr);
       const left = !showHtml ? '<span></span>' : c.blocked && !S.images ? `<span>${I.img}Картинки скрыты (${c.blocked})</span><button type="button" class="ml-nb" data-do="images">Показать</button><button type="button" class="ml-nb" data-do="trust" title="Всегда показывать картинки от ${esc(addr)}">Всегда показывать</button>`
         : S.images && tr ? `<span>${I.img}Картинки показываются для ${esc(addr)}</span><button type="button" class="ml-nb" data-do="untrust">Не показывать</button>` : '<span></span>';
-      note.innerHTML = `${left}<span class="ml-sp"></span><button type="button" class="ml-nb${showHtml ? ' on' : ''}" data-view="html">Оформление</button><button type="button" class="ml-nb${showHtml ? '' : ' on'}" data-view="text">Текст</button>`;
+      note.innerHTML = `${left}<span class="ml-sp"></span>${showHtml ? `<button type="button" class="ml-nb" data-do="paper" title="Фон письма">${paperOn() ? 'Тёмный фон' : 'Светлый фон'}</button>` : ''}<button type="button" class="ml-nb${showHtml ? ' on' : ''}" data-view="html">Оформление</button><button type="button" class="ml-nb${showHtml ? '' : ' on'}" data-view="text">Текст</button>`;
     }
     if (showHtml) {
-      bd.className = 'ml-bd paper'; bd.innerHTML = ''; bd.appendChild(mkFrame(c.html));
+      bd.className = 'ml-bd paper'; bd.innerHTML = ''; bd.appendChild(mkFrame(c.html, true));
     } else { bd.className = 'ml-bd'; bd.innerHTML = `<div class="ml-text">${c.body ? fmtText(c.body) : '<p class="ml-dim">(пустое письмо)</p>'}</div>`; }
   }
-  function mkFrame(doc) {
-    const f = document.createElement('iframe'); f.className = 'ml-frame'; f.setAttribute('sandbox', 'allow-same-origin'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = 'Текст письма';
-    f.addEventListener('load', () => { try { const d = f.contentDocument; d.addEventListener('click', onLink); d.addEventListener('keydown', onFrameKey); const w = d.documentElement.scrollWidth, cw = f.clientWidth; if (w > cw + 2 && cw > 200) d.body.style.zoom = String(cw / w); } catch (e) { /* frame not reachable */ } });
+  function mkFrame(doc, auto) {
+    const f = document.createElement('iframe'); f.className = 'ml-frame'; f.setAttribute('sandbox', 'allow-same-origin'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = 'Текст письма'; const dark = !paperOn(); f.classList.toggle('dk', dark);
+    f.addEventListener('load', () => { try { const d = f.contentDocument; if (dark) { const st = d.createElement('style'); st.textContent = 'html{background:#efe6d6}img,video,picture,canvas,svg{filter:invert(1) hue-rotate(180deg)}'; d.head.appendChild(st); } d.addEventListener('click', onLink); d.addEventListener('keydown', onFrameKey); const w = d.documentElement.scrollWidth, cw = f.clientWidth; if (w > cw + 2 && cw > 200) d.body.style.zoom = String(cw / w); if (auto) fit(f); } catch (e) { /* frame not reachable */ } });
     f.srcdoc = doc; return f;
+  }
+  // The letter takes the height of its content and the whole reader scrolls, like in Gmail.
+  function fit(f) {
+    const d = f.contentDocument; if (!d || !d.documentElement) return;
+    const set = () => { f.style.height = `${Math.max(180, Math.ceil(d.documentElement.scrollHeight) + 4)}px`; };
+    set(); setTimeout(set, 400); setTimeout(set, 1500);
+    try { new ResizeObserver(set).observe(d.body); } catch (e) { /* no observer */ }
   }
   const attachHtml = (list) => (list.length ? `<div class="ml-chips">${list.map((a) => `<span class="ml-chip">${esc(a.name)}<small>${size(a.size)}</small><button type="button" data-drop="${esc(a.id)}" aria-label="Убрать вложение">×</button></span>`).join('')}</div>` : '');
   function paintReply() {
     const el = $('ml-rp'), c = S.cur; if (!el || !c) return;
-    const r = S.reply; el.hidden = !r; readEl.classList.toggle('replying', !!r); if (!r) { el.innerHTML = ''; return; }
+    const r = S.reply; readEl.classList.toggle('replying', !!r);
+    if (!r) {
+      const ok = !c.head && !S.reading && !c.error && S.folder !== 'drafts'; el.hidden = !ok;
+      el.innerHTML = ok ? `<div class="ml-qr"><button type="button" class="ml-qb" data-do="reply">${I.reply}Ответить</button><button type="button" class="ml-qb" data-do="all">${I.all}Всем</button><button type="button" class="ml-qb" data-do="fwd">${I.fwd}Переслать</button></div>` : ''; el.classList.toggle('qr', ok); return;
+    }
+    el.hidden = false; el.classList.remove('qr');
     el.innerHTML = `<div class="ml-to"><span>${r.mode === 'all' ? 'Ответ всем' : 'Ответ'}</span> Кому: <b>${esc(c.reply_to)}</b></div>${r.mode === 'all' ? `<label class="ml-cc"><span>Копия</span><input id="ml-rcc" value="${esc(r.cc)}" placeholder="адреса через запятую" autocomplete="off"></label>` : ''}
       <div id="ml-rte"></div><div class="ml-qc"><span>К ответу приложится исходное письмо, с оформлением</span><button type="button" class="ml-nb" data-do="qshow">${S.qopen ? 'Скрыть' : 'Показать'}</button></div>${S.qopen ? '<div class="ml-qv" id="ml-qv"></div>' : ''}${attachHtml(S.attach)}<div class="ml-ract"><button class="cm-try" data-do="attach">Прикрепить файлы</button><span class="ml-sp"></span><button class="cm-try" data-do="cancel">Отмена</button><button class="cm-try primary" data-do="send"${S.sending ? ' disabled' : ''}>${S.sending ? 'Отправляю…' : 'Отправить'}</button></div>`;
     S.ed = window.MailC.mount($('ml-rte'), { html: S.drafts[c.uid] || '', placeholder: 'Ваш ответ', compact: true, onSubmit: () => doAction('send') }); S.ed.focus();
@@ -267,7 +324,7 @@
     if (!m.connected) { say('Демо: письмо не отправляется'); done(true); return; }
     const r = await call({ op: 'send', ...payload });
     const ERR = { bad_to: 'Укажите адрес получателя', empty: 'Введите текст письма или добавьте вложение', bad_attachment: 'Вложение потерялось, прикрепите его заново' };
-    if (r.ok) { say('Письмо отправлено'); done(true); } else { say(ERR[r.error] || r.message || 'Не удалось отправить'); done(false); }
+    if (r.ok) { say('Письмо отправлено'); if (window.sfx) window.sfx('send'); done(true); } else { say(ERR[r.error] || r.message || 'Не удалось отправить'); done(false); }
   }
   const rowOf = (uid) => S.rows.find((x) => x.uid === uid);
   function startReply(mode) {
@@ -290,6 +347,8 @@
     else if (d === 'cancel') { for (const x of S.attach) if (m.connected) call({ op: 'drop', id: x.id }); S.reply = null; S.attach = []; paintReply(); }
     else if (d === 'attach') { S.drafts[c.uid] = S.ed.html(); await pick(S.attach); paintReply(); }
     else if (d === 'qshow') { if (S.ed) S.drafts[c.uid] = S.ed.html(); S.qopen = !S.qopen; paintReply(); }
+    else if (d === 'paper') { setPaper(!paperOn()); paintBody(); }
+    else if (d === 'back') { S.sel = ''; S.cur = null; S.reply = null; paintItems(); buildReader(); }
     else if (d === 'trust') { setTrust((c.addr || '').toLowerCase(), true); await doAction('images'); }
     else if (d === 'untrust') {
       setTrust((c.addr || '').toLowerCase(), false); S.images = false;
@@ -338,6 +397,8 @@
     if (m.connected) await J.send('open_url', { url }); else say('Демо: ссылка откроется в браузере');
   }
 
+  root.addEventListener('error', (e) => { const t = e.target; if (t && t.classList && t.classList.contains('ml-lg')) { badLogo.add(t.dataset.host); t.remove(); } }, true);
+  root.addEventListener('load', (e) => { const t = e.target; if (t && t.classList && t.classList.contains('ml-lg')) { if (t.naturalWidth < 8) { badLogo.add(t.dataset.host); t.remove(); } else t.classList.add('ok'); } }, true);
   root.addEventListener('click', async (e) => {
     const a = e.target.closest('.ml-a'); if (a) { e.preventDefault(); openLink(a.dataset.url); return; }
     const it = e.target.closest('.ml-it'); if (it) { openMsg(it.dataset.uid); return; }
@@ -350,7 +411,7 @@
     if (b.id === 'ml-connect') { window.openExtSetup({ id: 'feature_mail_client', name: 'Почта', setup: 'mail', installed: false }); return; }
     if (b.id === 'ml-retry') { ready = false; loadList(); return; }
     if (b.id === 'ml-retry-msg') { const u = S.sel; S.sel = ''; openMsg(u); return; }
-    if (b.id === 'ml-refresh') { loadList({ refresh: true, silent: !!S.rows.length }); return; }
+    if (b.id === 'ml-refresh') { b.classList.add('spin'); await loadList({ refresh: true, silent: !!S.rows.length }); b.classList.remove('spin'); return; }
     if (b.id === 'ml-more') { loadMore(); return; }
     if (b.id === 'ml-new') { openCompose(); return; }
     if (b.dataset.do) doAction(b.dataset.do);
@@ -376,8 +437,29 @@
   const openCompose = (init) => window.MailC.open(init);
 
   window.MailApp = { S, root, listEl, readEl, toast, call, say, esc, I, ic, paintAll, paintItems, paintHeader, paintHead, paintFolders, buildReader, openMsg, loadList, refreshUnread, switchFolder, doAction, rowOf, visibleRows,
-    openCompose, folderName, FOLDER_NAMES, size: (b) => size(b), pick, dropAttach, sendMail, attachHtml, runSearch, modal, mbox };
-  buildList();
+    openCompose, logosOn, setLogos, folderName, FOLDER_NAMES, size: (b) => size(b), pick, dropAttach, sendMail, attachHtml, runSearch, modal, mbox };
+  // Styled tooltips for every [title] on the screen: shown after a short pause, "text · KEY" renders the key as a badge.
+  const tip = document.createElement('div'); tip.className = 'ml-tip'; tip.hidden = true; root.appendChild(tip);
+  let tipT = 0, tipEl = null;
+  const hideTip = () => { clearTimeout(tipT); tip.hidden = true; tipEl = null; };
+  root.addEventListener('mouseover', (e) => {
+    const t = e.target.closest && e.target.closest('[title],[data-tip]'); if (!t || t === tipEl || !root.contains(t)) return;
+    if (t.hasAttribute('title')) { t.dataset.tip = t.getAttribute('title'); t.removeAttribute('title'); }
+    if (!t.dataset.tip) return;
+    hideTip(); tipEl = t;
+    tipT = setTimeout(() => {
+      if (!document.contains(t)) return;
+      const [txt, key] = t.dataset.tip.split(' · '); tip.innerHTML = `${esc(txt)}${key ? `<kbd>${esc(key)}</kbd>` : ''}`; tip.hidden = false;
+      const rr = root.getBoundingClientRect(), r = t.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, k = rr.width / root.offsetWidth || 1;
+      const x = (r.left + r.width / 2 - rr.left) / k - w / 2; let y = (r.top - rr.top) / k - h - 8;
+      if (y < 4) y = (r.bottom - rr.top) / k + 8;
+      tip.style.left = `${Math.max(4, Math.min(x, root.offsetWidth - w - 4))}px`; tip.style.top = `${y}px`;
+    }, 380);
+  });
+  root.addEventListener('mouseout', (e) => { if (tipEl && !(e.relatedTarget && tipEl.contains(e.relatedTarget))) hideTip(); });
+  root.addEventListener('mousedown', hideTip); root.addEventListener('scroll', hideTip, true);
+  buildList(); fitPane(); syncPane();
+  try { new ResizeObserver(fitPane).observe(root); } catch (e) { addEventListener('resize', fitPane); }
   J.on('conn', () => { ready = false; if (VIEW === 'mail') loadList(); });
   clearInterval(poll);
   poll = setInterval(() => { if (VIEW === 'mail' && m.connected && S.state === 'ok' && !S.srv && !S.q && S.filter === 'all' && S.rows.length <= 40 && !document.hidden) loadList({ silent: true, refresh: true }); }, 75000);

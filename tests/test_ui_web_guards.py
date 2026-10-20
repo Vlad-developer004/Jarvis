@@ -15,6 +15,11 @@ def _files():
             yield os.path.basename(path), open(path, encoding='utf-8').read()
 
 
+def _page():
+    """The window page: markup plus its main script (moved to app.js)."""
+    return ''.join(open(os.path.join(WEB, n), encoding='utf-8').read() for n in ('app.html', 'app.js'))
+
+
 def _hits(pattern):
     rx = re.compile(pattern)
     return [f'{name}:{n}' for name, text in _files() for n, line in enumerate(text.splitlines(), 1) if rx.search(line)]
@@ -33,7 +38,7 @@ def test_no_javascript_urls_or_window_open():
 
 
 def test_esc_escapes_every_character_that_can_leave_an_attribute_or_tag():
-    src = open(os.path.join(WEB, 'app.html'), encoding='utf-8').read()
+    src = _page()
     line = next(l for l in src.splitlines() if l.startswith('const esc = '))
     for ch in ('&', '<', '>', '"', "'"):
         assert ch in line, ch
@@ -41,7 +46,7 @@ def test_esc_escapes_every_character_that_can_leave_an_attribute_or_tag():
 
 
 def test_known_external_strings_go_through_esc():
-    html = open(os.path.join(WEB, 'app.html'), encoding='utf-8').read()
+    html = _page()
     assert "innerHTML = esc(WX.city)" in html, 'the weather city comes from a geolocation service'
     assert 'innerHTML = WX.city' not in html
     rems = open(os.path.join(WEB, 'rems.js'), encoding='utf-8').read()
@@ -57,7 +62,7 @@ def test_mail_frame_is_sandboxed_without_scripts():
 
 
 def test_notice_text_is_escaped_where_it_is_drawn():
-    html = open(os.path.join(WEB, 'app.html'), encoding='utf-8').read()
+    html = _page()
     assert '${n.text}' not in html and '${first.text}' not in html, 'a notice text comes from the core and may carry data'
     assert html.count('esc(n.text)') >= 2 and 'esc(first.text)' in html
 
@@ -65,3 +70,14 @@ def test_notice_text_is_escaped_where_it_is_drawn():
 def test_prompt_buttons_from_the_core_are_escaped():
     src = open(os.path.join(WEB, 'prompts.js'), encoding='utf-8').read()
     assert 'label: esc(a.label)' in src and 'id: esc(a.id)' in src
+
+
+def test_window_scripts_parse():
+    import shutil
+    import subprocess
+    node = shutil.which('node')
+    if not node:
+        import pytest
+        pytest.skip('node is not installed')
+    bad = [name for name, _ in _files() if name.endswith('.js') and subprocess.run([node, '--check', os.path.join(WEB, name)], capture_output=True).returncode]
+    assert bad == []

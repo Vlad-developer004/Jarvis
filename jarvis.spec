@@ -1,14 +1,11 @@
 import os
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
 ROOT = os.path.dirname(os.path.abspath(SPEC))
 def gather(pkg):
     d, b, h = collect_all(pkg)
     return d, b, h
 sher_d, sher_b, sher_h = gather("sherpa_onnx")
-pgm_d,  pgm_b,  pgm_h  = gather("pygame")
-cv2_d,  cv2_b,  cv2_h  = gather("cv2")
 pil_d,  pil_b,  pil_h  = gather("PIL")
-vosk_d, vosk_b, vosk_h = gather("vosk")
 wsdk_d, wsdk_b, wsdk_h = gather("winsdk")
 # llama_cpp's compiled runtime (ggml/llama/mtmd .dll) lives in its own lib/
 # subfolder, loaded via os.add_dll_directory() at import time (see
@@ -28,8 +25,6 @@ except Exception:
 
 anth_d, anth_b, anth_h = gather("anthropic")
 oa_d,   oa_b,   oa_h   = gather("openai")
-gen_d,  gen_b,  gen_h  = gather("google.generativeai")
-sel_d,  sel_b,  sel_h  = gather("selenium")
 def _walk_datas(src_dir: str, dst_dir: str, exts: tuple[str, ...] | None = None) -> list[tuple[str, str]]:
     # PyInstaller's `datas` tuple is (source_file, DEST_DIRECTORY): the file
     # is placed inside DEST_DIRECTORY under its own basename. Passing the
@@ -78,6 +73,7 @@ def _project_datas() -> list[tuple[str, str]]:
         os.path.join(ROOT, "data", "jarvis_settings.example.json"),
         os.path.join(ROOT, "data", "update_pubkey.txt"),
         os.path.join(ROOT, "data", "model_hashes.json"),
+        os.path.join(ROOT, "data", "optional_packages.json"),
     ]
     for p in safe_files:
         if os.path.exists(p):
@@ -114,7 +110,7 @@ def _filter_datas(datas_list):
             is_gp = d_norm_slash.startswith('data/game_profiles/')
             is_locales = d_norm_slash.startswith('data/locales/')
             is_integrations = d_norm_slash.startswith('data/integrations/')
-            is_safe = name in ['extensions_catalog.json', 'jarvis_settings.example.json', 'update_pubkey.txt', 'model_hashes.json']
+            is_safe = name in ['extensions_catalog.json', 'jarvis_settings.example.json', 'update_pubkey.txt', 'model_hashes.json', 'optional_packages.json']
             if not (is_gp or is_locales or is_integrations or is_safe):
                 continue
         
@@ -122,21 +118,33 @@ def _filter_datas(datas_list):
     return filtered
 
 datas = _filter_datas(
-    sher_d + pgm_d + cv2_d + pil_d + vosk_d + wsdk_d + tt_d
-    + anth_d + oa_d + gen_d + sel_d + llama_d
+    sher_d + pil_d + wsdk_d + tt_d
+    + anth_d + oa_d + llama_d
     + _project_datas()
     + collect_data_files("num2words")
     + collect_data_files("wikipedia")
 )
+# The Russian ONNX voice (core/speech/tts_onnx.py): silero_onnx goes next to the program as plain source files, not into the archive, because it is
+# imported through a loader that lifts the package's "torch must not be loaded" asserts, and compiled code would still carry them.
+try:
+    datas = datas + collect_data_files("silero_onnx", include_py_files=True)
+except Exception:
+    pass
 ICON_PATH = os.path.join(ROOT, "assets", "icon.ico")
 # The window is a separate program (ui_next/shell, built by build.bat with cargo) that the core starts; its pages are inside it.
 SHELL_EXE = os.path.join(ROOT, "ui_next", "shell", "src-tauri", "target", "release", "jarvis-ui.exe")
 if not os.path.isfile(SHELL_EXE):
     raise SystemExit("jarvis-ui.exe is missing: build the window first (cd ui_next/shell/src-tauri && cargo build --release), or run build.bat")
+datas = datas + copy_metadata("cmudict") + collect_data_files("cmudict")      # cmudict asks importlib.metadata for its version and reads its dictionary file; without them Latin words in speech fall back to letter-by-letter
 datas = datas + [(SHELL_EXE, "shell")]
-binaries = sher_b + pgm_b + cv2_b + pil_b + vosk_b + wsdk_b + tt_b + anth_b + oa_b + gen_b + sel_b + llama_b
+# The native audio program (native/jarvis_audio, see docs/native.md) is required: speech, the microphone and volume run through it.
+_AUDIO_EXE = os.path.join(ROOT, "native", "target", "release", "jarvis_audio.exe")
+if not os.path.isfile(_AUDIO_EXE):
+    raise SystemExit("jarvis_audio.exe is missing: build it (cd native && cargo build --release -p jarvis_audio), or run build.bat")
+datas = datas + [(_AUDIO_EXE, "native")]
+binaries = sher_b + pil_b + wsdk_b + tt_b + anth_b + oa_b + llama_b
 hiddenimports = (
-    sher_h + pgm_h + cv2_h + pil_h + vosk_h + wsdk_h + tt_h + llama_h + [
+    sher_h + pil_h + wsdk_h + tt_h + llama_h + [
         "core.speech.asr", "core.audio_utils", "core.nlp.commands", "core.extensions",
         "core.handler", "core.mic_calibration", "core.responder", "core.system.state",
         "core.speech.tts", "core.system.windows",
@@ -154,7 +162,7 @@ hiddenimports = (
         "actions.dev_projects", "actions.game_timer", "actions.nasa",
         "actions.keysend", "actions.keysend_parts.keymap",
         "actions.system_parts.push_to_talk",
-        "core.system.updater", "core.address", "core.responses",
+        "core.system.app_updater", "core.address", "core.responses",
         "core.engine.ets2_commands", "core.handler.yt_play",
         "core.handler.commands.reactor",
         "core.nlp.commands_data", "core.nlp.intents", "core.nlp.semantic",
@@ -184,18 +192,20 @@ hiddenimports = (
         "features.guard", "features.lag_hunter", "features.morning_briefing",
         "features.calendar_reminders",
         "features.qa", "features.ets2.monitor",
-        "sherpa_onnx", "vosk",
-        "pyaudio", "sounddevice",
+        "sherpa_onnx", "srt",   # srt: pure-Python dependency of the vosk package, which is downloaded on first use
+        # standard-library modules that only the downloaded packages (core/optional_pkgs.py) import: nothing in Jarvis itself pulls them into the installer
+        "email.mime", "email.mime.base", "email.mime.multipart", "email.mime.nonmultipart", "email.mime.text", "email.mime.application",
+        "email.mime.audio", "email.mime.image",
+        "jarvis_files", "jarvis_win",   # native modules, imported by name at run time
+        "sounddevice",
         "numpy",
         "psutil", "wmi", "comtypes", "comtypes.client",
         "win32api", "win32con", "win32gui", "win32process",
         "win32clipboard", "win32com", "win32com.client",
         "pythoncom", "pywintypes",
         "pygetwindow", "pyperclip", "pyautogui",
-        "pydirectinput", "pycaw", "pycaw.pycaw",
+        "pydirectinput",
         "requests", "urllib3",
-        "pygame", "pygame.mixer",
-        "cv2",
         "rapidfuzz",
         "yt_dlp",
         "screen_brightness_control",
@@ -205,10 +215,14 @@ hiddenimports = (
         "importlib_resources", "importlib.resources",
         "webbrowser", "socket", "threading", "queue",
         "groq", "httpx", "anyio", "httpcore", "h11", "sniffio",
-        "anthropic", "openai", "google.generativeai", "selenium",
+        "anthropic", "openai",
     ]
 )
 hiddenimports += collect_submodules("ui_next", filter=lambda name: "devtools" not in name)   # the bridge modules are imported on demand
+# Libraries shared with the downloaded packages (core/optional_pkgs.py): the bundled copy wins at import time, so it must be whole (the installer's own code
+# would otherwise pull in only the submodules it happens to use, e.g. tqdm without tqdm.auto).
+for _pkg in ("tqdm", "colorama", "idna", "charset_normalizer", "requests", "urllib3", "cryptography", "cffi", "pycparser", "pydantic"):
+    hiddenimports += collect_submodules(_pkg)
 a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],
@@ -220,9 +234,14 @@ a = Analysis(
     runtime_hooks=[os.path.join(ROOT, "runtime_hooks", "rthook_jaraco.py")],
     excludes=[
         "matplotlib", "notebook", "IPython", "pytest", "setuptools",
-        "torchaudio", "torchvision",
+        "torch", "torchaudio", "torchvision", "sentence_transformers",   # no PyTorch in the build
         "tensorflow", "tensorflow_core", "tensorboard", "keras",
         "llvmlite", "numba",
+        "silero_onnx",      # shipped as source in datas above
+        # ML stacks of the dev environment that no Jarvis module imports (the build must not depend on what happens to be installed)
+        "transformers", "sklearn", "pandas", "pyarrow", "datasets", "huggingface_hub", "hf_xet", "av", "librosa", "openwakeword",
+        "google", "googleapiclient", "grpc", "selenium", "cv2", "vosk", "scipy",   # downloaded on first use (core/optional_pkgs.py) or not shipped
+        "faster_whisper", "setfit", "peft", "optimum", "accelerate", "evaluate", "ultralytics", "deepface", "retinaface", "seaborn",
     ],
     noarchive=False,
 )

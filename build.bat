@@ -47,11 +47,32 @@ if errorlevel 1 (
 )
 popd
 
+:: --- Native parts: file search, window list and the audio program are Rust only (see docs/native.md) ---
+python -m maturin --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] maturin not found: it builds the native modules. Install it with: pip install maturin
+    pause & exit /b 1
+)
+echo Building the native parts...
+pushd native
+cargo build --release -p jarvis_audio
+if errorlevel 1 ( popd & echo [ERROR] The native audio program failed to build. & pause & exit /b 1 )
+if exist dist rmdir /S /Q dist
+for %%c in (jarvis_files jarvis_win) do (
+    python -m maturin build --release -m %%c\Cargo.toml --out dist
+    if errorlevel 1 ( popd & echo [ERROR] The native module %%c failed to build. & pause & exit /b 1 )
+)
+popd
+for %%w in (native\dist\*.whl) do (
+    pip install --force-reinstall --no-deps "%%w"
+    if errorlevel 1 ( echo [ERROR] Could not install the native modules. & pause & exit /b 1 )
+)
+
 :: --- Build ---
 :: Suppress pygame/pkg_resources deprecation noise on stderr (optional).
 set PYTHONWARNINGS=ignore::UserWarning:pkg_resources
 echo Starting PyInstaller build...
-echo (Silero TTS pulls PyTorch; hook-torch and dependency analysis can take several minutes.)
+echo (Dependency analysis can take several minutes.)
 python -m PyInstaller jarvis.spec --noconfirm
 if errorlevel 1 (
     echo [ERROR] PyInstaller build failed.
@@ -79,7 +100,7 @@ if exist assets   robocopy assets   dist\Jarvis\assets   /E /NFL /NDL /NJH /NJS 
 :: core/speech/llm_downloader.py (LLM) and core/speech/{tts,asr}.py's
 :: self-healing download logic (TTS/STT), warmed up in main.py's
 :: _background_init() right after the engine is ready.
-if exist models   robocopy models   dist\Jarvis\models   /E /NFL /NDL /NJH /NJS /XD __pycache__ jarvis_llm sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16 silero_tts vosk-model-small-ru-0.22
+if exist models   robocopy models   dist\Jarvis\models   /E /NFL /NDL /NJH /NJS /XD __pycache__ jarvis_llm sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16 silero_tts silero_onnx vosk-model-small-ru-0.22
 if exist config_pack robocopy config_pack dist\Jarvis\config_pack /E /NFL /NDL /NJH /NJS /XD __pycache__ /XF .env secrets.env
 
 :: --- Copy selective data files (only static defaults) ---

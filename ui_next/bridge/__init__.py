@@ -18,7 +18,7 @@ from .hub import Hub
 from core.safe import swallow as _swallow
 
 if TYPE_CHECKING:     # never runs: it lets PyInstaller see the screens that run_command imports by name
-    from . import ai, backup, cinema, dev, modules, perf, prompts, tools, wizard  # noqa: F401
+    from . import ai, backup, cinema, dev, modules, perf, procs, prompts, services, tools, wizard  # noqa: F401
 
 _log = logging.getLogger(__name__)
 _hub: Hub | None = None
@@ -194,7 +194,7 @@ def _publish_catalog_async() -> None:
 # Commands the UI may send. Keep this a short whitelist: each entry is something the old HUD already let the user do.
 # Handlers that read this package's state (the running handler, the catalog) live here; the router of an operation lives in routes.py;
 # a screen that has a `run(data)` of its own is named in _SCREENS and imported on first use.
-_SCREENS = {'tools': 'tools', 'modules': 'modules', 'dev': 'dev', 'ai': 'ai', 'backup': 'backup', 'wizard': 'wizard', 'cinema': 'cinema', 'prompt': 'prompts', 'perf': 'perf'}
+_SCREENS = {'tools': 'tools', 'modules': 'modules', 'dev': 'dev', 'ai': 'ai', 'backup': 'backup', 'wizard': 'wizard', 'cinema': 'cinema', 'prompt': 'prompts', 'perf': 'perf', 'procs': 'procs', 'services': 'services'}
 _ROUTES = ('extension', 'ext_setup', 'profile', 'currency', 'voice', 'mail', 'media', 'calendar', 'song_open', 'song_clear', 'answer', 'open_url')
 COMMANDS = {'autostart': _cmd_autostart, 'run': _cmd_run, 'mic': _cmd_mic, 'timer': _cmd_timer, 'reminder': _cmd_reminder, 'game_launch': _cmd_game_launch, 'library': _cmd_library, 'guard': _cmd_guard}
 

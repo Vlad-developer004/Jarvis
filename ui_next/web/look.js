@@ -17,7 +17,7 @@
   const choice = (key, cur, items) => `<div class="vc-choice" role="radiogroup">${items.map(([v, t, d]) => `<button type="button" class="vc-opt${cur === v ? ' on' : ''}" data-ch="${key}" data-v="${v}" role="radio" aria-checked="${cur === v}"><b>${esc(t)}</b><small>${esc(d)}</small></button>`).join('')}</div>`;
 
   function themeCard() {
-    const cur = THEME.id, tiles = THEME_LIST().map((t) => { const c = tileColors(t); return `<button type="button" class="lk-t${t.id === cur ? ' on' : ''}" data-theme="${t.id}" style="--bg:${c.bg};--ac:${c.ac};--h:${t.h}" title="${esc(t.name)}"><div class="lk-mock"><i></i><i></i><i></i><i></i><b></b></div><span>${esc(t.name)}${t.id === cur ? '<small>сейчас</small>' : ''}</span></button>`; }).join('');
+    const cur = THEME.id, tiles = THEME_LIST().map((t, k) => { const c = tileColors(t); return `<button type="button" class="lk-t${t.id === cur ? ' on' : ''}" data-theme="${t.id}" style="--k:${k};--bg:${c.bg};--ac:${c.ac};--h:${t.h}" title="${esc(t.name)}"><div class="lk-mock"><i></i><i></i><i></i><i></i><i></i><b></b>${t.id === cur ? '<em class="lk-ck"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></em>' : ''}</div><span>${esc(t.name)}${t.id === cur ? '<small>сейчас</small>' : ''}</span></button>`; }).join('');
     let editor = '';
     if (customOpen) {
       const d = draft, chip = `hsl(${d.h} ${Math.round(100 * Math.min(1, d.sk))}% 58%)`;

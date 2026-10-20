@@ -1,32 +1,12 @@
 import os as _os
-import sys as _sys
-import types as _types
 
-# NOTE: the 32 MB stack size needed for PyTorch/Silero's deep call stacks
-# (default 1 MB causes STATUS_STACK_OVERFLOW / 0xC00000FD on Windows) is no
-# longer set globally here. It used to apply to *every* thread the process
-# ever creates (timers, reminders, background checks, ...), reserving 32 MB
-# of address space each for no reason. It's now applied selectively, only to
-# the few threads that actually run Silero/PyTorch inference — see
+# NOTE: the 32 MB stack size needed for Silero's deep call stacks (default
+# 1 MB causes STATUS_STACK_OVERFLOW / 0xC00000FD on Windows) is applied only to
+# the few threads that run TTS inference, not process-wide — see
 # core/speech/tts.py's _spawn_with_big_stack().
 
-# Disable CUDA globally before any native DLL imports (pygame, pyaudio, torch, pynvml).
-# torch.cuda initialisation with pynvml causes 0xC0000005 on Windows.
-# CUDA_VISIBLE_DEVICES='' prevents CUDA runtime init but NOT pynvml.nvmlInit(),
-# so we also stub pynvml entirely — torch only uses it for GPU enumeration which
-# is irrelevant on this CPU-only setup.
+# CPU-only: keep any CUDA runtime from initialising before the native DLL imports.
 _os.environ.setdefault('CUDA_VISIBLE_DEVICES', '')
-if 'pynvml' not in _sys.modules:
-    _pynvml_stub = _types.ModuleType('pynvml')
-    class _NVMLError(Exception): pass
-    _pynvml_stub.NVMLError = _NVMLError
-    _pynvml_stub.NVMLError_DriverNotLoaded = _NVMLError
-    _pynvml_stub.nvmlInit = lambda: None
-    _pynvml_stub.nvmlShutdown = lambda: None
-    _pynvml_stub.nvmlDeviceGetCount = lambda: 0
-    _pynvml_stub.nvmlSystemGetDriverVersion = lambda: b'0.0'
-    _sys.modules['pynvml'] = _pynvml_stub
-    del _pynvml_stub, _NVMLError
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
@@ -67,7 +47,7 @@ from config_pack.config import (
     STT_ENGINE,
     TTS_WARMUP,
 )
-from core.audio_utils import open_input_stream_resilient
+from core.audio_utils import open_input_resilient
 from core.system import (
     active_module_profile,
     app_state,
@@ -78,7 +58,6 @@ from core.system import (
 engine = None
 handler = None
 asr = None
-pa = None
 stream = None
 
 # Event signalled when engine is fully constructed and ready.
@@ -110,20 +89,8 @@ def _run_ui():
         _log.critical('UI bind error: %s', e, exc_info=True)
 
 def _background_init():
-    global engine, handler, asr, pa, stream
-    import pyaudio as _pyaudio
+    global engine, handler, asr, stream
     try:
-        # CRITICAL: PyTorch DLLs MUST be loaded before sherpa-onnx on Windows
-        # to prevent DLL symbol conflicts (0xC0000005 Access Violation).
-        # Phase 1 — import only (fast ~2s): satisfies the DLL ordering constraint.
-        # Phase 2 — model weights (slow): runs in background, does not block startup.
-        try:
-            from core.nlp.semantic import preload_pytorch as _preload_pt
-            _preload_pt()
-        except Exception as e:
-            _log.error('Preload PyTorch error: %s', e, exc_info=True)
-        app_state.pytorch_loaded.set()
-
         # Pure-Python TTS text-model warmup (pymorphy3 dictionaries) has no
         # GPU/audio hardware contention, so start it immediately instead of
         # waiting for the audio engine — shaves 1-3s off first-response latency.
@@ -148,10 +115,12 @@ def _background_init():
 
         # Local LLM chat fallback — lazy anyway (loads on first llm_chat
         # dispatch if this warmup hasn't finished), so failure here is never
-        # fatal to startup.
+        # fatal to startup. Skipped while the module is off: the model is ~1 GB.
         try:
-            from core.speech.llm_chat import warmup_async as _llm_warmup_async
-            _llm_warmup_async()
+            from core.system import module_enabled
+            if module_enabled('llm_chat_fallback'):
+                from core.speech.llm_chat import warmup_async as _llm_warmup_async
+                _llm_warmup_async()
         except Exception as e:
             _log.error('LLM chat warmup async error: %s', e, exc_info=True)
 
@@ -166,10 +135,19 @@ def _background_init():
                     pass
             _threading.Thread(target=_delayed_warmup, daemon=True).start()
 
-        pa = _pyaudio.PyAudio()
+        # Cloud QA client (library import ~1 s) built once the engine is up; no-op without a key.
+        def _delayed_qa_prewarm():
+            _engine_ready.wait()
+            try:
+                from features.qa.llm_processor import prewarm
+                prewarm()
+            except Exception:
+                pass
+        _threading.Thread(target=_delayed_qa_prewarm, daemon=True, name='QaPrewarm').start()
+
         chunk = int(RATE * CHUNK_MS / 1000)
         try:
-            stream = open_input_stream_resilient(pa, RATE, chunk)
+            stream = open_input_resilient(RATE, chunk)
         except Exception as e:
             _log.critical('Cannot open audio input stream after retries: %s', e, exc_info=True)
             # Previously this just returned here — the whole background init
@@ -188,8 +166,8 @@ def _background_init():
         asr.ensure_initialized()
         from core.engine import JarvisEngine
         from core.handler import CommandHandler
-        handler = CommandHandler(pa, RATE, chunk, asr)
-        engine = JarvisEngine(pa, asr, handler)
+        handler = CommandHandler(RATE, chunk, asr)
+        engine = JarvisEngine(asr, handler)
         # Signal all waiters that the engine is ready.
         _engine_ready.set()
         # STT model/VAD are downloaded lazily on first load (core/speech/asr.py) —
@@ -203,10 +181,18 @@ def _background_init():
             _log.error('STT warmup error: %s', e, exc_info=True)
         from core.mic_calibration import calibrate_noise_simple, run_calibration
         from core.mic_calibration import load_profile as _load_mic_profile
+        def _close_calibration_stream():
+            # The engine opened its own capture; this one only served calibration and would keep a second capture process busy.
+            global stream
+            s, stream = stream, None
+            if s:
+                try: s.close()
+                except Exception: pass
         mic_profile = _load_mic_profile()
         if mic_profile.get('calibrated'):
             engine.energy_thresh = max(50, int(mic_profile.get('threshold', 100)))
             engine.noise_ema = float(mic_profile.get('noise_floor', engine.energy_thresh / 2.2))
+            _close_calibration_stream()
         else:
             engine.energy_thresh = calibrate_noise_simple(stream, chunk, CHUNK_MS)
             def _delayed_calibration():
@@ -216,7 +202,15 @@ def _background_init():
                     engine.update_params(new_thresh, new_gain, JARVIS_VOLUME)
                 except Exception as e:
                     _log.error('Delayed mic calibration failed: %s', e, exc_info=True)
-            _threading.Thread(target=_delayed_calibration, daemon=True).start()
+                finally:
+                    _close_calibration_stream()
+            # The spoken calibration talks and listens for about a minute. While the first-run wizard is still to be finished its microphone step
+            # does this, on the microphone picked there; running it here too would speak over the wizard and measure the default microphone.
+            from core import settings_io
+            if settings_io.read().get('ui_wizard_done'):
+                _threading.Thread(target=_delayed_calibration, daemon=True).start()
+            else:
+                _close_calibration_stream()
         def _start_features():
             if module_enabled('battery_monitor'):
                 try:
@@ -304,5 +298,3 @@ if __name__ == '__main__':
             pass
         if stream:
             stream.close()
-        if pa:
-            pa.terminate()

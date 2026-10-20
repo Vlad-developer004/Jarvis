@@ -284,18 +284,14 @@ def send_play_pause_to_video(prefer: str | None = None, action: str = 'toggle') 
     except Exception:
         pyautogui = None
 
-    all_windows = []
-    def _enum_cb(hwnd, _):
-        # We check both visible and minimized (Iconic) windows
-        title = win32gui.GetWindowText(hwnd)
-        if title or get_hwnd_process_name(hwnd):
-            all_windows.append(hwnd)
-        return True
-    
+    # Both visible and minimized (iconic) windows count
+    wins = {}
     try:
-        win32gui.EnumWindows(_enum_cb, None)
+        from actions.win_list import snapshot
+        wins = {w.hwnd: w for w in snapshot() if w.title or w.exe}
     except Exception as e:
         print(f"[Media] EnumWindows error: {e}", flush=True)
+    all_windows = list(wins)
 
     if not all_windows:
         print("[Media] No windows found at all. Global fallback.", flush=True)
@@ -317,8 +313,8 @@ def send_play_pause_to_video(prefer: str | None = None, action: str = 'toggle') 
 
     for hwnd in all_windows:
         try:
-            p_name = get_hwnd_process_name(hwnd)
-            t = win32gui.GetWindowText(hwnd) or ""
+            p_name = wins[hwnd].exe
+            t = wins[hwnd].title or ""
             tl = t.lower()
             
             # Skip empty or junk windows early
@@ -329,7 +325,7 @@ def send_play_pause_to_video(prefer: str | None = None, action: str = 'toggle') 
             is_youtube = 'youtube' in tl or 'ютуб' in tl
             is_pwa = is_youtube and not any(k in tl for k in browsers)
             is_generic_media = any(k in tl for k in media_kw)
-            is_minimized = win32gui.IsIconic(hwnd)
+            is_minimized = wins[hwnd].iconic
 
             if is_pwa:
                 yt_pwa_wins.append((hwnd, t, p_name, is_minimized, True))

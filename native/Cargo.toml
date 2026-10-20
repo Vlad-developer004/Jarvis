@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["jarvis_files", "jarvis_win", "jarvis_audio"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

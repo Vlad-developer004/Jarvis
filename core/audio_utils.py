@@ -1,5 +1,6 @@
 import time
 import numpy as np
+from core.safe import swallow
 def rms_int16(data_bytes: bytes) -> float:
     if not data_bytes:
         return 0.0
@@ -23,42 +24,27 @@ def _load_audio_settings() -> dict:
     except Exception:
         pass
     return {}
-def open_input_stream(pa, rate: int, chunk_frames: int, device_index: int | None = None,
-                       force_default: bool = False):
-    """force_default=True skips the saved-device lookup entirely, even if
-    device_index is None — used by open_input_stream_resilient below to fall
-    back to whatever PortAudio considers the current system default once a
-    saved index has already failed to open."""
-    if device_index is None and not force_default:
-        s = _load_audio_settings()
-        di = s.get('audio_input_device_index')
-        if isinstance(di, int):
-            device_index = di
-    kw = dict(format=8, channels=1, rate=rate, input=True, frames_per_buffer=chunk_frames)
-    if isinstance(device_index, int):
-        kw['input_device_index'] = device_index
-    return pa.open(**kw)
+def open_input(rate: int, chunk_frames: int, device_name: str | None = None, force_default: bool = False):
+    """Start the native microphone capture. With no name given the one saved in settings (`audio_input_device_name`) is used;
+    force_default=True ignores it and takes the Windows default input, for when the saved one cannot be opened any more."""
+    from core import audio_migrate, native_audio, settings_io
+    try:
+        audio_migrate.migrate_input_device(settings_io.read, settings_io.update)   # the pre-native microphone index, once
+    except Exception:
+        swallow()
+    if device_name is None and not force_default:
+        name = _load_audio_settings().get('audio_input_device_name')
+        device_name = name if isinstance(name, str) and name.strip() else None
+    return native_audio.open_mic(rate, chunk_frames, None if force_default else device_name)
 
-def open_input_stream_resilient(pa, rate: int, chunk_frames: int, attempts: int = 5):
-    """Same as open_input_stream, but recovers from the two most common
-    real-world causes of PortAudio's generic 'Unanticipated host error'
-    (-9999) on open: a saved mic device index that's gone stale (unplugged,
-    replaced, or renumbered by Windows — the first attempt still honors it,
-    every attempt after forces the live system default instead of retrying
-    the same bad index), and a transient failure right at startup (audio
-    subsystem/driver still coming up, e.g. Jarvis set to autostart at login).
-
-    Without this, a single failed open here used to silently abort the whole
-    background init — see main.py's _background_init: no engine, no ASR, no
-    retry, and no indication to the user that anything went wrong at all.
-    Raises the last error if every attempt fails, so the caller can still
-    notify/log — this only makes transient/stale-device failures recoverable,
-    it doesn't hide a genuinely broken audio setup.
-    """
+def open_input_resilient(rate: int, chunk_frames: int, attempts: int = 5):
+    """Same as open_input, but recovers from the two usual causes of a failed open: a saved microphone that is gone (the first attempt
+    honours it, every later one takes the live system default) and a transient failure right at startup (the audio subsystem still
+    coming up, e.g. Jarvis autostarting at login). Raises the last error if every attempt fails, so the caller can still tell the user."""
     last_exc: Exception | None = None
     for attempt in range(attempts):
         try:
-            return open_input_stream(pa, rate, chunk_frames, force_default=(attempt > 0))
+            return open_input(rate, chunk_frames, force_default=(attempt > 0))
         except Exception as e:
             last_exc = e
             if attempt < attempts - 1:
@@ -71,28 +57,16 @@ _last_hp_check = 0.0
 _last_hp_res = False
 
 def is_current_output_headphones() -> bool:
+    """Whether the default playback device is headphones or a headset, from its Windows endpoint form factor (native sidecar)."""
     global _last_hp_check, _last_hp_res
     t = time.time()
     if t - _last_hp_check < 2.5:
         return _last_hp_res
-    
     _last_hp_check = t
-    try:
-        import pythoncom
-        from pycaw.pycaw import AudioUtilities
-        pythoncom.CoInitialize()
-        dev = AudioUtilities.GetSpeakers()
-        if not dev:
-            _last_hp_res = False
-            return False
-        
-        name = str(dev.GetFriendlyName() or "").lower()
-        keywords = ['headphone', 'headset', 'phone', 'наушники', 'гарнитура', 'kopfhörer', 'ear', 'pod', 'bt', 'blue', 'hands-free', 'wireless']
-        _last_hp_res = any(k in name for k in keywords)
-    except Exception:
-        _last_hp_res = False
+    from core import native_audio
+    info = native_audio.query_output()
+    _last_hp_res = bool(info and info['is_headphones'])
     return _last_hp_res
-
 
 _last_jarvis_hp_check = 0.0
 _last_jarvis_hp_res = False

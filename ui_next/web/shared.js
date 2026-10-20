@@ -97,6 +97,10 @@ const J = (() => {
 
   if (window.__TAURI__) {
     const { event, core } = window.__TAURI__;
+    // WebView2 does not report a tray-hidden or minimized window as hidden: the shell does, and everything keyed on document.hidden follows
+    let away = false; const nativeHidden = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden').get;
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => away || nativeHidden.call(document) });
+    event.listen('jarvis-visibility', (e) => { away = !e.payload; document.dispatchEvent(new Event('visibilitychange')); });
     event.listen('sensors', (e) => { model.sensors = e.payload; emit('sensors'); });
     event.listen('state', (e) => { if (live.checked && !live.on && !(window.NX && (window.NX.has('idle') || window.NX.has('speak')))) setState(e.payload); });   // the Rust shell's demo state cycle; ignored while a core is connected
     connectLive(core);

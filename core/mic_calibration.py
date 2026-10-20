@@ -10,7 +10,6 @@ _PROFILE_PATH = Path(get_data_path('mic_profile.json'))
 _REQUIRED_SAMPLES = 5
 _LISTEN_WINDOW_SEC = 4.0
 _MIN_THRESH = 50
-_CANDIDATE_RATES = [16000, 8000, 22050, 44100, 48000]
 def load_profile() -> dict:
     try:
         return json.loads(_PROFILE_PATH.read_text(encoding='utf-8'))
@@ -36,39 +35,6 @@ def _wait_tts_done(extra_sec: float = 0.35) -> None:
         time.sleep(extra_sec)
     except Exception:
         time.sleep(2.5)
-def find_best_rate(pa_instance, chunk_ms: int = 32, device_index=None) -> int:
-    from core.audio_utils import rms_int16
-    results: dict[int, float] = {}
-    for rate in _CANDIDATE_RATES:
-        try:
-            chunk = max(128, int(rate * chunk_ms / 1000))
-            kw: dict = dict(format=8, channels=1, rate=rate, input=True,
-                            frames_per_buffer=chunk)
-            if device_index is not None:
-                kw['input_device_index'] = device_index
-            s = pa_instance.open(**kw)
-            vals: list[float] = []
-            n_frames = max(4, int(0.5 * 1000 / chunk_ms))
-            for _ in range(n_frames):
-                try:
-                    d = s.read(chunk, exception_on_overflow=False)
-                    vals.append(rms_int16(d))
-                except Exception:
-                    _swallow()
-            try:
-                s.close()
-            except Exception:
-                _swallow()
-            if vals:
-                results[rate] = float(np.percentile(vals, 70))
-        except Exception:
-            _swallow()
-    if not results:
-        return 16000
-    best = min(results, key=results.get)
-    if 16000 in results and results[16000] <= results[best] * 1.20:
-        return 16000
-    return best
 def run_calibration(stream, chunk: int, rate: int, chunk_ms: int) -> tuple[int, float]:
     from core.audio_utils import rms_int16
     from config_pack.config import MIN_THRESH, MIC_GAIN

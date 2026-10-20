@@ -1,5 +1,6 @@
 {
  "actions/bluetooth.py": 1,
+ "actions/browser_url.py": 3,
  "actions/dev_projects.py": 7,
  "actions/explorer.py": 4,
  "actions/filesystem.py": 6,
@@ -13,15 +14,16 @@
  "actions/system_control.py": 9,
  "actions/system_parts/media.py": 4,
  "actions/system_parts/translate.py": 2,
- "actions/volume.py": 3,
  "actions/windows_parts/windowing.py": 6,
- "actions/youtube.py": 10,
+ "actions/youtube.py": 6,
  "core/audio_utils.py": 2,
  "core/engine/jarvis.py": 7,
  "core/handler/commands/creative.py": 8,
  "core/handler/commands/files.py": 2,
- "core/speech/sound.py": 3,
- "core/speech/tts.py": 34,
+ "core/speech/tts.py": 12,
+ "core/speech/tts_audio.py": 2,
+ "core/speech/tts_cache.py": 1,
+ "core/speech/tts_normalize.py": 2,
  "core/system/app_updater.py": 1,
  "core/system/bootstrap.py": 6,
  "core/system/modules.py": 1,
@@ -29,5 +31,5 @@
  "features/planetbase/telemetry.py": 1,
  "ui_next/bridge/perf.py": 2,
  "ui_next/bridge/prompts.py": 1,
- "ui_next/bridge/voice.py": 4
+ "ui_next/bridge/voice.py": 3
 }

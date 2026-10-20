@@ -123,7 +123,7 @@ def voice(data: dict) -> dict:
 
 
 def mail(data: dict) -> dict:
-    """Mail screen (see mail): op `state` | `folders` | `list` {folder, filter, q, offset, refresh} | `read` {folder, uid, images, mark} | `flag` {folder, uids, flag, on} |
+    """Mail screen (see mail): op `state` | `folders` | `list` {folder, filter, q, offset, refresh} | `snippets` {folder, uids} | `read` {folder, uid, images, mark} | `flag` {folder, uids, flag, on} |
     `remove` {folder, uids, to} | `read_all` {folder} | `empty` {folder} | `save` {folder, uid, idx} | `reveal` {path} | `prefs` | `prefs_set` {signature} | `unsubscribe` {folder, uid} | `draft` {...} |
     `send` {to, cc, bcc, subject, body, quote, replace, in_reply_to, references, attach} | `pick` | `drop` {id}."""
     from . import mail as ml
@@ -135,6 +135,8 @@ def mail(data: dict) -> dict:
         return ml.folders()
     if op == 'list':
         return ml.list_messages(folder, str(data.get('filter', 'all')), data.get('q', ''), data.get('offset', 0), data.get('limit', 40), bool(data.get('refresh')))
+    if op == 'snippets':
+        return ml.snippets(folder, data.get('uids', []))
     if op == 'read':
         return ml.read_message(folder, data.get('uid', ''), bool(data.get('images')), data.get('mark', True) is not False)
     if op == 'flag':

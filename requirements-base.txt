@@ -1,12 +1,10 @@
-PyAudio==0.2.14
-torch==2.11.0
 vosk==0.3.45
 num2words==0.5.14
 onnxruntime==1.23.1
+soundfile==0.13.1
 sherpa_onnx==1.12.28
 sherpa-onnx-core==1.12.28
-pygame==2.6.1
-Pillow==12.1.1
+Pillow==12.3.0
 psutil==7.1.0
 pywin32==311
 PyAutoGUI==0.9.54
@@ -14,14 +12,13 @@ PyDirectInput==1.0.4
 PyGetWindow==0.0.9
 screen_brightness_control==0.27.0
 pyperclip==1.11.0
-pycaw==20240210
 wmi==1.5.1
 comtypes==1.4.13
-requests==2.32.5
+requests==2.34.2
 # Release signature check of the self-updater (core/system/app_updater.py, tools/sign_release.py)
 cryptography>=44
 defusedxml>=0.7.1
-python-dotenv==1.1.1
+python-dotenv==1.2.4
 rapidfuzz==3.14.1
 numpy==1.26.4
 speedtest-cli==2.1.3
@@ -31,9 +28,13 @@ anyio==4.3.0
 # Keyless Shazam client for song_id — pinned to 0.6.0 specifically because
 # it's the last release whose numpy/anyio requirements (numpy<2, anyio==4.3.0)
 # match what's already pinned above; 0.7.0+ pulls numpy 2.x, which conflicts
-# with numpy==1.26.4 below (torch/onnxruntime/sherpa_onnx compatibility).
+# with numpy==1.26.4 below (onnxruntime/sherpa_onnx compatibility).
 shazamio==0.6.0
-sentence-transformers>=3.0.0
+tokenizers==0.22.1
+# Russian voice through ONNX Runtime (core/speech/tts_onnx.py), pinned to a commit; its dependencies (onnxruntime, numpy, soundfile, num2words)
+# are pinned above. Models (about 300 MB) download on first use into models/silero_onnx/, checked against data/model_hashes.json.
+# Licence of the package and the exported models: CC BY-NC-SA 4.0.
+silero-onnx-tts @ git+https://github.com/some1-in-here/silero-tts-onnx@0ca37390ff2dd9e27aa40b4274156af0eda52f8d
 pymorphy3>=2.0.6
 pymorphy3-dicts-ru>=2.4
 pymorphy3-dicts-uk>=2.4

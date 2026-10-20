@@ -22,6 +22,17 @@ def _sys_restart(handler, text_lower, amount):
     from actions.system import restart_pc
     handler.play_response(); restart_pc()
 
+def _sys_lock_pc(handler, text_lower, amount):
+    from actions.system import lock_pc
+    handler.play_response()
+    # let the confirmation finish before the lock screen takes over
+    threading.Timer(1.2, lock_pc).start()
+
+def _sys_sleep_pc(handler, text_lower, amount):
+    from actions.system import sleep_pc
+    handler.play_response()
+    threading.Timer(2.0, sleep_pc).start()
+
 def _sys_dictation_on(handler, text_lower, amount):
     from actions.dictation import start_dictation
     if start_dictation():
@@ -142,7 +153,7 @@ def _sys_show_hud(handler, text_lower, amount):
 
 def _sys_show_help(handler, text_lower, amount):
     from ui_next import host
-    host.open_wizard()
+    host.open_view('commands')
 
 def _sys_restart_jarvis(handler, text_lower, amount):
     # wait=True blocks until the phrase actually finishes playing, instead
@@ -189,6 +200,12 @@ def _sys_reminder(handler, text_lower, amount):
     from features.reminder import schedule_reminder, extract_reminder_text
     delay = extract_duration_seconds(text_lower)
     if delay <= 0:
+        from features.reminder import calendar_reminder
+        from actions import calendar_quick
+        ev = calendar_reminder(text_lower)
+        if ev:
+            handler.speak('Это время уже прошло.' if ev.get('past') else f'Напомню {calendar_quick.spoken_when(ev["date"], ev["time"])}: {ev["title"]}.')
+            return
         # Couldn't parse a duration from the original phrase — ask instead
         # of just erroring out. Handled by 'reminder_ask' in interactive.py,
         # which also uses schedule_reminder() so the HUD countdown widget
@@ -203,6 +220,8 @@ def _sys_reminder(handler, text_lower, amount):
 _SYSTEM_ACTIONS = {
     'shutdown': _sys_shutdown,
     'restart': _sys_restart,
+    'lock_pc': _sys_lock_pc,
+    'sleep_pc': _sys_sleep_pc,
     'dictation_on': _sys_dictation_on,
     'system_cleanup': _sys_cleanup,
     'system_cleanup_deep': _sys_cleanup_deep,

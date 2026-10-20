@@ -5,3 +5,4 @@ pyflakes
 ruff
 bandit
 pip-audit
+maturin>=1.7,<2

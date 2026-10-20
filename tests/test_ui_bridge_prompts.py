@@ -198,3 +198,19 @@ def test_the_core_text_dialog_reaches_the_window(pr, monkeypatch):
     answer('ok', {'text': 'готово'})
     t.join(2)
     assert box['r'] == 'готово'
+
+
+def test_git_dialog_data_carries_warnings_counts_and_a_suggested_message(pr, monkeypatch, tmp_path):
+    from actions import git_commit
+    monkeypatch.setattr(git_commit, 'get_branches', lambda r: ['main'])
+    monkeypatch.setattr(git_commit, 'get_current_branch', lambda r: 'main')
+    (tmp_path / '.env').write_text('A=1', encoding='utf-8')
+    (tmp_path / 'ok.py').write_text('print(1)\n', encoding='utf-8')
+    files = [{'file': '.env', 'status': '??'}, {'file': 'ok.py', 'status': '??'}]
+    box, t = run_bg(dialogs.ask_git_stage, str(tmp_path), files)
+    d = opened(pr)['data']
+    rows = {f['file']: f for f in d['files']}
+    assert rows['.env']['warn'] == 'secret_name' and rows['ok.py']['warn'] == '' and rows['ok.py']['add'] == 1
+    assert d['suggest'].startswith('feat')
+    answer('cancel')
+    t.join(2)

@@ -1,4 +1,5 @@
 import threading
+import time
 from core.responses import spk
 from core.logging_setup import get_logger as _get_logger
 from core.safe import swallow as _swallow
@@ -136,6 +137,23 @@ def _my_ip(handler, cmd, text_lower):
         handler.speak(get_my_ip())
     threading.Thread(target=_ip_task, daemon=True).start()
 
+_calc_fallback = [0.0]
+
+def _calc(handler, cmd, text_lower):
+    from core.nlp.calc import evaluate, spoken
+    try:
+        value = evaluate(text_lower)
+    except ZeroDivisionError:
+        handler.speak(spk('calc.div_zero')); return
+    if value is None:
+        # "сколько будет лететь до луны": not arithmetic, leave it to the chat model (once, so a chat reply that maps back to calc cannot loop)
+        now = time.monotonic()
+        if now - _calc_fallback[0] < 10:
+            handler.speak(spk('calc.error')); return
+        _calc_fallback[0] = now
+        handler.handle('llm_chat', text_lower); return
+    handler.speak(spk('calc.result', result=spoken(value)))
+
 def _nasa_apod(handler, cmd, text_lower):
     from actions.nasa import get_apod
     handler.speak(spk('nasa.fetching'), wait=True)
@@ -201,6 +219,7 @@ _INFO_ACTIONS = {
     'translate': _translate,
     'translate_speech': _translate,
     'my_ip': _my_ip,
+    'calc': _calc,
     'system_specs': _system_specs,
     'nasa_apod': _nasa_apod,
 }

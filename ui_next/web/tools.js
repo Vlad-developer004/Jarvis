@@ -5,12 +5,13 @@
   const root = $('lk-tools'), modal = $('lk-modal'), mbox = $('lk-mbox'), U = window.LOOK.ui;
   const DEMO = { ok: true, max_videos: 10, videos: [{ ts: '2026-10-18 21:40', url: 'https://youtu.be/dQw4w9WgXcQ' }, { ts: '2026-10-17 09:12', url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' }], videos_total: 2,
     meetings: [{ name: 'Математика', phrase: 'заходим на пару по математике', url: 'https://zoom.us/j/1234567890' }], keep: ['discord', 'spotify'], launch: { chrome: 'switch', code: 'new' },
-    remote: { token_set: false, chat_id: '', enabled: false }, update: { auto: true, version: '0.1.0', available: '', staged: false } };
-  const ERR = { required: 'Заполните все поля', bad_url: 'Нужна ссылка, которая начинается с http:// или https://', exists: 'Такая запись уже есть', too_many: 'Записей уже слишком много', bad_value: 'Значение не подошло',
+    remote: { token_set: false, chat_id: '', enabled: false }, update: { auto: true, version: '0.1.0', available: '', staged: false }, ip_lookup: true, scenarios: [{ name: 'Работа', phrase: 'режим работы', steps: ['открой хром', 'громкость тридцать'] }] };
+  const ERR = { required: 'Заполните все поля', bad_url: 'Нужна ссылка, которая начинается с http:// или https://', exists: 'Такая запись уже есть', too_many: 'Записей уже слишком много', bad_steps: 'Нужен хотя бы один шаг, не больше двенадцати', bad_value: 'Значение не подошло',
     write_failed: 'Не удалось сохранить', not_found: 'Записи уже нет', not_ready: 'Обновление ещё не загружено', failed: 'Не получилось', no_handler: 'Jarvis ещё запускается' };
   const UIKEYS = ['jarvisTheme', 'jarvisCustom', 'jarvisAuto', 'uiScale', 'jarvisSfx', 'jarvisSfxVol', 'jarvisHide', 'jarvisFx'];   // appearance choices live in the browser storage: they go into the backup from here
-  let bk = null, T = null, apps = null, picking = null, editRemote = false, allVideos = false, timer = 0, busy = false, vm = {}, vq = '', metaTry = 0, editing = null;
+  let scEditing = null, bk = null, T = null, apps = null, picking = null, editRemote = false, allVideos = false, timer = 0, busy = false, vm = {}, vq = '', metaTry = 0, editing = null;
   const say = (t) => U.say(t);
+  if (!P.lock) P.lock = 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3';
 
   async function call(body) { if (!m.connected) { say('Без ядра изменить нельзя'); return { ok: false, error: 'offline' }; } return (await J.send('tools', body)) || { ok: false }; }
   async function act(body, okText) {
@@ -62,6 +63,13 @@
       + `<div class="tl-form"><label>Фраза<input id="tl-ph" maxlength="60" placeholder="заходим на пару по математике" autocomplete="off"></label><label>Ссылка<input id="tl-url" maxlength="2000" placeholder="https://zoom.us/j/123…" autocomplete="off"></label>`
       + `<label>Название, если нужно<input id="tl-nm" maxlength="60" placeholder="Высшая математика" autocomplete="off"></label><div class="vc-actions">${editing !== null ? btn('Сохранить изменения', 'data-msave="1"', 'primary') + btn('Отмена', 'data-mcancel="1"') : btn('Добавить ссылку', 'data-madd="1"', 'primary')}</div></div>`);
   }
+  function scenariosCard() {
+    const list = T.scenarios.length ? T.scenarios.map((x) => row(esc(x.name), `«${esc(x.phrase)}» · шагов: ${x.steps.length}`, btn('Изменить', `data-sedit="${esc(x.name)}"`) + btn('Удалить', `data-sdel="${esc(x.name)}"`, 'tl-del'))).join('') : '';
+    return U.card('var(--cyan)', 'list', 'Сценарии',
+      `<small class="vc-note">Одна фраза запускает несколько команд подряд. Шаги пишите так, как сказали бы голосом: «открой хром», «громкость тридцать». «пауза 3» ждёт три секунды.</small>${list ? `<div class="tl-list">${list}</div>` : ''}`
+      + `<div class="tl-form"><label>Название<input id="tl-sn" maxlength="40" placeholder="Работа" autocomplete="off"></label><label>Фраза<input id="tl-sp" maxlength="60" placeholder="режим работы" autocomplete="off"></label>`
+      + `<label>Шаги, по одному в строке<textarea id="tl-ss" rows="4" maxlength="1500" placeholder="открой хром&#10;громкость тридцать"></textarea></label><div class="vc-actions">${scEditing !== null ? btn('Сохранить изменения', 'data-ssave="1"', 'primary') + btn('Отмена', 'data-scancel="1"') : btn('Добавить сценарий', 'data-ssave="1"', 'primary')}</div></div>`);
+  }
   function chips(items, attr) { return items.length ? `<div class="tl-chips">${items.map((k) => `<span class="tl-chip">${esc(k)}<button type="button" ${attr}="${esc(k)}" aria-label="Убрать ${esc(k)}">×</button></span>`).join('')}</div>` : ''; }
   function keepCard() {
     return U.card('var(--amber)', 'pad', 'Игровой режим: что не закрывать',
@@ -93,6 +101,11 @@
       + `<div class="tl-status ${cls}">${st}</div><div class="vc-actions">${btn('Проверить сейчас', 'data-ucheck="1"')}${u.staged ? btn('Установить и перезапустить', 'data-uinst="1"', 'primary') : ''}</div>`);
   }
 
+  function privacyCard() {
+    return U.card('var(--cyan)', 'lock', 'Приватность',
+      U.sw('ip_lookup', 'Определять место по IP-адресу', 'Нужно для команды «мой IP» и как запасной способ узнать город для погоды, когда геолокация Windows выключена. Если выключить, погода работает только с названным городом.', T.ip_lookup));
+  }
+
   function backupCard() {
     const pv = bk ? `<div class="md-note"><span>Файл от ${esc((bk.created || '').replace('T', ' ').slice(0, 16) || 'неизвестной даты')}: настроек ${bk.settings}${bk.events ? `, событий календаря ${bk.events}` : ''}. Текущие настройки сохранятся рядом, в файле jarvis_settings.before_restore.json. Применить?</span><span class="tl-b">${btn('Применить', 'data-bapply="1"', 'primary')}${btn('Отмена', 'data-bcancel="1"')}</span></div>` : '';
     return U.card('var(--green)', 'doc', 'Резервная копия',
@@ -106,7 +119,7 @@
   function render() {
     if (!T) { root.innerHTML = '<div class="vc-note" style="padding:1rem">Загружаю…</div>'; return; }
     const keep = ['tl-ph', 'tl-url', 'tl-nm', 'tl-keep', 'tl-app', 'tl-chat'], vals = {}; for (const id of keep) { const e = $(id); if (e) vals[id] = e.value; }
-    root.innerHTML = `<div class="vc-grid"><div class="vc-col">${videosCard()}${linksCard()}${keepCard()}</div><div class="vc-col">${launchCard()}${remoteCard()}${updateCard()}${backupCard()}${wizardCard()}</div></div>`;
+    root.innerHTML = `<div class="vc-grid"><div class="vc-col">${videosCard()}${linksCard()}${scenariosCard()}${keepCard()}</div><div class="vc-col">${launchCard()}${remoteCard()}${updateCard()}${privacyCard()}${backupCard()}${wizardCard()}</div></div>`;
     for (const id of keep) { const e = $(id); if (e && vals[id] !== undefined && vals[id] !== '') e.value = vals[id]; }
   }
 
@@ -178,7 +191,7 @@
   });
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || busy) return; const d = b.dataset;
-    if (b.closest('.tgl') || d.sw) { if (d.sw === 'auto_update') act({ op: 'auto_update', on: !b.classList.contains('on') }); return; }
+    if (b.closest('.tgl') || d.sw) { if (d.sw === 'auto_update') act({ op: 'auto_update', on: !b.classList.contains('on') }); else if (d.sw === 'ip_lookup') act({ op: 'ip_lookup', on: !b.classList.contains('on') }); return; }
     if (d.wizard) { if (window.openWizard) window.openWizard(); return; }
     if (d.bexport) { const ui = {}; for (const k of UIKEYS) { const v = window.LOOK.raw(k); if (v !== null) ui[k] = v; } const r = await backupCall({ op: 'export', ui }); if (r.ok) say(`Сохранено: настроек ${r.settings}, событий календаря ${r.events}`); else if (r.error === 'write_failed') say('Не удалось записать файл'); return; }
     if (d.bpick) { const r = await backupCall({ op: 'preview' }); if (r.ok) { bk = r; render(); } else if (r.error === 'bad_file') say('Это не резервная копия Jarvis или файл повреждён'); return; }
@@ -187,6 +200,10 @@
     if (d.open) { if (m.connected) J.send('open_url', { url: d.open }); else say('Без ядра ссылку не открыть'); return; }
     if (d.more) { allVideos = !allVideos; render(); return; }
     if (d.vdel) { act({ op: 'video_del', ts: d.vdel, url: d.url }, 'Видео убрано из списка'); return; }
+    if (d.sdel) { scEditing = null; act({ op: 'scenario_del', name: d.sdel }, 'Сценарий удалён'); return; }
+    if (d.sedit) { const x = T.scenarios.find((q) => q.name === d.sedit); if (!x) return; scEditing = x.name; render(); $('tl-sn').value = x.name; $('tl-sp').value = x.phrase; $('tl-ss').value = x.steps.join('\n'); $('tl-sn').focus(); return; }
+    if (d.scancel) { scEditing = null; render(); return; }
+    if (d.ssave) { const r = await act({ op: 'scenario_save', old: scEditing || '', name: $('tl-sn').value, phrase: $('tl-sp').value, steps: $('tl-ss').value }, scEditing !== null ? 'Сценарий изменён' : 'Сценарий добавлен'); if (r.ok) { scEditing = null; render(); } return; }
     if (d.mdel) { editing = null; act({ op: 'meeting_del', phrase: d.mdel }, 'Ссылка удалена'); return; }
     if (d.medit) { const x = T.meetings.find((q) => q.phrase === d.medit); if (!x) return; editing = x.phrase; render(); $('tl-ph').value = x.phrase; $('tl-url').value = x.url; $('tl-nm').value = x.name && x.name !== x.phrase ? x.name : ''; $('tl-ph').focus(); return; }
     if (d.mcancel) { editing = null; render(); clearForm(); return; }

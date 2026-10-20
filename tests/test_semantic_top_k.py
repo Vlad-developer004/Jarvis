@@ -88,3 +88,10 @@ def test_top_k_surfaces_reminder_for_duration_phrases():
     # richer duration-specific anchors in core/nlp/intents.py.
     result = top_k_candidates('напомни через 10 минут выпить воды', k=6)
     assert 'reminder' in result
+
+
+def test_a_fresh_classifier_finds_its_files_from_any_working_folder(tmp_path, monkeypatch):
+    # Importing main.py (bootstrap()) changes the working folder; the cache and model paths are relative to the project, not to the folder.
+    from core.nlp.semantic import SemanticIntentClassifier
+    monkeypatch.chdir(tmp_path)
+    assert 'vol_down' in SemanticIntentClassifier().top_k_candidates('сделай тише', k=6)

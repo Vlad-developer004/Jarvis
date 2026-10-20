@@ -306,6 +306,34 @@ def _exit_core() -> None:
     host.exit_now(0)
 
 
+def _scenario(fn, *args) -> dict:
+    from actions import scenarios
+    try:
+        fn(*args)
+    except scenarios.ScenarioError as ex:
+        return _bad(ex.code)
+    return {'ok': True}
+
+
+def scenario_save(data: dict) -> dict:
+    from actions import scenarios
+    return _scenario(scenarios.save, str(data.get('old') or ''), data.get('name'), data.get('phrase'), data.get('steps'))
+
+
+def scenario_del(name) -> dict:
+    from actions import scenarios
+    return _scenario(scenarios.delete, str(name or ''))
+
+
+def set_ip_lookup(on) -> dict:
+    return {'ok': True} if settings_io.update({'allow_ip_lookup': bool(on)}) else _bad('write_failed')
+
+
+def _scenarios() -> list:
+    from actions import scenarios
+    return scenarios.load()
+
+
 def get_state() -> dict:
     s = settings_io.read()
     try:
@@ -315,7 +343,8 @@ def get_state() -> dict:
     videos = list(reversed(_read_videos()))
     meetings = [{'name': str(m.get('name', '')), 'phrase': str(m.get('phrase', '')), 'url': str(m.get('url', ''))} for m in s.get('meetings', []) if isinstance(m, dict)]
     return {'ok': True, 'max_videos': max_videos, 'videos': videos[:60], 'videos_total': len(videos), 'meetings': meetings, 'keep': sorted(_read_keep()),
-            'launch': dict(sorted(_rules().items())), 'remote': _remote(), 'update': _update()}
+            'launch': dict(sorted(_rules().items())), 'remote': _remote(), 'update': _update(),
+            'ip_lookup': bool(s.get('allow_ip_lookup', True)), 'scenarios': _scenarios()}
 
 
 def set_max_videos(n) -> dict:
@@ -339,7 +368,7 @@ def set_auto_update(on) -> dict:
 
 def run(data: dict) -> dict:
     """Entry of the `tools` bridge command: op `state` | `max_videos` {n} | `video_del` {ts, url} | `meeting_add` {phrase, url, name} | `meeting_del` {phrase} | `meeting_edit` {old, phrase, url, name} | `video_meta` {urls} | `keep_add` {title} | `keep_del` {title}
-    | `launch_set` {app, mode} | `launch_del` {app} | `apps` | `remote_save` {token, chat_id} | `remote_off` | `auto_update` {on} | `update_check` | `update_install`."""
+    | `launch_set` {app, mode} | `launch_del` {app} | `apps` | `remote_save` {token, chat_id} | `remote_off` | `auto_update` {on} | `ip_lookup` {on} | `scenario_save` {old, name, phrase, steps} | `scenario_del` {name} | `update_check` | `update_install`."""
     op = str(data.get('op', 'state'))
     if op == 'state':
         return get_state()
@@ -349,7 +378,7 @@ def run(data: dict) -> dict:
               'keep_add': lambda: keep_add(data.get('title')), 'keep_del': lambda: keep_del(data.get('title')),
               'launch_set': lambda: launch_set(data.get('app'), data.get('mode')), 'launch_del': lambda: launch_del(data.get('app')), 'apps': installed_apps,
               'remote_save': lambda: remote_save(data.get('token'), data.get('chat_id')), 'remote_off': remote_off,
-              'auto_update': lambda: set_auto_update(data.get('on')), 'update_check': update_check, 'update_install': update_install}
+              'auto_update': lambda: set_auto_update(data.get('on')), 'ip_lookup': lambda: set_ip_lookup(data.get('on')), 'scenario_save': lambda: scenario_save(data), 'scenario_del': lambda: scenario_del(data.get('name')), 'update_check': update_check, 'update_install': update_install}
     fn = simple.get(op)
     if fn is None:
         return _bad('bad_op')

@@ -22,6 +22,55 @@ jobs:
       - name: bandit (medium and above)
         run: bandit -c bandit.yaml -r core actions features ui_next config_pack main.py tools -ll -q
 
+  repo-hygiene:
+    name: no build output or large files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: reject tracked build output and files over 5 MB
+        run: |
+          if git ls-files | grep -E '(^|/)(target|node_modules|dist|__pycache__)/'; then
+            echo "build output is tracked"; exit 1
+          fi
+          big=$(git ls-files -z | xargs -0 du -k 2>/dev/null | awk '$1 > 5120 {print $2}')
+          if [ -n "$big" ]; then echo "files over 5 MB:"; echo "$big"; exit 1; fi
+
+  shell:
+    name: tauri shell compiles
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui_next/shell/src-tauri
+      - run: cargo check --release --manifest-path ui_next/shell/src-tauri/Cargo.toml
+
+  native:
+    name: native helpers build and parity tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+      - run: pip install -r requirements-dev.txt
+      - run: cargo clippy --release --manifest-path native/Cargo.toml -- -D warnings
+      - run: cargo test --release --manifest-path native/Cargo.toml
+      - run: cargo build --release --manifest-path native/Cargo.toml -p jarvis_audio
+      - name: build and install the extension modules
+        run: |
+          foreach ($c in 'jarvis_files', 'jarvis_win') { python -m maturin build --release -m native/$c/Cargo.toml --out native/dist }
+          pip install --no-deps (Get-ChildItem native/dist/*.whl)
+      - run: python -m pytest tests/native tests/test_native_loader.py tests/test_native_audio.py tests/test_native_mic.py tests/test_win_list_users.py -q
+
   tests:
     name: pytest
     runs-on: windows-latest

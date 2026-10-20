@@ -70,6 +70,8 @@
   async function selAction(k, anchor) {
     const uids = [...S.picked];
     if (k === 'clear') { S.picked.clear(); A.paintItems(); }
+    else if (k === 'tgl') { A.visibleRows().forEach((r) => S.picked.add(r.uid)); A.paintItems(); }
+    else if (k === 'refresh') { anchor.classList.add('spin'); await A.loadList({ refresh: true, silent: true }); anchor.classList.remove('spin'); }
     else if (k === 'all') { A.visibleRows().forEach((r) => S.picked.add(r.uid)); A.paintItems(); }
     else if (k === 'read' || k === 'unread') { if (await flagMany(uids, 'seen', k === 'read')) { S.picked.clear(); A.paintItems(); } }
     else if (k === 'star') { if (await flagMany(uids, 'flagged', uids.some((u) => !(rowOf(u) || {}).flagged))) { S.picked.clear(); A.paintItems(); } }
@@ -108,7 +110,7 @@
   function listMenu(anchor) {
     const items = [{ label: 'Отметить все прочитанными', onPick: () => dlg({ title: 'Отметить всё прочитанным?', body: `Все письма в папке «${A.folderName(S.folder)}» будут отмечены прочитанными.`, ok: 'Отметить', onOk: markAll }) }];
     if (S.folder === 'trash' || S.folder === 'junk') items.push({ label: 'Очистить папку…', danger: true, onPick: () => dlg({ title: `Очистить «${A.folderName(S.folder)}»?`, body: 'Все письма в этой папке будут удалены навсегда.', ok: 'Очистить', danger: true, onOk: emptyFolder }) });
-    items.push({ sep: 1 }, { label: 'Подпись…', onPick: signatureDlg }, { label: 'Горячие клавиши', onPick: helpDlg });
+    items.push({ sep: 1 }, { label: A.logosOn() ? 'Логотипы отправителей: вкл' : 'Логотипы отправителей: выкл', onPick: () => { A.setLogos(!A.logosOn()); A.paintItems(); if (S.cur) A.paintHeader(); say(A.logosOn() ? 'Логотипы берутся с сайтов отправителей' : 'Логотипы отключены'); } }, { label: 'Подпись…', onPick: signatureDlg }, { label: 'Горячие клавиши', onPick: helpDlg });
     popMenu(anchor, items);
   }
   function advPanel(anchor) {

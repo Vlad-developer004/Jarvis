@@ -46,8 +46,8 @@ def _write_evening_today():
         _swallow()
 def _wait_mixer_idle(timeout: float = 90.0) -> None:
     try:
-        from core.speech.tts import wait_for_pygame_mixer_idle
-        wait_for_pygame_mixer_idle(timeout=timeout)
+        from core.speech.tts import wait_for_playback_idle
+        wait_for_playback_idle(timeout=timeout)
     except Exception:
         _swallow()
 def _part_greeting(prefs: dict) -> str | None:

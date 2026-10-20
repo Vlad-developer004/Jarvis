@@ -32,8 +32,18 @@ def _get_fbank(rate: int) -> np.ndarray:
             fbank[m - 1, k] = (hi - k) / (hi - mid + 1e-10)
     _fbank_cache[rate] = fbank
     return fbank
+_dct_cache: dict[int, np.ndarray] = {}
+def _dct2_ortho(x: np.ndarray) -> np.ndarray:
+    """DCT-II with orthonormal scaling along axis 1 (what scipy.fftpack.dct(type=2, norm='ortho') computes), without shipping scipy."""
+    n = x.shape[1]
+    basis = _dct_cache.get(n)
+    if basis is None:
+        k = np.arange(n)[:, None]
+        basis = np.sqrt(2.0 / n) * np.cos(np.pi * (2 * np.arange(n)[None, :] + 1) * k / (2 * n))
+        basis[0] /= np.sqrt(2.0)
+        _dct_cache[n] = basis
+    return x @ basis.T
 def extract_features(audio_bytes: bytes, rate: int=_RATE) -> np.ndarray:
-    from scipy.fftpack import dct
     if not audio_bytes or len(audio_bytes) < 2:
         return np.zeros(_N_MFCC * 3, dtype=np.float32)
     samples = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
@@ -48,7 +58,7 @@ def extract_features(audio_bytes: bytes, rate: int=_RATE) -> np.ndarray:
     fb = np.dot(mag2, _get_fbank(rate).T)
     fb = np.where(fb < 1e-10, 1e-10, fb)
     log_fb = 20 * np.log10(fb)
-    mfcc = dct(log_fb, type=2, axis=1, norm='ortho')[:, :_N_MFCC]
+    mfcc = _dct2_ortho(log_fb)[:, :_N_MFCC]
     mfcc -= np.mean(mfcc, axis=0)
     delta = np.diff(mfcc, axis=0) if len(mfcc) > 1 else np.zeros((1, _N_MFCC))
     vec = np.concatenate([np.mean(mfcc, axis=0), np.std(mfcc, axis=0), np.mean(delta, axis=0)]).astype(np.float32)

@@ -30,12 +30,12 @@ CATEGORIES = [
     ('ui', 'Сам Jarvis', 'Окна и настройки ассистента'),
 ]
 _CAT_IDS = {
-    'assistant': 'wake listen_on listen_off show_help open_deck how_are_you praise thanks qa_search time_now today_summary calendar_next calendar_add weather set_weather_city currency_rate nasa_apod song_id jarvis_exit inbox_unread mail_compose',
+    'assistant': 'wake listen_on listen_off show_help open_deck how_are_you praise thanks qa_search time_now today_summary calendar_next calendar_add weather set_weather_city currency_rate calc nasa_apod song_id jarvis_exit inbox_unread mail_compose',
     'timers': 'timer_set timer_add timer_sub timer_cancel timer_status reminder cancel_reminder note_save dictation_on ocr_screen ocr_last translate translate_speech work_session',
     'media': 'cinema_watch cinema_continue cinema_when cinema_mode cinema_later cinema_later_list cinema_now cinema_left cinema_seek play_yt open_youtube yt_channel yt_bwd yt_fwd yt_full yt_next yt_prev yt_last_watched media_pause media_pause_browser media_pause_youtube media_play media_play_browser media_play_youtube open_last_video download_video save_video open_saved start_video stop_video',
     'sound': 'vol_down vol_up vol_max vol_mute vol_unmute vol_set vol_zero audio_switch brightness_down brightness_up brightness_set screenshot screenshot_site screenshot_terminal move_monitor',
     'files': 'create_folder create_word_doc delete_file delete_folder paste_file explorer_go_up explorer_goto find_doc find_file find_sheet recent_any recent_any_prev recent_doc recent_doc_prev recent_pres recent_pres_prev recent_sheet recent_sheet_prev empty_trash',
-    'pc': 'shutdown shutdown_timer restart cancel_timer economy_on economy_off system_cleanup system_cleanup_deep system_status system_specs internet_speed my_ip health_disks wifi_toggle bluetooth_toggle bt_connect bt_disconnect bt_list keyboard_lock keyboard_unlock',
+    'pc': 'shutdown shutdown_timer restart lock_pc sleep_pc cancel_timer economy_on economy_off system_cleanup system_cleanup_deep system_status system_specs internet_speed my_ip health_disks wifi_toggle bluetooth_toggle bt_connect bt_disconnect bt_list keyboard_lock keyboard_unlock',
     'games': 'game_mode_on game_mode_off exit_game guard_on guard_off mouse_click mouse_dblclick mouse_down mouse_faster mouse_left mouse_right mouse_slower mouse_up',
     'ui': 'show_hud min_win open_settings open_keybinds open_extensions open_perf restart_jarvis reactor_color_amber reactor_color_cyan reactor_color_green reactor_color_magenta reactor_color_red reactor_color_white reactor_glitch reactor_pulse reactor_reset',
 }
@@ -45,7 +45,7 @@ _APPS_EXTRA = 'max_win min_all min_other_win unmin_win close_win context_close c
 _CAT_OF.update({cid: 'apps' for cid in _APPS_EXTRA})
 
 # Destructive or hard to undo: the UI asks first, the core refuses without confirm.
-CONFIRM_IDS = set('shutdown shutdown_timer restart restart_jarvis jarvis_exit empty_trash delete_file delete_folder system_cleanup system_cleanup_deep git_commit close_win close_all_win close_all_tabs close_other_win exit_game keyboard_lock wifi_toggle bluetooth_toggle bt_disconnect'.split())
+CONFIRM_IDS = set('shutdown shutdown_timer restart sleep_pc restart_jarvis jarvis_exit empty_trash delete_file delete_folder system_cleanup system_cleanup_deep git_commit close_win close_all_win close_all_tabs close_other_win exit_game keyboard_lock wifi_toggle bluetooth_toggle bt_disconnect'.split())
 # Act on the focused window or need a spoken target: running them from the Jarvis window would hit the wrong thing.
 VOICE_ONLY_IDS = set('clip_copy clip_cut clip_paste clip_paste_last clip_paste_prev clip_history undo redo select_all press_enter context_close close_tab close_all_tabs yt_bwd yt_fwd yt_full yt_next yt_prev mouse_click mouse_dblclick mouse_down mouse_faster mouse_left mouse_right mouse_slower mouse_up figma_auto_layout figma_group ps_brush ps_eraser ps_save win_snap_left win_snap_right max_win min_win move_monitor paste_file explorer_go_up dictation_on translate translate_speech note_save screenshot_site screenshot_terminal download_video save_video find_doc find_file find_sheet create_folder create_word_doc delete_file delete_folder media_play_youtube media_pause_youtube media_play_browser media_pause_browser'.split())
 HIDDEN_IDS = {'system_insult'}

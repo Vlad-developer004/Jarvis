@@ -71,6 +71,17 @@ def _command_delete(handler, text_lower):
     if name:
         if delete_command(name): handler.play_response()
 
+def _offer_undo(handler, repo):
+    """A local commit can be taken back for a while: a pop-up with one button; a spoken "ок" closes it."""
+    from ui_next import host
+
+    def done(status, value):
+        if status == 'ok' and value == 'undo':
+            from actions.git_extras import undo_last_commit
+            handler.speak(undo_last_commit(repo)[1])
+    host.show_alert('Коммит создан', 'Он только на этом компьютере. Если что-то не так, его можно отменить: файлы останутся как есть.', tone='info',
+                    actions=[{'id': 'undo', 'label': 'Отменить коммит'}], voice=(('ок', 'хорошо', 'закрой'), ('закрой', 'стоп')), done=done, timeout=30)
+
 def _git_commit(handler, text_lower):
     from actions.git_commit import detect_repo_and_status, git_commit_push
     import win32gui
@@ -114,6 +125,8 @@ def _git_commit(handler, text_lower):
         handler.speak(msg)
         if ok:
             handler.play_response()
+            if not dlg_res['push']:
+                _offer_undo(handler, repo)
             if dlg_res.get('open_pr'):
                 from actions.git_commit import open_pull_request_url
                 open_pull_request_url(repo, dlg_res['branch'], dlg_res['pr_title'])

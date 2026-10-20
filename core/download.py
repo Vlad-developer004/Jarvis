@@ -79,19 +79,33 @@ def sha256_file(path: str | os.PathLike) -> str:
     return h.hexdigest()
 
 
+def bundled_data_file(name: str) -> Path:
+    """data/<name> next to the program, else inside the PyInstaller bundle folder (jarvis.spec puts static data files there, and build.bat clears the
+    JSON files next to the exe). Raises OSError when neither has it."""
+    import sys
+    from config_pack.config import get_project_root
+    roots = [Path(get_project_root())]
+    if getattr(sys, '_MEIPASS', None):
+        roots.append(Path(sys._MEIPASS))
+    for root in roots:
+        f = root / 'data' / name
+        if f.is_file():
+            return f
+    raise OSError(f'data/{name} not found')
+
+
 def pinned_hash(name: str) -> str | None:
     """The SHA-256 pinned for a download by file name in data/model_hashes.json, or None when none is pinned."""
     try:
-        from config_pack.config import get_project_root
-        data = json.loads((Path(get_project_root()) / 'data' / _HASHES_FILE).read_text(encoding='utf-8'))
+        data = json.loads(bundled_data_file(_HASHES_FILE).read_text(encoding='utf-8'))
         h = str(data.get(name, '')).strip().lower()
         return h if re.fullmatch(r'[0-9a-f]{64}', h) else None
     except (OSError, ValueError):
         return None
 
 
-def verify_pinned(path: str | os.PathLike) -> None:
-    """Raises when a hash is pinned for this file name and the file does not match; a file without a pin passes."""
-    want = pinned_hash(Path(path).name)
+def verify_pinned(path: str | os.PathLike, name: str | None = None) -> None:
+    """Raises when a hash is pinned for this file name (`name`, or the file's own) and the file does not match; a file without a pin passes."""
+    want = pinned_hash(name or Path(path).name)
     if want and sha256_file(path) != want:
         raise ValueError(f'checksum mismatch for {Path(path).name}')

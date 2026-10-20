@@ -18,12 +18,34 @@ def extract_reminder_text(raw: str) -> str:
         if text.startswith(prefix):
             text = text[len(prefix):].strip()
             break
-    text = re.sub(r'через\s+(?:\d+\s*)?(?:час(?:а|ов)?|минут(?:у|ы|е)?|секунд(?:у|ы|е)?)', '', text)
+    text = re.sub(r'(?<=\sв\s)(\d{1,2})(\d{2})\b', r'\1:\2', normalize_numbers(raw.lower()).strip())     # the speech normalizer turns "18:00" into "1800"
     for word in ('что', 'о том что', 'про то что'):
         if text.startswith(word):
             text = text[len(word):].strip()
             break
     return text.strip(' ,.') or 'Напоминание'
+
+
+_LEAD_VERB = re.compile(r'^(?:напомни(?:\s+мне)?|поставь\s+напоминание|напоминание)\s*(?:что\s+|о том что\s+)?', re.I)
+
+
+def calendar_reminder(raw: str) -> dict | None:
+    """"Напомни завтра в 10 купить хлеб": a reminder for a day and time becomes an event in the user's own calendar (it survives a restart and shows
+    in the calendar screen; the spoken reminder comes one minute before). Returns {title, date, time}, {'past': True} for a moment already gone,
+    or None when the phrase has no day and time."""
+    from datetime import datetime
+    from actions import calendar_hub, calendar_quick
+    text = re.sub(r'(?<=\sв\s)(\d{1,2})(\d{2})\b', r'\1:\2', normalize_numbers(raw.lower()).strip())     # the speech normalizer turns "18:00" into "1800"
+    q = calendar_quick.parse_phrase(_LEAD_VERB.sub('', text, count=1))
+    if not (q['date'] and q['time'] and q['title']):
+        return None
+    if datetime.fromisoformat(f"{q['date']}T{q['time']}") <= datetime.now():
+        return {'past': True}
+    try:
+        calendar_hub.add_local({'title': q['title'], 'date': q['date'], 'time': q['time'], 'end_time': '', 'all_day': False, 'repeat': 'none', 'remind': [1]})
+    except calendar_hub.CalendarError:
+        return None
+    return {'title': q['title'], 'date': q['date'], 'time': q['time']}
 
 
 # Registry of reminders that have not fired yet; read by the new-UI bridge (ui_next/bridge/observer.py).

@@ -7,17 +7,21 @@
   * { box-sizing: border-box; margin: 0; } html, body { height: 100%; overflow: hidden; background: transparent; color: #eaf6ff; font: 500 13px Onest, sans-serif; user-select: none; }
   #w { height: 100%; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; transition: background .2s, border-color .2s; }
   #hd { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 12px; cursor: move; font: 700 11px Tektur; letter-spacing: .12em; text-transform: uppercase; color: var(--cyan); }
-  #hd span { flex: 1; pointer-events: none; }
+  #hd span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; } #hd button { flex: none; }
   #hd button { width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #9fb7cc; cursor: pointer; font: 600 13px Onest; display: grid; place-items: center; } #hd button:hover { background: rgba(53, 224, 255, .18); color: #fff; } #hd button.on { color: var(--cyan); background: rgba(53, 224, 255, .14); }
   #rows { flex: 1; min-height: 0; padding: 2px 12px 10px; display: grid; align-content: start; gap: 5px; }
   .r { display: grid; grid-template-columns: 44px 1fr 62px; align-items: center; gap: 8px; height: 24px; } .r b { font: 700 11px Tektur; letter-spacing: .06em; color: var(--c); } .r em { font-style: normal; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; } .r svg { width: 100%; height: 24px; display: block; } .r path { fill: none; stroke: var(--c); stroke-width: 1.6; }
   .cpu { --c: var(--cyan); } .ram { --c: var(--mag); } .disk { --c: var(--green); } .net { --c: var(--purple); } .gpu { --c: var(--amber); } .ping { --c: var(--cyan); }
   .compact .r { grid-template-columns: 44px 1fr; height: 20px; } .compact .r svg { display: none; } .compact .r em { text-align: left; }
   .ghost #w { background: transparent; border-color: transparent; } .ghost #hd { opacity: 0; transition: opacity .2s; } .ghost #w:hover #hd { opacity: 1; } .ghost .r { text-shadow: 0 0 4px #000, 0 0 2px #000; }
+  .r path { filter: drop-shadow(0 0 3px var(--c)); } .r em { color: #fff; text-shadow: 0 0 8px var(--c); font-family: Tektur, Onest, sans-serif; font-size: 12px; }
+  #w { box-shadow: 0 0 18px rgba(53, 224, 255, .12), inset 0 0 22px rgba(53, 224, 255, .05); } #hd { border-bottom: 1px solid rgba(53, 224, 255, .12); margin-bottom: 4px; }
+  #cfg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } #cfg label { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid rgba(53, 224, 255, .22); border-radius: 7px; cursor: pointer; color: #9fb7cc; font-weight: 600; }
+  #cfg label.on { color: #fff; border-color: var(--c); background: rgba(53, 224, 255, .08); box-shadow: 0 0 8px rgba(53, 224, 255, .15); } #cfg input { display: none; } #cfg i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); opacity: .35; } #cfg label.on i { opacity: 1; box-shadow: 0 0 6px var(--c); }
   .note { padding: 4px 12px; font-size: 11px; color: #8ea6bb; }
 </style></head><body>
 <div id="w"><div id="hd" data-tauri-drag-region><span>Система</span>
-  <button id="b-c" title="Коротко" aria-pressed="false">&#9707;</button><button id="b-g" title="Прозрачный фон" aria-pressed="false">&#9680;</button><button id="b-p" class="on" title="Поверх всех окон" aria-pressed="true">&#9906;</button><button id="b-x" title="Закрыть">&#10005;</button></div>
+  <button id="b-s" title="Какие показатели показывать" aria-pressed="false">&#9881;</button><button id="b-c" title="Коротко" aria-pressed="false">&#9707;</button><button id="b-g" title="Прозрачный фон" aria-pressed="false">&#9680;</button><button id="b-p" class="on" title="Поверх всех окон" aria-pressed="true">&#9906;</button><button id="b-x" title="Закрыть">&#10005;</button></div>
   <div id="rows"></div></div>
 <script src="shared.js"></script>
 <script>
@@ -38,18 +42,31 @@
   };
   function paint() {
     const s = m.perf;
+    if (cfg) return;   // the settings panel is drawn on toggle only, so a tick does not eat a click
     if (!s) { $('rows').innerHTML = `<div class="note">${m.connected ? 'Собираю данные…' : 'Jarvis не запущен'}</div>`; return; }
-    $('rows').innerHTML = ROWS.map(([k, name, val, ser, top]) => `<div class="r ${k}"><b>${name}</b>${spark(ser(s), top(s))}<em>${val(s)}</em></div>`).join('');
+    const shown = ROWS.filter((r) => !hide.has(r[0]));
+    if (!shown.length) { $('rows').innerHTML = '<div class="note">Все показатели скрыты. Откройте настройки (шестерёнка).</div>'; return; }
+    $('rows').innerHTML = shown.map(([k, name, val, ser, top]) => `<div class="r ${k}"><b>${name}</b>${spark(ser(s), top(s))}<em>${val(s)}</em></div>`).join('');
+  }
+  function paintCfg() {
+    $('rows').innerHTML = `<div id="cfg">${ROWS.map(([k, name]) => `<label class="${k}${hide.has(k) ? '' : ' on'}"><input type="checkbox" data-k="${k}"${hide.has(k) ? '' : ' checked'}><i></i>${name}</label>`).join('')}</div>`;
   }
   const T = window.__TAURI__, win = T && T.window ? T.window.getCurrentWindow() : null;
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } };
   const get = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
+  let hide = new Set(), cfg = false;
+  try { hide = new Set(JSON.parse(get('pmHide', '[]')).filter((k) => ROWS.some((r) => r[0] === k))); } catch (e) { /* bad stored value */ }
   let compact = get('pmCompact', '0') === '1', ghost = get('pmGhost', '0') === '1', pin = get('pmPin', '1') === '1';
   function modes() {
     document.body.classList.toggle('compact', compact); document.body.classList.toggle('ghost', ghost);
     for (const [id, on] of [['b-c', compact], ['b-g', ghost], ['b-p', pin]]) { $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', on); }
-    if (win) { win.setAlwaysOnTop(pin).catch(() => {}); win.setSize(new T.dpi.LogicalSize(compact ? 190 : 300, compact ? 200 : 232)).catch(() => {}); }
+    if (win) { win.setAlwaysOnTop(pin).catch(() => {}); const n = Math.max(1, ROWS.length - hide.size), h = cfg ? 220 : compact ? 50 + 25 * n : 46 + 31 * n; win.setSize(new T.dpi.LogicalSize(compact && !cfg ? 240 : 300, h)).catch(() => {}); }
   }
+  $('b-s').onclick = () => { cfg = !cfg; $('b-s').classList.toggle('on', cfg); $('b-s').setAttribute('aria-pressed', cfg); modes(); cfg ? paintCfg() : paint(); };
+  $('rows').addEventListener('change', (e) => {
+    const k = e.target.dataset && e.target.dataset.k; if (!k) return;
+    e.target.checked ? hide.delete(k) : hide.add(k); store('pmHide', JSON.stringify([...hide])); modes(); paintCfg();
+  });
   $('b-c').onclick = () => { compact = !compact; store('pmCompact', compact ? '1' : '0'); modes(); };
   $('b-g').onclick = () => { ghost = !ghost; store('pmGhost', ghost ? '1' : '0'); modes(); };
   $('b-p').onclick = () => { pin = !pin; store('pmPin', pin ? '1' : '0'); modes(); };

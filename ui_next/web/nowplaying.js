@@ -26,8 +26,8 @@
     if (shownId !== s.id + s.title) {
       shownId = s.id + s.title;
       el.innerHTML = `<div class="np-top"><span class="np-eq" aria-hidden="true"><i></i><i></i><i></i></span><div class="np-t"><b id="np-title"></b><small id="np-sub"></small></div>`
-        + `<div class="np-ctl"><button type="button" data-a="prev" title="Предыдущий">${svg('prev')}</button><button type="button" data-a="seek" data-s="-10" title="Назад на 10 секунд">${svg('back')}<em>10</em></button>`
-        + `<button type="button" class="np-main" data-a="toggle" id="np-tg"></button><button type="button" data-a="seek" data-s="10" title="Вперёд на 10 секунд">${svg('fwd')}<em>10</em></button><button type="button" data-a="next" title="Следующий">${svg('next')}</button></div></div>`
+        + `<div class="np-ctl"><button type="button" data-a="prev" title="Предыдущий">${svg('prev')}</button><button type="button" class="np-sk" data-a="seek" data-s="-10" title="Назад на 10 секунд">−10</button>`
+        + `<button type="button" class="np-main" data-a="toggle" id="np-tg"></button><button type="button" class="np-sk" data-a="seek" data-s="10" title="Вперёд на 10 секунд">+10</button><button type="button" data-a="next" title="Следующий">${svg('next')}</button></div></div>`
         + `<div class="np-bar" id="np-bar" role="slider" aria-label="Положение" tabindex="0"><i id="np-fill"></i></div><div class="np-time"><span id="np-pos"></span><span id="np-dur"></span></div>`;
     }
     el.dataset.state = s.status; el.dataset.id = s.id;
@@ -50,5 +50,14 @@
   J.on('nowplaying', paint);
   setInterval(() => { if (!document.hidden) { paint(); } }, 1000);
   setInterval(() => { if (!document.hidden) tick(); }, 250);
+  /* equalizer (the capsule here and the one on the Cinema screen): ~7 steps a second written from here. A CSS animation of it keeps the compositor drawing at the
+     display rate (55-75 frames a second) while music plays */
+  const EQ = [.3, .8, .5, 1, .4, .9, .6, .35]; let eqStep = 0, eqOn = false;
+  setInterval(() => {
+    const live = (!document.hidden && root.dataset.fx !== 'lite') ? new Set(document.querySelectorAll('.np[data-state=playing]:not([hidden]) .np-eq i, .ci-s.playing .np-eq i')) : new Set();
+    if (!live.size && !eqOn) return;
+    eqOn = live.size > 0; eqStep++;
+    document.querySelectorAll('.np-eq i').forEach((b, i) => { const k = i % 3; b.style.transform = live.has(b) ? `scaleY(${EQ[(eqStep * (k + 2) + k * 3) % EQ.length]})` : ''; });
+  }, 150);
   window.NP = { fmt, svg, pickSession, live, control, list: () => (m.connected && m.np && m.np.sessions) || [], paint };
 })();

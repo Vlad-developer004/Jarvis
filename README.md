@@ -37,7 +37,7 @@ cp .env.example .env   # optional: fill in for Telegram bot, AI Q&A, mail — Ja
 python main.py
 ```
 
-On first launch the Jarvis window opens with a short setup wizard (language, microphone, how JARVIS should address you, feature set, AI). After that, just say **"Jarvis"**. The window is a separate small program (`ui_next/shell`, Tauri) that the assistant starts itself; the close button hides it to the tray, and the tray menu's "Выход" ends the assistant. Running from source needs it built once: `cd ui_next/shell/src-tauri && cargo build --release` (Rust from <https://rustup.rs>). Without it the assistant runs voice-only.
+On first launch the Jarvis window opens with a short setup wizard (language, microphone with a spoken calibration, how JARVIS should address you, feature set, AI). The AI step is optional: pick "Без ИИ" to run as a plain voice remote. The wizard is shown only until it is finished; it can be reopened from Settings > Tools, and "что ты умеешь" opens the commands catalog. After that, just say **"Jarvis"**. The window is a separate small program (`ui_next/shell`, Tauri) that the assistant starts itself; the close button hides it to the tray, and the tray menu's "Выход" ends the assistant. Running from source needs it built once: `cd ui_next/shell/src-tauri && cargo build --release` (Rust from <https://rustup.rs>). Without it the assistant runs voice-only.
 
 ### Dependency tiers
 
@@ -45,14 +45,16 @@ On first launch the Jarvis window opens with a short setup wizard (language, mic
 
 | File | What it enables |
 |---|---|
-| `requirements-base.txt` | ASR/TTS (Vosk, sherpa-onnx, Silero), semantic NLU, local LLM fallback (llama-cpp-python), base system commands |
+| `requirements-base.txt` | ASR/TTS (Vosk, sherpa-onnx, Silero via ONNX Runtime; Russian voice only, no PyTorch), semantic NLU, local LLM fallback (llama-cpp-python), base system commands |
 | `requirements-vision-game.txt` | OpenCV — NASA picture-of-the-day video preview, camera-based guard mode |
-| `requirements-web-qa.txt` | `yt-dlp` — YouTube search/download, AI answers (Groq/OpenAI/Gemini) |
+| `requirements-web-qa.txt` | `yt-dlp` — YouTube download (and search fallback; search itself is a direct request), AI answers (Groq/OpenAI/Anthropic) |
 | `requirements-system-optional.txt` | Wi-Fi control via the WinRT API |
 | `requirements-full.txt` | Everything combined |
 | `requirements-dev.txt` | + `pytest`, `pyflakes` for development |
 
 Install `requirements-full.txt` if you want every feature available with no surprises.
+
+**The installer ships without the heavy optional parts.** OpenCV (camera guard), the Vosk speech engine and the Gemini SDK are not inside it: the first time a feature needs one, Jarvis downloads it once into `%APPDATA%\Jarvis\packages\` (`core/optional_pkgs.py`). The wheels are listed with URL and SHA-256 in `data/optional_packages.json` (HTTPS only, each file is verified before it is unpacked); regenerate the list with `python tools/make_optional_manifest.py` after changing a version in that script. A source checkout uses the installed packages and downloads nothing.
 
 ---
 
@@ -84,16 +86,19 @@ There are a lot of commands, and you don't need to memorize them. Just say at an
 **Cleanup and system**
 - "Jarvis, clean up" — clears temp files, browser caches, recycle bin, frees memory.
 - "Shut down in an hour", "turn off bluetooth", "turn on wifi".
+- "Lock the computer", "sleep mode".
+- "How much is 15 times 7" — spoken calculator (+, -, ×, ÷, brackets, "20 percent of 150").
 
 **Internet and media**
 - "Open youtube", "search the internet for a pizza recipe".
+- "Next track", "previous song" — media keys, work with Spotify, system players and browser tabs.
 - "Play song X" — if YouTube returns several similar videos (music video/live/cover), Jarvis shows preview cards and lets you pick by click or voice ("the second one").
 - "Show NASA's picture of the day" — astronomy photo or video of the day with description, right inside the assistant window, no browser needed.
 
 **Games (Euro Truck Simulator 2 and others)**
 - "Truck status", "cruise control to 90", "increase retarder".
 - Jarvis proactively warns about fuel, driver fatigue, fines, equipment wear, trailer hitching/unhitching — unprompted, during gameplay.
-- AI narrates a pre-trip briefing and a post-delivery summary (needs a Groq/OpenAI/Gemini key).
+- AI narrates a pre-trip briefing and a post-delivery summary (needs a Groq/OpenAI/Anthropic key).
 
 **Guard mode (webcam intruder alert)**
 - "Turn on guard mode" — while you're away, the webcam checks periodically for a face; the first capture "learns" your face as the owner.
@@ -113,7 +118,10 @@ There are a lot of commands, and you don't need to memorize them. Just say at an
 - Passwords and keys live in `%APPDATA%\Jarvis\secrets.env`, written atomically and escaped; log lines mask tokens and keys.
 
 **Assistant and notes**
-- "Remind me to turn off the oven in 20 minutes".
+- "Remind me to turn off the oven in 20 minutes". With a day and a time ("remind me tomorrow at 10 to buy bread") the reminder is saved as an event in your own calendar, so it survives a restart and is spoken one minute before.
+- Follow-ups: after the weather, "and tomorrow?" or "and in Kyiv?"; after "louder" or a brightness change, "more"; after a timer, "another five minutes".
+- Scenarios: one phrase runs several commands in a row. Settings > Tools > Scenarios: a name, a phrase ("work mode") and the steps, one per line, written the way you would say them ("open chrome", "volume thirty", "pause 3").
+- "Make a commit": a window lists the changed files grouped by folder, with line counts. Files that look like secrets, build output or anything over 2 MB start unchecked, and a message in `type(scope): summary` form is one click away. A commit that was not pushed can be undone from the pop-up that follows. Git is called without a shell, names with spaces and non-ASCII letters work, a missing identity, a locked index or a failing hook is explained in plain words, and a "force" push uses `--force-with-lease`.
 - "Dictation mode" — types what you say into any text field, with punctuation.
 - Calendar reminders spoken aloud (reads your `.ics` calendar), low-battery voice alerts, meeting-link shortcuts ("join the standup" opens the saved Zoom/Meet/Teams link).
 
@@ -153,7 +161,7 @@ build.bat
 
 The script:
 0. Builds the window with `cargo build --release` in `ui_next/shell/src-tauri` (needs Rust); `jarvis.spec` puts the resulting `jarvis-ui.exe` into `dist\Jarvis\shell\`.
-1. Runs PyInstaller against `jarvis.spec` (can take a few minutes — Silero TTS pulls in PyTorch).
+1. Runs PyInstaller against `jarvis.spec` (can take a few minutes).
 2. Copies `assets/`, `audio/`, `models/`, `config_pack/` next to `Jarvis.exe`.
 3. Copies static data (game profiles, extension catalog, the semantic NLU ONNX model, embedding cache) into `dist\Jarvis\data\` — but **not** your personal `jarvis_settings.json`, `.env`/`secrets.env`, or logs, so API keys or history never leak by accident.
 

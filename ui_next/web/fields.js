@@ -42,7 +42,8 @@
   function watch(root) {
     const sel = 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=range]):not([type=time]):not([type=date]):not([data-fld])';
     const run = () => root.querySelectorAll(sel).forEach(wrap);
-    run(); new MutationObserver(run).observe(root, { childList: true, subtree: true });
+    const added = (ms) => ms.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches(sel) || n.querySelector(sel))));   // text updates and unrelated nodes cost nothing
+    run(); new MutationObserver((ms) => { if (added(ms)) run(); }).observe(root, { childList: true, subtree: true });
   }
   window.fzFields = { watch };
   for (const id of ['pe-box', 'ex-mbox', 'vc-body', 'mail', 'calpage', 'lk-tools', 'lk-mods', 'lk-dev', 'lk-ai', 'lk-mbox', 'ci-body']) { const r = document.getElementById(id); if (r) watch(r); }

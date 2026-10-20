@@ -93,6 +93,13 @@ def list_messages(folder='inbox', flt='all', q='', offset=0, limit=40, refresh=F
 
 
 @_guard
+def snippets(folder='inbox', uids=None) -> dict:
+    if not configured()['configured']:
+        return {'ok': False, 'error': 'not_configured'}
+    return {'ok': True, 'snips': SESSION.snippets(_folder(folder), _uids(uids)[:60])}
+
+
+@_guard
 def read_message(folder='inbox', uid='', images=False, mark=True) -> dict:
     role, uid = _folder(folder), _uid(uid)
     cl = _client()

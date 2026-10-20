@@ -1,0 +1,13 @@
+[package]
+name = "jarvis_files"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "jarvis_files"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ignore = "0.4.33"
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py312"] }

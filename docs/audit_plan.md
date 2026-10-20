@@ -14,9 +14,9 @@ Rules for every phase: no commits without approval (show diff, wait, propose com
 | 4 quality gates | done | `ruff.toml`, `bandit.yaml`, `.github/workflows/ci.yml` (the Windows pytest job has not run on GitHub), dependency audit in `docs/security_deps.md`; dependency bumps not applied |
 | 5 broad excepts | done for non-native code | 379 silent handlers now call `core.safe.swallow()`; 313 in 37 native Win32/COM/audio files left alone and frozen by `tests/except_budget.json` |
 | 6 state | done | paired accessors in `core/system/state.py`, the existing lock untouched |
-| 7 privacy | done | `allow_ip_lookup` setting (no UI switch yet), plain-http geolocation provider removed |
+| 7 privacy | done | `allow_ip_lookup` setting (switch in Settings > Tools > Privacy), plain-http geolocation provider removed |
 | 8 safe open | done | `core/safe_open.py` used by the voice, recent, media and session openers |
-| 9 file splits | plan only, needs approval | `docs/split_plan.md`, `tests/test_file_size.py` freezes the sizes |
+| 9 file splits | partly done 2026-10-20 (tts, llm_processor, calendar_hub, app.html; the rest in the plan) | `docs/split_plan.md`, `tests/test_file_size.py` freezes the sizes |
 | 10 leftovers | checklist | `docs/ui_rewrite/manual_checks.md` |
 
 Later the same day the old CustomTkinter UI was removed (see `docs/ui_rewrite/host.md`). Consequences for this plan: the three giant UI files listed in the split
@@ -162,3 +162,10 @@ Show the diff first, wait for approval, then suggest `/clear`.
 ## Definition of done for the whole plan
 
 All phase tests green in CI; `pip-audit` and `bandit` clean or baselined with reasons; the budget tests (`except`, file size) in place; docs updated (`docs/audit_plan.md` statuses, README network section, releasing guide); manual launch of the app, the new UI, tray, mail, calendar and update dry run by hand.
+
+## Follow-up work on 2026-10-20
+
+- `data/model_hashes.json` now pins the two Silero voices (`v5_5_ru.pt`, `v4_ua.pt`) and the face-detector weights (`res10_300x300_ssd_iter_140000.caffemodel`). The hashes were taken from the files already on the developer machine (trust on first use), not from a publisher list. The TTS download verifies the pin before replacing the file. Not pinned on purpose: `model.gguf` and `silero_vad.onnx` (the file name does not identify one version, a pin would delete a user's own model or break an update).
+- `requests`, `python-dotenv` and `pillow` bumped (see `docs/security_deps.md`).
+- CI: `repo-hygiene` (no tracked build output, no file over 5 MB) and `shell` (`cargo check` of the Tauri window); `.pre-commit-config.yaml` for local use.
+- Test suite: `tests/test_deferred_imports.py` resolved relative imports in `__init__.py` files wrongly and skipped about 40 cases; fixed, and a missing project module now fails instead of skipping.

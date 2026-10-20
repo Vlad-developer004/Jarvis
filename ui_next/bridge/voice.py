@@ -281,52 +281,33 @@ _SKIP_OUT = {'Microsoft Sound Mapper - Output', 'Primary Sound Driver'}
 
 
 def scan_devices() -> dict:
-    """Input and output devices (MME list with the fuller WASAPI names), plus what is selected now. Takes a second or two."""
+    """Input and output devices (from the native audio program), plus what is selected now. Takes a moment."""
     ins, outs = [], []
     try:
-        import pyaudio
-        pa = pyaudio.PyAudio()
-        try:
-            mme, wasapi = [], []
-            for i in range(pa.get_device_count()):
-                try:
-                    d = dict(pa.get_device_info_by_index(i))
-                except Exception:
-                    continue
-                d['_idx'] = i
-                api = int(d.get('hostApi', -1))
-                (mme if api == 0 else wasapi if api == 2 else []).append(d)
-        finally:
-            pa.terminate()
-        full_in, full_out = {}, {}
-        for d in wasapi:
-            n = str(d.get('name', '')).strip()
-            if n and int(d.get('maxInputChannels', 0)) > 0:
-                full_in.setdefault(n[:12].lower(), n)
-            if n and int(d.get('maxOutputChannels', 0)) > 0:
-                full_out.setdefault(n[:12].lower(), n)
-        for d in mme:
-            name = str(d.get('name', '')).strip()
-            if int(d.get('maxInputChannels', 0)) > 0 and name not in _SKIP_IN:
-                ins.append({'index': int(d['_idx']), 'name': full_in.get(name[:12].lower(), name).replace('\n', ' ').strip()})
-            if int(d.get('maxOutputChannels', 0)) > 0 and name not in _SKIP_OUT:
-                outs.append({'name': full_out.get(name[:12].lower(), name).replace('\n', ' ').strip()})
+        from core import native_audio
+        found = native_audio.list_devices() or {}
+        ins = [{'index': int(d['index']), 'name': str(d['name'])} for d in found.get('inputs', []) if d.get('name')]
+        outs = [{'name': str(d['name'])} for d in found.get('outputs', []) if d.get('name')]
     except Exception:
         _log.debug('device scan failed', exc_info=True)
     s = settings_io.read()
-    idx = s.get('audio_input_device_index')
-    return {'inputs': ins, 'outputs': outs, 'input': idx if isinstance(idx, int) else None, 'output': str(s.get('audio_output_device_name') or '')}
+    saved = str(s.get('audio_input_device_name') or '')
+    idx = next((d['index'] for d in ins if d['name'] == saved), None) if saved else None
+    return {'inputs': ins, 'outputs': outs, 'input': idx, 'output': str(s.get('audio_output_device_name') or '')}
 
 
 def set_devices(input_index, output_name) -> dict:
-    """Stores the chosen devices (None / '' = system default) and switches to them now."""
-    changes, drop = {}, []
-    in_idx = None
+    """Stores the chosen devices (None / '' = system default) and switches to them now. The microphone is kept by name: indices shift."""
+    changes, drop = {}, ['audio_input_device_index']   # the old PortAudio index means nothing to the native capture
+    in_name = None
     if isinstance(input_index, int) and not isinstance(input_index, bool) and 0 <= input_index < 512:
-        in_idx = input_index
-        changes['audio_input_device_index'] = in_idx
+        from core import native_audio
+        found = (native_audio.list_devices() or {}).get('inputs', [])
+        in_name = next((str(d['name']) for d in found if d.get('index') == input_index), None)
+    if in_name:
+        changes['audio_input_device_name'] = in_name
     else:
-        drop.append('audio_input_device_index')
+        drop.append('audio_input_device_name')
     out = str(output_name or '').strip()[:200] or None
     if out:
         changes['audio_output_device_name'] = out
@@ -336,7 +317,7 @@ def set_devices(input_index, output_name) -> dict:
         return {'ok': False, 'error': 'failed'}
     try:
         from core.speech.tts import apply_audio_devices
-        ok, msg = apply_audio_devices(output_device_name=out, input_device_index=in_idx)
+        ok, msg = apply_audio_devices(output_device_name=out, input_device_name=in_name)
         return {'ok': True, 'applied': bool(ok), 'message': str(msg)}
     except Exception as e:
         _log.exception('apply devices failed')
@@ -355,7 +336,7 @@ def calibrate(publish) -> dict:
 
     def work():
         global _calibrating
-        publish('voice_cal', {'state': 'running', 'text': 'Подбираю частоту и уровень шума: помолчите несколько секунд'})
+        publish('voice_cal', {'state': 'running', 'text': 'Идёт замер: слушайте подсказки Jarvis и отвечайте голосом'})
         result = {'state': 'error', 'text': 'Не получилось откалибровать микрофон'}
         try:
             from core.engine.jarvis import get_engine
@@ -363,31 +344,20 @@ def calibrate(publish) -> dict:
             if eng:
                 eng._calibrating = True
             try:
-                import pyaudio
-                from config_pack.config import CHUNK_MS
-                from core.audio_utils import open_input_stream
-                from core.mic_calibration import find_best_rate, run_calibration
-                pa = pyaudio.PyAudio()
+                from config_pack.config import CHUNK_MS, RATE
+                from core.audio_utils import open_input
+                from core.mic_calibration import run_calibration
+                rate = RATE
+                publish('voice_cal', {'state': 'running', 'text': 'Идёт замер: слушайте подсказки Jarvis и отвечайте голосом'})
+                chunk = max(128, int(rate * CHUNK_MS / 1000))
+                stream = open_input(rate, chunk)
                 try:
-                    di = settings_io.read().get('audio_input_device_index')
-                    di = int(di) if isinstance(di, int) else None
-                    rate = find_best_rate(pa, CHUNK_MS, di)
-                    publish('voice_cal', {'state': 'running', 'text': f'Частота {rate} Гц, замеряю фон…'})
-                    chunk = max(128, int(rate * CHUNK_MS / 1000))
-                    stream = open_input_stream(pa, rate, chunk, device_index=di)
-                    try:
-                        t, g = run_calibration(stream, chunk, rate, CHUNK_MS)
-                    finally:
-                        try:
-                            stream.close()
-                        except Exception:
-                            pass
+                    t, g = run_calibration(stream, chunk, rate, CHUNK_MS)
                 finally:
                     try:
-                        pa.terminate()
+                        stream.close()
                     except Exception:
                         pass
-                settings_io.update({'best_sample_rate': rate})
                 _apply_mic(threshold=int(t), gain=float(g))
                 result = {'state': 'done', 'text': f'Готово: порог {int(t)}, усиление ×{float(g):.1f}', 'threshold': int(t), 'gain': float(g)}
             finally:

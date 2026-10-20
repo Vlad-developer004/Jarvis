@@ -43,6 +43,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # deferred import project-wide just to check a name exists.
 SCAN_DIRS = ('core/handler', 'actions', 'core/nlp', 'core/engine', 'features')
 
+PROJECT_PACKAGES = {'core', 'actions', 'features', 'config_pack', 'ui_next'}
+
 EXCLUDE_DIRS = {
     '.git', 'venv', 'env', 'node_modules', '__pycache__',
     'build', 'dist', 'models', 'logs', 'installer_output',
@@ -67,14 +69,14 @@ def _module_name_for(path: pathlib.Path) -> str:
     return '.'.join(parts)
 
 
-def _resolve_relative(current_module: str, module: str | None, level: int) -> str | None:
+def _resolve_relative(current_module: str, module: str | None, level: int, is_package: bool = False) -> str | None:
     """Mirror Python's own relative-import resolution (importlib._bootstrap
     uses the same math): level=1 is "this package", level=2 is "parent of
     this package", etc. current_module is the *importing* module's own
     dotted name (a file, not a package, unless it's an __init__)."""
     if level == 0:
         return module
-    pkg_parts = current_module.split('.')[:-1]  # this file's own package
+    pkg_parts = current_module.split('.') if is_package else current_module.split('.')[:-1]  # this file's own package
     if level > 1:
         cut = level - 1
         if cut > len(pkg_parts):
@@ -112,7 +114,7 @@ def _collect_cases():
             for node in ast.walk(tree):
                 if not isinstance(node, ast.ImportFrom):
                     continue
-                target = _resolve_relative(cur_mod, node.module, node.level)
+                target = _resolve_relative(cur_mod, node.module, node.level, path.name == '__init__.py')
                 if not target or target in EXCLUDE_MODULES:
                     continue
                 for alias in node.names:
@@ -133,6 +135,8 @@ def test_deferred_import_target_exists(target_module, name, file, lineno):
     try:
         mod = importlib.import_module(target_module)
     except Exception as e:
+        if target_module.split('.')[0] in PROJECT_PACKAGES and isinstance(e, ModuleNotFoundError) and (e.name or '').split('.')[0] in PROJECT_PACKAGES:
+            pytest.fail(f'{file}:{lineno} imports {target_module!r}, which does not exist: {e}')
         pytest.skip(f'{target_module} itself failed to import (likely an optional dependency): {e}')
     if hasattr(mod, name):
         return

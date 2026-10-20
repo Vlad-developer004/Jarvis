@@ -93,8 +93,9 @@
   }
 
   function watch(root) {
-    const run = () => root.querySelectorAll('input[type=date]:not([data-dp])').forEach(enhance);
-    run(); new MutationObserver(run).observe(root, { childList: true, subtree: true });
+    const SEL = 'input[type=date]:not([data-dp])', run = () => root.querySelectorAll(SEL).forEach(enhance);
+    const added = (ms) => ms.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches(SEL) || n.querySelector(SEL))));   // text updates and unrelated nodes cost nothing
+    run(); new MutationObserver((ms) => { if (added(ms)) run(); }).observe(root, { childList: true, subtree: true });
   }
   // opens the calendar under any element for a value that is not a form field (jump to a date); cb gets "yyyy-mm-dd" or ''
   function pickAt(anchor, value, cb) {

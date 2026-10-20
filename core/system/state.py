@@ -8,7 +8,6 @@ class AppState:
         # the one confirmed race this fixes (reactor click thread vs. voice
         # command thread both touching ignore_mode).
         self._lock: _threading.Lock = _threading.Lock()
-        self.pytorch_loaded: _threading.Event = _threading.Event()
         self.nlp_loading: bool = False  # True while semantic model weights are loading
         self.jarvis_active: bool = False
         self.last_command_time: float = 0.0

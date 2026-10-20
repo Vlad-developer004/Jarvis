@@ -82,7 +82,7 @@ def test_hold_sleeps_for_requested_duration_between_down_and_up(monkeypatch):
     assert len(captured) == 2  # one down event, one up event
     assert _is_key_up(captured[0][0]) is False
     assert _is_key_up(captured[1][0]) is True
-    assert slept == [0.3]
+    assert slept.count(0.3) == 1     # time.sleep is patched process-wide: a background thread of an earlier test may sleep too
 
 
 def test_send_raises_when_sendinput_reports_fewer_events_sent(monkeypatch):

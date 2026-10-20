@@ -228,18 +228,15 @@ def folder_search_roots_and_depth(base_ctx: str) -> tuple[list[str], int]:
         else:
             base = Path(USER_HOME) / "Desktop"
     return ([str(base)], depth)
+_SKIP_DIR_NAMES = ('dist', 'build', 'node_modules', 'venv', '.venv', '__pycache__', 'out', 'bin', 'obj')
 def _depth_limited_walk(root: str, max_depth: int):
-    root = os.path.abspath(root)
-    base_depth = root.rstrip(os.sep).count(os.sep)
-    for cur, dirs, files in os.walk(root):
-        depth = cur.rstrip(os.sep).count(os.sep) - base_depth
-        if depth >= max_depth:
-            dirs[:] = []
-        else:
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d.lower() not in (
-                'dist', 'build', 'node_modules', 'venv', '.venv', '__pycache__', 'out', 'bin', 'obj'
-            )]
-        yield cur, dirs
+    """Folders under `root` down to `max_depth` levels, grouped by parent, shallow first. Needs the native file walker."""
+    from actions.file_walk import walk
+    by_parent: dict[str, list[str]] = {}
+    for parent, name, _ in walk([os.path.abspath(root)], max_depth, 'dirs', skip_dirs=_SKIP_DIR_NAMES):
+        by_parent.setdefault(parent, []).append(name)
+    for cur in sorted(by_parent, key=lambda p: p.count(os.sep)):
+        yield cur, by_parent[cur]
 def _find_folder_anywhere(start_dirs: list[str], name: str, max_depth: int = 4) -> Path | None:
     name = normalize_folder_voice_query(name)
     query_vars = get_name_variants(name)

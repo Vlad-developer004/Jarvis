@@ -8,8 +8,8 @@ from .tts import (
     warmup_tts,
     warmup_text_models,
     normalize_for_tts,
-    ensure_mixer_init,
-    wait_for_pygame_mixer_idle,
+    ensure_player,
+    wait_for_playback_idle,
 )
 from .sound import play_alert_sound
 from .safe_task import run_speaking_task

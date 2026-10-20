@@ -315,7 +315,7 @@ def get_weather_hud() -> dict:
                 else:
                     raise Exception("Location not found")
 
-        url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,surface_pressure&daily=sunrise,sunset&wind_speed_unit=ms&timezone=auto'
+        url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,relative_humidity_2m,surface_pressure,cloud_cover,visibility&daily=sunrise,sunset,uv_index_max,precipitation_probability_max,temperature_2m_max,temperature_2m_min&wind_speed_unit=ms&timezone=auto'
         resp_obj = requests.get(url, headers=headers, timeout=5.0)
         if resp_obj.status_code != 200:
             raise Exception(f'HTTP {resp_obj.status_code}')
@@ -330,7 +330,19 @@ def get_weather_hud() -> dict:
             sunset = resp['daily']['sunset'][0][-5:]
         except Exception:
             sunrise = sunset = '—:—'
-        data = {'ok': True, 'city': city_name, 'lat': lat, 'lon': lon, 'sunrise': sunrise, 'sunset': sunset, 'temp': int(round(w['temperature_2m'])), 'feels': int(round(w['apparent_temperature'])), 'desc': _get_wmo_desc(code, lang), 'code': code, 'icon': icon, 'color': color, 'wind': round(w.get('wind_speed_10m', 0), 1), 'humidity': int(w.get('relative_humidity_2m', 0)), 'pressure': pressure_mmhg, 'updated_ts': time.time()}
+        day = resp.get('daily') or {}
+
+        def _day(key):
+            try:
+                v = day[key][0]
+                return None if v is None else round(float(v), 1)
+            except Exception:
+                return None
+        vis_m = w.get('visibility')
+        extra = {'wind_dir': w.get('wind_direction_10m'), 'gust': None if w.get('wind_gusts_10m') is None else round(w['wind_gusts_10m'], 1), 'clouds': w.get('cloud_cover'),
+                 'vis_km': None if vis_m is None else round(vis_m / 1000, 1), 'uv': _day('uv_index_max'), 'pop': _day('precipitation_probability_max'),
+                 'tmax': _day('temperature_2m_max'), 'tmin': _day('temperature_2m_min')}
+        data = {'ok': True, 'city': city_name, 'lat': lat, 'lon': lon, 'sunrise': sunrise, 'sunset': sunset, **extra, 'temp': int(round(w['temperature_2m'])), 'feels': int(round(w['apparent_temperature'])), 'desc': _get_wmo_desc(code, lang), 'code': code, 'icon': icon, 'color': color, 'wind': round(w.get('wind_speed_10m', 0), 1), 'humidity': int(w.get('relative_humidity_2m', 0)), 'pressure': pressure_mmhg, 'updated_ts': time.time()}
     except Exception:
         # open-meteo failed — try wttr.in as fallback
         if lat is not None:

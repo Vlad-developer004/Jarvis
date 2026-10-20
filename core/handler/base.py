@@ -3,7 +3,7 @@ import time
 from collections import OrderedDict
 from core.system import app_state
 from core.speech import (
-    speak, stop_speaking, ensure_mixer_init,
+    speak, stop_speaking,
     is_speaking as _is_speaking_check, is_tts_playing_audio as _is_tts_audio_check,
 )
 from core.responder import Responder
@@ -36,8 +36,7 @@ RESPONSES_UK = {
     'not_understood': ['Не розчув, повторіть.', 'Не розібрав команду.', 'Перепрошую, не зрозумів.', 'Уточніть, будь ласка.'],
 }
 class BaseHandler:
-    def __init__(self, pa, rate, chunk, asr):
-        self.pa = pa
+    def __init__(self, rate, chunk, asr):
         self.rate = rate
         self.chunk = chunk
         self.asr = asr
@@ -60,7 +59,7 @@ class BaseHandler:
         if wav_path in self._responders:
             self._responders.move_to_end(wav_path)
             return self._responders[wav_path]
-        resp = Responder(self.pa, wav_path)
+        resp = Responder(wav_path)
         self._responders[wav_path] = resp
         if len(self._responders) > _RESPONDER_MAX:
             self._responders.popitem(last=False)

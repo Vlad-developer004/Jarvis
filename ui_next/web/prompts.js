@@ -40,7 +40,7 @@
   function onKey(e) {
     if (!root) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); answer('cancel'); }
-    else if (e.key === 'Enter' && !e.shiftKey && e.target.matches('input') && !(KINDS[shownKind] && KINDS[shownKind].noEnter)) { e.preventDefault(); confirm(); }
+    else if (e.key === 'Enter' && !e.shiftKey && e.target.matches('input') && e.target.id !== 'pr-q' && !(KINDS[shownKind] && KINDS[shownKind].noEnter)) { e.preventDefault(); confirm(); }
   }
 
   function paint() {

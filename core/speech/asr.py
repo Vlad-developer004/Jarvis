@@ -384,6 +384,9 @@ class ASR_Vosk(_SileroVadMixin):
     def _lazy_load(self) -> None:
         if self._rec is not None:
             return
+        from core.optional_pkgs import ensure
+        if not ensure('vosk'):          # the package is not in the installer: fetched on first use
+            raise RuntimeError('Vosk is not available')
         import vosk
         model_cfg = _VOSK_LANG_MODELS.get(self._lang, _VOSK_LANG_MODELS['ru'])
         m_dir = _get_base_models_path() / model_cfg['dir']

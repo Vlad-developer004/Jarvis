@@ -70,8 +70,9 @@
   }
 
   function watch(root) {
-    const run = () => root.querySelectorAll('select:not([data-dd])').forEach(enhance);
-    run(); new MutationObserver(run).observe(root, { childList: true, subtree: true });
+    const SEL = 'select:not([data-dd])', run = () => root.querySelectorAll(SEL).forEach(enhance);
+    const added = (ms) => ms.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches(SEL) || n.querySelector(SEL))));   // text updates and unrelated nodes cost nothing
+    run(); new MutationObserver((ms) => { if (added(ms)) run(); }).observe(root, { childList: true, subtree: true });
   }
   window.fzDropdown = { watch, enhance, close };
 })();

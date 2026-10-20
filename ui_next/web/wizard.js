@@ -5,7 +5,7 @@
 (() => {
   const STEPS = [['Начало', 'home'], ['Микрофон', 'mic'], ['Обращение', 'user'], ['Профиль', 'grid'], ['ИИ', 'search'], ['Готово', 'check']];
   const PROFILES = { full: ['Полный', 'Все функции: ИИ-ответы, игры, кино, мониторинг. Больше всего нагрузки на память и процессор.'], assistant: ['Ассистент', 'Без ИИ, игр и кино: сбалансированный набор для повседневных дел.'], minimal: ['Минимальный', 'Только распознавание речи и управление окнами. Самый быстрый отклик.'] };
-  const PROV = [['groq', 'Groq', 'Есть бесплатный план, быстрый отклик'], ['openai', 'OpenAI', 'Платный'], ['google', 'Google', 'Есть бесплатный план'], ['local', 'Свой сервер', 'Без ключа, на этом или другом компьютере']];
+  const PROV = [['none', 'Без ИИ', 'Только голосовые команды, без ответов на вопросы'], ['groq', 'Groq', 'Есть бесплатный план, быстрый отклик'], ['openai', 'OpenAI', 'Платный'], ['google', 'Google', 'Есть бесплатный план'], ['local', 'Свой сервер', 'Без ключа, на этом или другом компьютере']];
   let root = null, step = 0, busy = false, shown = false;
   const S = { v: null, dev: null, prof: null, ai: null, cal: '', calState: '', keyNote: '', pickedProv: '' };
 
@@ -21,18 +21,21 @@
   }
   const setVoice = async (key, value) => { const r = await call('voice', { op: 'set', key, value }); if (r.ok) S.v = r.values; else toast('Не получилось сохранить'); return r; };
 
+  const aiOff = () => !!(S.prof && S.prof.modules.some((x) => x.key === 'qa' && !x.on));      // the AI answers module is what "no AI" switches off
+
   function body() {
     const v = S.v || {}, uk = v.speech_language === 'uk';
     if (step === 0) {
       return `<h2>Добро пожаловать в Jarvis</h2><p>Пять коротких шагов, и ассистент готов: язык, микрофон, обращение, набор функций и ИИ. Всё это можно изменить потом в Настройках, ничего не потеряется.</p>`
-        + `<h4>Язык интерфейса и голоса</h4>${tiles([['ru', 'Русский', 'Jarvis говорит и слушает по-русски'], ['uk', 'Українська', 'Jarvis говорить і слухає українською']], v.language || 'ru', 'data-lang')}`;
+        + `<h4>Язык интерфейса</h4>${tiles([['ru', 'Русский', 'Окна, подсказки и профили игр на русском'], ['uk', 'Українська', 'Вікна, підказки та профілі ігор українською']], v.language || 'ru', 'data-lang')}`
+        + `<small class="vc-note">Jarvis слушает и говорит по-русски: хорошей украинской модели речи пока нет, поэтому язык интерфейса речь не меняет.</small>`;
     }
     if (step === 1) {
       const d = S.dev, ins = d ? d.inputs : [], cur = d && d.input !== null && d.input !== undefined ? String(d.input) : '';
       const sel = d ? `<label class="wz-l">Микрофон<select id="wz-in"><option value=""${cur === '' ? ' selected' : ''}>По умолчанию в Windows</option>${ins.map((x) => `<option value="${x.index}"${String(x.index) === cur ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : '<div class="vc-note">Ищу микрофоны…</div>';
-      return `<h2>Микрофон</h2><p>Выберите, через какой микрофон вас слушать. Затем замерьте фон: Jarvis сам подберёт порог и усиление, чтобы он слышал вас, а не шум.</p>${sel}`
+      return `<h2>Микрофон</h2><p>Выберите микрофон, через который вас слушать, затем запустите замер. Jarvis попросит помолчать, потом три раза громко и два раза тише сказать «проверка микрофона» и по ответам подберёт порог и усиление. Это займёт около минуты.</p>${sel}`
         + `<div class="vc-actions">${btn(S.calState === 'running' ? 'Замеряю…' : 'Замерить фон', `data-cal="1"${S.calState === 'running' ? ' disabled' : ''}`, 'primary')}${btn('Послушать голос', 'data-say="1"')}</div>`
-        + (S.cal ? `<div class="tl-status ${S.calState === 'done' ? 'tl-ok' : S.calState === 'error' ? 'tl-warn' : ''}">${esc(S.cal)}</div>` : '<small class="vc-note">Во время замера помолчите несколько секунд.</small>');
+        + (S.cal ? `<div class="tl-status ${S.calState === 'done' ? 'tl-ok' : S.calState === 'error' ? 'tl-warn' : ''}">${esc(S.cal)}</div>` : '<small class="vc-note">Замер можно пропустить и сделать позже в Настройках.</small>');
     }
     if (step === 2) {
       const pv = v.address_mode === 'custom' ? (v.custom_address || '…') : v.address_mode === 'female' ? (uk ? 'пані' : 'леди') : (uk ? 'сер' : 'сэр');
@@ -47,16 +50,17 @@
         + (p ? tiles(p.profiles.map((k) => [k, PROFILES[k][0], PROFILES[k][1]]), p.profile, 'data-prof') + '<small class="vc-note">Профиль применится полностью после перезапуска Jarvis.</small>' : '<div class="vc-note">Загружаю…</div>');
     }
     if (step === 4) {
-      const a = S.ai, cur = S.pickedProv, has = a && a.providers.find((x) => x.id === cur) && a.providers.find((x) => x.id === cur).has_key, local = cur === 'local', site = a && (a.providers.find((x) => x.id === cur) || {}).site;
-      return `<h2>ИИ для ответов на вопросы</h2><p>Нужен для вопросов, на которые Jarvis сам не знает ответ. Без ключа ассистент работает как голосовой пульт, но на такие вопросы не ответит. Этот шаг можно пропустить.</p>`
+      const a = S.ai, off = aiOff(), cur = off ? 'none' : S.pickedProv, pv = (a && a.providers.find((x) => x.id === cur)) || {}, has = pv.has_key, local = cur === 'local', site = pv.site;
+      return `<h2>ИИ для ответов на вопросы</h2><p>Нужен для вопросов, на которые Jarvis сам не знает ответ. Это необязательно: без ИИ ассистент работает как голосовой пульт и выполняет команды, а на такие вопросы ответит, что ИИ выключен.</p>`
         + tiles(PROV.map(([id, n, d]) => [id, n, d]), cur, 'data-prov')
-        + (local ? '<small class="vc-note">Адрес локального сервера задаётся потом в Настройках, на вкладке «ИИ».</small>'
+        + (off ? '<small class="vc-note">ИИ выключен. Чтобы включить его позже, выберите здесь провайдера или откройте Настройки, вкладку «ИИ».</small>'
+          : local ? '<small class="vc-note">Адрес локального сервера задаётся потом в Настройках, на вкладке «ИИ».</small>'
           : `<div class="tl-status ${has ? 'tl-ok' : ''}">${has ? 'Ключ уже сохранён на этом компьютере' : 'Ключ ещё не задан'}</div><label class="wz-l">Ключ доступа<input id="wz-key" type="password" maxlength="400" placeholder="${has ? 'Вставьте новый, чтобы заменить' : 'Вставьте ключ'}" autocomplete="off"></label>`
             + `<div class="vc-actions">${btn('Сохранить ключ', 'data-key="1"', 'primary')}${site ? btn('Где взять ключ', `data-site="${esc(site)}"`) : ''}</div>`)
         + (S.keyNote ? `<div class="tl-status">${esc(S.keyNote)}</div>` : '');
     }
-    const prof = S.prof ? PROFILES[S.prof.profile][0] : '', prov = S.ai ? (S.ai.providers.find((x) => x.id === S.ai.provider) || {}).name : '', hasKey = S.ai && S.ai.providers.some((x) => x.needs_key && x.has_key);
-    return `<h2>Всё готово</h2><p>Jarvis настроен. Вот что выбрано:</p><ul class="wz-sum"><li><b>Язык</b>${v.language === 'uk' ? 'Українська' : 'Русский'}</li><li><b>Профиль</b>${esc(prof)}</li><li><b>ИИ</b>${hasKey ? esc(prov || 'ключ задан') : 'ключ не задан'}</li></ul>`
+    const prof = S.prof ? PROFILES[S.prof.profile][0] : '', prov = S.ai ? (S.ai.providers.find((x) => x.id === S.ai.provider) || {}).name : '', hasKey = S.ai && S.ai.providers.some((x) => x.needs_key && x.has_key), aiTxt = aiOff() ? 'выключен' : S.ai && S.ai.provider === 'local' ? 'свой сервер' : hasKey ? esc(prov || 'ключ задан') : 'ключ не задан';
+    return `<h2>Всё готово</h2><p>Jarvis настроен. Вот что выбрано:</p><ul class="wz-sum"><li><b>Язык</b>${v.language === 'uk' ? 'Українська' : 'Русский'}</li><li><b>Профиль</b>${esc(prof)}</li><li><b>ИИ</b>${aiTxt}</li></ul>`
       + `<p>Попробуйте сказать: «что сейчас играет», «перемотай на 5 минут назад» или «добавь в календарь завтра в 15:00 встреча».</p><small class="vc-note">Мастер можно пройти снова в Настройках, на вкладке «Инструменты».</small>`;
   }
 
@@ -77,7 +81,7 @@
     close();
   }
   function close() { if (!root) return; root.remove(); root = null; shown = false; document.removeEventListener('keydown', onKey, true); }
-  function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(); } }
+  function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); finish(true); } }      // Esc is "skip": a closed wizard must not come back on every start
 
   function open() {
     if (shown) return; if (!m.connected) { const t = document.querySelector('.cm-toast'); if (t) { t.textContent = 'Мастеру нужен запущенный Jarvis'; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2500); } return; }
@@ -91,7 +95,7 @@
   }
 
   async function onChange(e) {
-    if (e.target.id === 'wz-in') { const r = await call('voice', { op: 'set_devices', input: e.target.value === '' ? null : +e.target.value, output: (S.dev && S.dev.output) || '' }); toast(r.ok ? 'Микрофон применён' : 'Не получилось переключить микрофон'); if (r.ok && S.dev) S.dev.input = e.target.value === '' ? null : +e.target.value; }
+    if (e.target.id === 'wz-in') { if (S.calState === 'running') { toast('Дождитесь конца замера'); paint(); return; } const r = await call('voice', { op: 'set_devices', input: e.target.value === '' ? null : +e.target.value, output: (S.dev && S.dev.output) || '' }); toast(r.ok ? 'Микрофон применён' : 'Не получилось переключить микрофон'); if (r.ok && S.dev) { S.dev.input = e.target.value === '' ? null : +e.target.value; if (S.calState === 'done') { S.calState = ''; S.cal = 'Микрофон сменили: замерьте фон заново'; paint(); } } }
   }
   async function onClick(e) {
     const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
@@ -99,12 +103,13 @@
     if (b.classList.contains('wz-back')) { step = Math.max(0, step - 1); paint(); return; }
     if (b.classList.contains('wz-next')) { if (step === STEPS.length - 1) { finish(false); return; } step += 1; paint(); return; }
     if (d.lang) { await setVoice('language', d.lang); paint(); return; }
-    if (d.cal) { const r = await call('voice', { op: 'calibrate' }); if (r.ok) { S.calState = 'running'; S.cal = 'Подбираю частоту и уровень шума: помолчите несколько секунд'; paint(); } else toast(r.error === 'busy' ? 'Замер уже идёт' : 'Не получилось запустить замер'); return; }
+    if (d.cal) { const r = await call('voice', { op: 'calibrate' }); if (r.ok) { S.calState = 'running'; S.cal = 'Идёт замер: слушайте подсказки Jarvis и отвечайте голосом'; paint(); } else toast(r.error === 'busy' ? 'Замер уже идёт' : 'Не получилось запустить замер'); return; }
     if (d.say) { const r = await call('voice', { op: 'say' }); toast(r.ok ? 'Говорю тестовую фразу' : 'Jarvis ещё запускается'); return; }
     if (d.addr) { await setVoice('address_mode', d.addr); paint(); return; }
     if (d.addrok) { const t = root.querySelector('#wz-addr').value.trim(); if (!t) { toast('Введите слово для обращения'); return; } await setVoice('custom_address', t); paint(); toast('Обращение сохранено'); return; }
     if (d.prof) { const r = await call('modules', { op: 'profile', profile: d.prof }); if (r.ok) { S.prof = r; paint(); } else toast('Не получилось сохранить профиль'); return; }
-    if (d.prov) { S.pickedProv = d.prov; S.keyNote = ''; const r = await call('ai', { op: 'provider', id: d.prov }); if (r.ok) S.ai = r; paint(); return; }
+    if (d.prov === 'none') { const r = await call('modules', { op: 'module', key: 'qa', on: false }); if (r.ok) S.prof = r; else toast('Не получилось выключить ИИ'); paint(); return; }
+    if (d.prov) { if (aiOff()) { const q = await call('modules', { op: 'module', key: 'qa', on: true }); if (!q.ok) { toast('Не получилось включить ИИ'); return; } S.prof = q; } S.pickedProv = d.prov; S.keyNote = ''; const r = await call('ai', { op: 'provider', id: d.prov }); if (r.ok) S.ai = r; paint(); return; }
     if (d.site) { J.send('open_url', { url: d.site }); return; }
     if (d.key) { const k = root.querySelector('#wz-key').value.trim(); if (!k) { toast('Вставьте ключ'); return; } const r = await call('ai', { op: 'key_save', provider: S.pickedProv, key: k }); if (r.ok) { S.ai = r; S.keyNote = 'Ключ сохранён'; } else S.keyNote = r.error === 'bad_value' ? 'Ключ не подошёл: проверьте, что скопировали его целиком' : 'Не получилось сохранить ключ'; paint(); }
   }

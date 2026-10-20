@@ -1,0 +1,73 @@
+/* System screen, tabs "Процессы" and "Автозапуск" (procs.js). Same tokens as perf.css. */
+.pf-tabs { flex: none; display: flex; gap: .3rem; padding: 0 1.2rem .3rem; border-bottom: 1px solid hsl(var(--h) 50% 50% / .18); }
+.pf-tabs button { border: 0; background: none; color: var(--dim); font: 600 .85rem Onest; padding: .5rem .9rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.pf-tabs button:hover { color: #fff; } .pf-tabs button.on { color: #fff; border-bottom-color: var(--cyan); }
+.pf-tabs button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+#pf-procs, #pf-start { display: flex; flex-direction: column; gap: .6rem; } #pf-procs[hidden], #pf-start[hidden], #pf-body[hidden] { display: none; }
+#pf-procs { overflow: hidden; } #pf-start { overflow-y: auto; }
+.dim { color: var(--dim); }
+
+.pf-tools { flex: none; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.pf-tools input[type=search] { flex: 1 1 14rem; max-width: 20rem; padding: .45rem .7rem; border: 1px solid hsl(var(--h) 50% 50% / .35); border-radius: .5rem; background: hsl(var(--h) 55% 8% / .7); color: #fff; font: 500 .85rem Onest; }
+.pf-tools input[type=search]:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.pf-chk { display: flex; align-items: center; gap: .4rem; font-size: .82rem; color: #cfe6f7; cursor: pointer; } .pf-sum { margin-left: auto; font-size: .8rem; font-variant-numeric: tabular-nums; }
+
+.pf-tbl-wrap { flex: 1; min-height: 8rem; overflow: auto; border: 1px solid hsl(var(--h) 50% 50% / .22); border-radius: .7rem; scrollbar-width: thin; scrollbar-color: hsl(var(--h) 40% 40% / .6) transparent; }
+.pf-tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .84rem; }
+/* The column heads carry the totals (big number) above the column name, like Task Manager; they stay put while the rows scroll. */
+.pf-tbl th { position: sticky; top: 0; z-index: 1; padding: .45rem .8rem .4rem; background: hsl(var(--h) 55% 12%); border-bottom: 1px solid hsl(var(--h) 50% 50% / .22); color: var(--dim); font-weight: 600; font-size: .74rem; text-align: left; vertical-align: bottom; cursor: pointer; user-select: none; white-space: nowrap; }
+.pf-tbl th b { display: block; color: #fff; font: 600 1.05rem Onest; line-height: 1.2; font-variant-numeric: tabular-nums; } .pf-tbl th span { display: block; } .pf-tbl th:hover span { color: #fff; }
+.pf-tbl th.num, .pf-tbl td.num { width: 7.4rem; text-align: right; font-variant-numeric: tabular-nums; } .pf-tbl th.num.w5, .pf-tbl td.num.w5 { width: 5rem; } .pf-tbl th.w9 { width: 9.5rem; }
+.pf-tbl th:last-child.num { width: 5rem; }
+.pf-tbl td { padding: .36rem .8rem; border-top: 1px solid hsl(var(--h) 50% 50% / .08); white-space: nowrap; }
+/* Load shading: six steps of the same accent, drawn as an image so the row hover and selection colours still show through. */
+.hx1 { background-image: linear-gradient(hsl(var(--h) 90% 50% / .08), hsl(var(--h) 90% 50% / .08)); } .hx2 { background-image: linear-gradient(hsl(var(--h) 90% 50% / .16), hsl(var(--h) 90% 50% / .16)); }
+.hx3 { background-image: linear-gradient(hsl(var(--h) 90% 50% / .27), hsl(var(--h) 90% 50% / .27)); } .hx4 { background-image: linear-gradient(hsl(var(--h) 90% 50% / .4), hsl(var(--h) 90% 50% / .4)); }
+.hx5 { background-image: linear-gradient(hsl(var(--h) 90% 50% / .55), hsl(var(--h) 90% 50% / .55)); }
+/* Futuristic pass: per-column accent, load bars, glowing selection rail, Tektur numerals. */
+.pf-tbl-wrap { background: linear-gradient(180deg, hsl(var(--h) 60% 9% / .6), hsl(var(--h) 60% 6% / .6)); box-shadow: inset 0 0 24px hsl(var(--h) 90% 50% / .06), 0 0 18px hsl(var(--h) 90% 50% / .08); }
+.pf-tbl th { background: linear-gradient(180deg, hsl(var(--h) 60% 15%), hsl(var(--h) 55% 11%)); border-bottom: 1px solid var(--cyan); box-shadow: 0 1px 10px hsl(var(--h) 90% 50% / .25); letter-spacing: .08em; text-transform: uppercase; font-size: .66rem; }
+.pf-tbl th b { font: 700 1.1rem Tektur, Onest, sans-serif; letter-spacing: .02em; text-transform: none; text-shadow: 0 0 10px currentColor; }
+.pf-tbl th.c-cpu b, .pf-tbl td.c-cpu { --ac: var(--cyan); } .pf-tbl th.c-mem b, .pf-tbl td.c-mem { --ac: var(--mag, #ff5fd2); } .pf-tbl th.c-io b, .pf-tbl td.c-io { --ac: var(--green); }
+.pf-tbl th.c-cpu b { color: var(--cyan); } .pf-tbl th.c-mem b { color: var(--mag, #ff5fd2); } .pf-tbl th.c-io b { color: var(--green); }
+.pf-tbl td.ld { position: relative; background-image: linear-gradient(90deg, color-mix(in srgb, var(--ac) 30%, transparent), color-mix(in srgb, var(--ac) 4%, transparent) calc(var(--x, 0) * 100%), transparent calc(var(--x, 0) * 100%)); border-left: 1px solid hsl(var(--h) 50% 50% / .07); }
+.pf-tbl th.num { border-left: 1px solid hsl(var(--h) 50% 50% / .12); }
+.pf-tbl td.ld::before, .pf-tbl td.ld::after { content: ''; position: absolute; left: .8rem; right: .8rem; bottom: .2rem; height: 2px; border-radius: 2px; }
+.pf-tbl td.ld::before { background: hsl(var(--h) 50% 50% / .12); }
+.pf-tbl td.ld::after { background: var(--ac); transform-origin: left center; transform: scaleX(max(var(--x, 0), .04)); box-shadow: 0 0 6px var(--ac); transition: transform .35s ease; }
+.pf-tbl td.ld.hx3, .pf-tbl td.ld.hx4, .pf-tbl td.ld.hx5 { color: #fff; font-weight: 700; text-shadow: 0 0 8px var(--ac); }
+.pf-tbl td.ld.z::after { opacity: 0; } .pf-tbl td.ld.z { background-image: none; }
+.pt-row { transition: background .12s; } .pt-row td:first-child { box-shadow: inset 2px 0 0 transparent; transition: box-shadow .12s; }
+.pt-row:hover td:first-child { box-shadow: inset 2px 0 0 hsl(var(--h) 90% 60% / .6); } .pt-row.sel td:first-child { box-shadow: inset 3px 0 0 var(--cyan), inset 14px 0 18px -12px var(--cyan); }
+.pt-row.sel { background: linear-gradient(90deg, hsl(var(--h) 80% 30% / .45), hsl(var(--h) 60% 22% / .25)); }
+.pt-row.grp .pf-nm { text-shadow: 0 0 8px hsl(var(--h) 90% 60% / .35); }
+.pf-tools input[type=search] { background: linear-gradient(180deg, hsl(var(--h) 60% 9% / .85), hsl(var(--h) 60% 6% / .85)); } .pf-tools input[type=search]:focus { border-color: var(--cyan); box-shadow: 0 0 12px hsl(var(--h) 90% 50% / .3); }
+.pf-sum { font-family: Tektur, Onest, sans-serif; letter-spacing: .05em; }
+#pf-procs .pf-bar, #pf-svc .pf-bar { margin-top: .1rem; padding: .65rem 1rem .65rem 1.2rem; border: 1px solid hsl(var(--h) 50% 50% / .25); border-radius: .7rem; background: hsl(var(--h) 55% 9% / .6); box-shadow: inset 3px 0 0 var(--cyan); }
+#pf-procs .pf-bar.dim, #pf-svc .pf-bar.dim { box-shadow: none; border-style: dashed; padding-left: 1rem; }
+#pf-procs .pf-who, #pf-svc .pf-who { font: 700 .95rem Tektur, Onest, sans-serif; letter-spacing: .03em; text-shadow: 0 0 8px hsl(var(--h) 90% 60% / .4); }
+#pf-procs .pf-path, #pf-svc .pf-path { padding: 0 .4rem; }
+/* The row class is pt-row, not pf-r: mail_compose.css makes every .pf-r a flex box, which broke the table layout. */
+.pt-row { cursor: pointer; } .pt-row:hover { background: hsl(var(--h) 60% 22% / .3); } .pt-row.sel { background: hsl(var(--h) 60% 26% / .55); }
+.pt-row.grp td { font-weight: 600; } .pt-row.ch .pf-nm { padding-left: 2.2rem; color: #cfe6f7; } .pt-row td.z { color: var(--dim); }
+.pf-nm { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; color: #fff; } .pf-car { display: inline-block; width: 1.1rem; color: var(--cyan); } .pf-sp1 { display: inline-block; width: 1.1rem; }
+.pf-dot { display: inline-block; width: .5rem; height: .5rem; margin-right: .5rem; border-radius: 50%; background: var(--dim); vertical-align: middle; }
+.pf-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); } .pf-dot.paused, .pf-dot.start_pending, .pf-dot.stop_pending { background: var(--amber); }
+.pf-lock { margin-left: .4rem; font-size: .5rem; color: var(--amber); vertical-align: middle; font-style: normal; }
+
+.pf-bar { flex: none; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; padding: .6rem .2rem 0; font-size: .84rem; } .pf-who { color: #fff; }
+.pf-prio { display: flex; align-items: center; gap: .4rem; color: var(--dim); font-size: .8rem; margin-left: auto; }
+.pf-prio select { padding: .3rem .5rem; border: 1px solid hsl(var(--h) 50% 50% / .35); border-radius: .4rem; background: hsl(var(--h) 55% 8%); color: #fff; font: 500 .8rem Onest; }
+.pf-path { flex: none; font-size: .75rem; overflow-wrap: anywhere; }
+
+.pf-note { margin: 0; font-size: .84rem; max-width: 46rem; }
+.pf-st { display: grid; gap: .5rem; }
+.pf-si { display: flex; align-items: center; gap: .9rem; padding: .65rem .9rem; border: 1px solid hsl(var(--h) 50% 50% / .25); border-radius: .7rem; background: hsl(var(--h) 55% 10% / .55); }
+.pf-si.off .pf-sn b { color: var(--dim); } .pf-sn { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .1rem; font-size: .8rem; } .pf-sn b { color: #fff; font-size: .92rem; }
+.pf-sn .pf-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-sw { flex: none; position: relative; width: 2.6rem; height: 1.4rem; border: 1px solid hsl(var(--h) 50% 50% / .45); border-radius: 1rem; background: hsl(var(--h) 40% 12%); cursor: pointer; transition: background .15s; }
+.pf-sw::after { content: ''; position: absolute; top: .15rem; left: .17rem; width: .95rem; height: .95rem; border-radius: 50%; background: var(--dim); transition: transform .15s, background .15s; }
+.pf-sw.on { background: hsl(var(--h) 70% 30%); border-color: var(--cyan); } .pf-sw.on::after { transform: translateX(1.2rem); background: #fff; }
+.pf-sw:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.pf-sub { margin: 1rem 0 0; font: 700 .95rem Onest; color: #fff; } .pf-ok { color: var(--green); }
+#pf-svc { display: flex; flex-direction: column; gap: .6rem; overflow: hidden; } #pf-svc[hidden] { display: none; }

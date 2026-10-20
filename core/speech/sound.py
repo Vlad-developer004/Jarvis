@@ -1,11 +1,13 @@
 import os
-import time
 import threading
 import numpy as np
-import pygame
 
-_cached_sounds = {}
+from core import native_audio
+
+# Synthesised sounds are built once and kept as raw 16-bit stereo PCM; files from audio/sfx are sent by path.
+_cached_pcm: dict[str, tuple[bytes, int]] = {}
 _lock = threading.Lock()
+_RATE = 44100
 
 
 def _sounds_dir() -> str:
@@ -13,126 +15,97 @@ def _sounds_dir() -> str:
     return os.path.join(get_project_root(), 'audio', 'sfx')
 
 
-def _load_sound_file(sound_type: str) -> "pygame.mixer.Sound | None":
+def _sound_file(sound_type: str) -> str | None:
     for ext in ('.wav', '.mp3', '.ogg'):
         path = os.path.join(_sounds_dir(), sound_type + ext)
         if os.path.isfile(path):
-            try:
-                return pygame.mixer.Sound(path)
-            except Exception:
-                return None
+            return path
     return None
 
-def _add_trill_pulse(t, wave, sample_rate, t_start, duration, f_start, f_end, vol=0.3):
-    t_end = t_start + duration
-    mask = (t >= t_start) & (t <= t_end)
+# Bell partials: (ratio, weight, decay multiplier). The inharmonic 2.76 gives the "glass" tone, higher ones die out faster.
+_BELL = ((1.0, 1.0, 1.0), (2.0, 0.35, 1.6), (2.76, 0.16, 2.2), (5.4, 0.05, 3.5))
+
+
+def _add_bell(t, wave, t_start, freq, dur, vol=0.5):
+    """A struck-bell note: instant attack, exponential decay over ~dur seconds."""
+    mask = t >= t_start
     if not np.any(mask):
         return
-    t_pulse = t[mask] - t_start
-    phase = 2 * np.pi * (f_start * t_pulse + 0.5 * (f_end - f_start) / duration * t_pulse * t_pulse)
-    pulse_wave = np.sin(phase)
-    env = np.sin(np.pi * t_pulse / duration) ** 2
-    wave[mask] += pulse_wave * env * vol
+    tt = t[mask] - t_start
+    k = 6.0 / dur
+    note = np.zeros_like(tt)
+    for ratio, weight, decay in _BELL:
+        note += weight * np.sin(2 * np.pi * freq * ratio * tt) * np.exp(-tt * k * decay)
+    wave[mask] += note * np.minimum(1.0, tt * 800) * vol
 
-def _synthesize_sound(sound_type: str, sample_rate: int = 44100) -> pygame.mixer.Sound:
+
+def _add_tone(t, wave, t_start, duration, freq, vol=0.5):
+    """A soft held tone (sine with a little third harmonic) with a short fade in and out."""
+    mask = (t >= t_start) & (t < t_start + duration)
+    if not np.any(mask):
+        return
+    tt = t[mask] - t_start
+    env = np.minimum(1.0, np.minimum(tt / 0.02, (duration - tt) / 0.05))
+    wave[mask] += (np.sin(2 * np.pi * freq * tt) + 0.25 * np.sin(2 * np.pi * freq * 3 * tt)) * env * vol
+
+
+def _synthesize_sound(sound_type: str, sample_rate: int = _RATE) -> bytes:
+    """Raw little-endian 16-bit stereo PCM of a UI sound."""
+    def canvas(duration):
+        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+        return t, np.zeros_like(t)
+
     if sound_type == 'milestone':
-        # Quick 2-step mini trill (high-tech feedback click)
-        duration = 0.15
-        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-        wave = np.zeros_like(t)
-        _add_trill_pulse(t, wave, sample_rate, 0.00, 0.04, 1200, 1800, 0.4)
-        _add_trill_pulse(t, wave, sample_rate, 0.03, 0.08, 1800, 2600, 0.5)
+        # two quick glassy pings, rising
+        t, wave = canvas(0.45)
+        _add_bell(t, wave, 0.00, 1318.5, 0.25, 0.5)
+        _add_bell(t, wave, 0.09, 1760.0, 0.3, 0.5)
     elif sound_type == 'red_alert':
-        # Sweep/Klaxon warning sound (futuristic emergency alarm)
-        duration = 1.3
-        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-        wave = np.zeros_like(t)
-        # 3 cycles of a sweep from 450Hz to 850Hz with brief gap
-        cycle = 0.4
+        # two-tone siren (high, low) x3: urgent but not shrill
+        t, wave = canvas(1.75)
         for i in range(3):
-            t_start = i * cycle
-            _add_trill_pulse(t, wave, sample_rate, t_start, 0.35, 450, 850, 0.6)
-    elif sound_type in ('reminder', 'alarm'):
-        # Ascending cybernetic trill (futuristic HUD notification)
-        duration = 0.45
-        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-        wave = np.zeros_like(t)
-        _add_trill_pulse(t, wave, sample_rate, 0.00, 0.04, 600, 900, 0.3)
-        _add_trill_pulse(t, wave, sample_rate, 0.03, 0.04, 900, 1300, 0.35)
-        _add_trill_pulse(t, wave, sample_rate, 0.06, 0.04, 1300, 1800, 0.4)
-        _add_trill_pulse(t, wave, sample_rate, 0.09, 0.04, 1800, 2400, 0.45)
-        _add_trill_pulse(t, wave, sample_rate, 0.12, 0.18, 2400, 3000, 0.55)
+            _add_tone(t, wave, i * 0.56, 0.28, 784.0, 0.5)
+            _add_tone(t, wave, i * 0.56 + 0.28, 0.28, 587.3, 0.5)
+    elif sound_type == 'alarm':
+        # alarm-clock rhythm: three bursts of three pings
+        t, wave = canvas(2.7)
+        for burst in range(3):
+            for k in range(3):
+                _add_bell(t, wave, burst * 0.8 + k * 0.15, 1046.5, 0.28, 0.5)
+    elif sound_type == 'reminder':
+        # calm descending ding-dong
+        t, wave = canvas(1.5)
+        _add_bell(t, wave, 0.00, 880.0, 0.9, 0.55)
+        _add_bell(t, wave, 0.24, 659.3, 1.1, 0.55)
     else:
-        duration = 0.25
-        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-        env = np.exp(-15 * t)
-        wave = np.sin(2 * np.pi * 1000.00 * t) * env * 0.5
+        t, wave = canvas(0.6)
+        _add_bell(t, wave, 0.0, 880.0, 0.45, 0.55)
 
     # Normalize to prevent clipping
     max_val = np.max(np.abs(wave))
     if max_val > 1e-4:
         wave = wave / max_val * 0.55
 
-    # Convert to 16-bit stereo Sound
-    audio_data = (wave * 32767).astype(np.int16)
-    audio_stereo = audio_data.reshape(-1, 1).repeat(2, axis=1)
-    return pygame.sndarray.make_sound(audio_stereo)
+    # Convert to 16-bit stereo
+    fade = min(len(wave), int(sample_rate * 0.01))
+    if fade:
+        wave[-fade:] *= np.linspace(1.0, 0.0, fade)
+    audio_data = (wave * 32767).astype('<i2')
+    return audio_data.reshape(-1, 1).repeat(2, axis=1).tobytes()
 
-def _get_sound(sound_type: str) -> pygame.mixer.Sound:
+def _pcm(sound_type: str) -> bytes:
     with _lock:
-        if sound_type not in _cached_sounds:
-            sound = _load_sound_file(sound_type)
-            if sound is None:
-                mix_init = pygame.mixer.get_init()
-                sr = mix_init[0] if mix_init else 44100
-                sound = _synthesize_sound(sound_type, sample_rate=sr)
-            _cached_sounds[sound_type] = sound
-        return _cached_sounds[sound_type]
+        if sound_type not in _cached_pcm:
+            _cached_pcm[sound_type] = (_synthesize_sound(sound_type), _RATE)
+        return _cached_pcm[sound_type][0]
 
 def play_alert_sound(sound_type: str = 'reminder') -> None:
-    """Plays a premium synthesized UI alert sound."""
-    try:
-        from core.speech.tts import ensure_mixer_init
-        ensure_mixer_init()
-    except Exception:
-        pass
+    """Plays a UI alert sound (a file from audio/sfx when there is one, a synthesised one otherwise) through the native player."""
+    def _play():
+        path = _sound_file(sound_type)
+        if path is not None and native_audio.play(path, 1.0, 'sfx') is not None:
+            return
+        native_audio.play_pcm(_pcm(sound_type), _RATE, 2, 1.0, 'sfx')
 
-    try:
-        if not pygame.mixer.get_init():
-            raise RuntimeError("Mixer not initialized")
-        
-        if sound_type == 'red_alert':
-            # Play the sweeping klaxon alarm
-            def _play_seq():
-                try:
-                    sound = _get_sound('red_alert')
-                    sound.play()
-                except Exception:
-                    pass
-            threading.Thread(target=_play_seq, daemon=True).start()
-        else:
-            sound = _get_sound(sound_type)
-            sound.play()
-    except Exception:
-        # Fallback to winsound
-        def _fallback():
-            try:
-                import winsound
-                if sound_type == 'alarm':
-                    # Gentle descending/ascending melody fallback
-                    for freq in (784, 880, 1047):
-                        winsound.Beep(freq, 120)
-                        time.sleep(0.05)
-                elif sound_type == 'red_alert':
-                    # Repeat hazard klaxon Beeps
-                    for _ in range(3):
-                        winsound.Beep(580, 250)
-                        time.sleep(0.1)
-                elif sound_type == 'milestone':
-                    winsound.Beep(1500, 80)
-                else:
-                    winsound.Beep(1200, 150)
-            except Exception:
-                pass
-        threading.Thread(target=_fallback, daemon=True).start()
-
+    # synthesising (red_alert is 1.3 s of numpy work) and the request itself stay off the caller's thread
+    threading.Thread(target=_play, daemon=True, name='alert-sound').start()

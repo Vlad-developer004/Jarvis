@@ -6,6 +6,7 @@ from core.system import app_state
 from core.logging_setup import get_logger as _get_logger
 from core.speech import stop_speaking, is_speaking
 from core.nlp import _normalize_stt, extract_all_commands
+from core.nlp import followup
 from core.nlp.commands import CANON_SIMPLE, normalize_numbers
 from core.nlp.semantic import classify_intent, _CYR_VOWELS
 from ui_next.voice_prompt import try_consume_voice_prompt
@@ -356,7 +357,7 @@ def handle_recognized_text(text: str, handler):
             # Brightness
             'brightness_up', 'brightness_down', 'brightness_set',
             # Media playback
-            'media_pause', 'media_play',
+            'media_pause', 'media_play', 'media_next', 'media_prev',
             'media_pause_youtube', 'media_play_youtube',
             'media_pause_browser', 'media_play_browser',
             # YouTube / video
@@ -501,7 +502,15 @@ def handle_recognized_text(text: str, handler):
                 return
         except Exception:
             _swallow()
+        try:
+            from actions import scenarios as _scn
+            if (_sc := _scn.match(text_lower)):
+                app_state.last_command_time = time.time(); _scn.run(handler, _sc, _sem_parse); return
+        except Exception:
+            _swallow()
         cmds = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
+        if not cmds and (_fu := followup.resolve(_WAKE_RE.sub('', text_lower, count=1))):
+            cmds = [_fu]      # "а завтра?" after the weather, "ещё" after "громче"
         # If wake word ate the whole command, strip it and re-parse the remainder
         if cmds and all(c == 'wake' for c, _ in cmds):
             _rest = _WAKE_RE.sub('', text_lower, count=1).strip().strip(',').strip()
@@ -538,6 +547,7 @@ def handle_recognized_text(text: str, handler):
                 else:
                     print(f"[RECOGNITION] Executing global command: action={c!r}, segment={seg!r}", flush=True)
                     handler.handle(c, seg)
+                    if c != 'wake': followup.remember(c, seg)
                 time.sleep(0.1)
             if handler.silent_mode:
                 handler.silent_mode = False; handler.play_response('confirm', override_silent=True)

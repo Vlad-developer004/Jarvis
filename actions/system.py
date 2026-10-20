@@ -37,6 +37,8 @@ from actions.system_parts.input_hw import (
 from actions.system_control import (
     shutdown_pc,
     restart_pc,
+    lock_pc,
+    sleep_pc,
     schedule_shutdown,
     cancel_shutdown,
     toggle_wifi,

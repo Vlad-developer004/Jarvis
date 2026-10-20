@@ -41,6 +41,14 @@ def _handle_media_group(handler, cmd, text_lower, amount):
         handle_yt_control(handler, cmd, text_lower)
     elif cmd.startswith('vol_') or cmd.startswith('app_vol_') or cmd == 'audio_switch':
         handle_volume(handler, cmd, text_lower, amount)
+    elif cmd in ('media_next', 'media_prev'):
+        # hardware media keys: reach Spotify, system players and the browser's media session alike
+        try:
+            import pyautogui
+            pyautogui.press('nexttrack' if cmd == 'media_next' else 'prevtrack')
+            handler.play_response()
+        except Exception:
+            _swallow()
     elif cmd in ('media_pause', 'media_play', 'media_pause_youtube', 'media_pause_browser', 'media_play_youtube', 'media_play_browser'):
         from core.system import app_state
         if app_state.mouse_moving:
@@ -159,7 +167,7 @@ def _handle_play_yt(handler, cmd, text_lower, amount):
 def _handle_show_help(handler, cmd, text_lower, amount):
     try:
         from ui_next import host
-        if host.open_wizard():
+        if host.open_view('commands'):          # the searchable catalog of what Jarvis understands; the first-run wizard is only for the first start
             handler.speak(spk('help.intro'))
         else:
             handler.speak(spk('hud.not_running'))
@@ -290,7 +298,7 @@ _reg_prefix('win_snap_', _w_window)
 
 _reg_prefix('mouse_', _w_mouse)
 
-_reg_exact(['shutdown', 'restart', 'restart_jarvis', 'dictation_on', 'system_cleanup', 'system_cleanup_deep', 'internet_speed', 'wifi_toggle', 'keyboard_lock', 'keyboard_unlock', 'shutdown_timer', 'cancel_timer', 'guard_on', 'guard_off', 'economy_on', 'economy_off', 'listen_off', 'listen_on', 'jarvis_exit', 'bluetooth_toggle', 'reminder'], _w_system)
+_reg_exact(['shutdown', 'restart', 'lock_pc', 'sleep_pc', 'restart_jarvis', 'dictation_on', 'system_cleanup', 'system_cleanup_deep', 'internet_speed', 'wifi_toggle', 'keyboard_lock', 'keyboard_unlock', 'shutdown_timer', 'cancel_timer', 'guard_on', 'guard_off', 'economy_on', 'economy_off', 'listen_off', 'listen_on', 'jarvis_exit', 'bluetooth_toggle', 'reminder'], _w_system)
 _reg_prefix('brightness_', _w_system)
 
 _reg_prefix('clip_', _w_clip)
@@ -300,7 +308,7 @@ _reg_exact(['browser_tab', 'close_tab', 'close_tab_n', 'close_all_tabs', 'open_b
 
 _reg_exact(['qa_search', 'llm_chat'], _w_ai)
 
-_reg_exact(['currency_rate', 'weather', 'set_weather_city', 'google_search', 'translate', 'translate_speech', 'my_ip', 'system_specs', 'nasa_apod'], _w_info)
+_reg_exact(['currency_rate', 'weather', 'set_weather_city', 'google_search', 'translate', 'translate_speech', 'my_ip', 'calc', 'system_specs', 'nasa_apod'], _w_info)
 
 _reg_exact(['empty_trash', 'create_folder', 'delete_folder', 'delete_file', 'cd_folder', 'explorer_go_up', 'explorer_goto', 'find_doc', 'find_sheet', 'find_file', 'create_word_doc'], _w_files)
 _reg_prefix('recent_', _w_files)
@@ -356,8 +364,8 @@ _reg_prefix('reactor_', _w_reactor)
 _reg_exact(['song_id'], _w_song)
 
 class CommandHandler(BaseHandler):
-    def __init__(self, pa, rate, chunk, asr):
-        super().__init__(pa, rate, chunk, asr)
+    def __init__(self, rate, chunk, asr):
+        super().__init__(rate, chunk, asr)
         from ui_next import host
         self._settings = host.settings()
         # One dedicated worker serializes command execution — previously every

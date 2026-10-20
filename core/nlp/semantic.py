@@ -93,6 +93,14 @@ class SemanticIntentClassifier:
         elif isinstance(config, dict):
             self._cfg.update(config)
 
+        # Relative model/cache paths belong to the project, not to whatever the working folder is when the files are first read (anything that
+        # changes it before the first call, e.g. importing main.py, made the cache "not found").
+        from config_pack.config import get_project_root
+        root = Path(get_project_root())
+        for key in ('onnx_model_dir', 'onnx_fp32_dir', 'ft_model_dir', 'cache_path'):
+            if self._cfg.get(key) and not Path(self._cfg[key]).is_absolute():
+                self._cfg[key] = str(root / self._cfg[key])
+
         # ONNX inference session — created lazily on first call
         self._session: object | None = None  # onnxruntime.InferenceSession
         self._tokenizer: object | None = None  # transformers.PreTrainedTokenizerFast
@@ -228,14 +236,13 @@ class SemanticIntentClassifier:
         """Load sentence encoder.
 
         Priority:
-        1. Quantised ONNX model (``data/intent_model_onnx_quant/``) — no PyTorch.
-        2. FP32 ONNX model (``data/intent_model_onnx/``) — no PyTorch.
-        3. Fine-tuned SentenceTransformer (``data/intent_model/``) — needs PyTorch.
-        4. Base HuggingFace model — needs PyTorch (download on first run).
+        1. Quantised ONNX model (``data/intent_model_onnx_quant/``).
+        2. FP32 ONNX model (``data/intent_model_onnx/``).
+        There is no PyTorch fallback: without an ONNX model the semantic layer stays off.
         """
         for onnx_dir_key in ('onnx_model_dir', 'onnx_fp32_dir'):
             onnx_dir = Path(self._cfg.get(onnx_dir_key, ''))
-            model_file = onnx_dir / ('model_quantized.onnx' if 'quant' in str(onnx_dir) else 'model.onnx')
+            model_file = onnx_dir / ('model_quantized.onnx' if 'quant' in onnx_dir.name else 'model.onnx')
             tok_file = onnx_dir / 'tokenizer.json'
             if model_file.exists() and tok_file.exists():
                 try:
@@ -243,19 +250,9 @@ class SemanticIntentClassifier:
                     _log.info('ONNX encoder loaded from %s (no PyTorch)', onnx_dir)
                     return enc
                 except Exception as e:
-                    _log.warning('ONNX encoder init failed (%s): %s — falling back', onnx_dir, e)
+                    _log.warning('ONNX encoder init failed (%s): %s', onnx_dir, e)
 
-        # PyTorch fallback
-        import os
-        os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
-        from sentence_transformers import SentenceTransformer
-        ft_dir = Path(self._cfg.get('ft_model_dir', 'data/intent_model'))
-        if ft_dir.exists():
-            _log.info('Loading fine-tuned SentenceTransformer from %s', ft_dir)
-            return SentenceTransformer(str(ft_dir))
-        model_name = self._cfg['model_name']
-        _log.info('Using base SentenceTransformer: %s', model_name)
-        return SentenceTransformer(model_name)
+        raise RuntimeError('no ONNX intent encoder found (data/intent_model_onnx_quant or data/intent_model_onnx)')
 
     # ── Encoding ─────────────────────────────────────────────────────────────
 
@@ -532,16 +529,3 @@ def warmup_async(on_done=None) -> None:
     """Start background model loading. classify_intent returns None until ready."""
     _get_classifier().warmup_async(on_done)
 
-
-def preload_pytorch() -> None:
-    """Import PyTorch DLLs without loading the model weights.
-    Satisfies the sherpa-onnx DLL ordering constraint on Windows (~2s).
-    Call this first, then warmup_async() to load weights in background."""
-    import os
-    os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
-    # Disable CUDA to prevent pynvml 0xC0000005 crash on Windows when torch.cuda
-    # initialises before the NVIDIA driver is fully ready (race with other DLL loads).
-    # All inference in this project is CPU-only, so CUDA is never needed.
-    os.environ.setdefault('CUDA_VISIBLE_DEVICES', '')
-    import torch  # noqa: F401  — loads PyTorch DLLs as side effect; don't use sentence_transformers here
-    _log.info('PyTorch DLLs preloaded (CUDA disabled)')

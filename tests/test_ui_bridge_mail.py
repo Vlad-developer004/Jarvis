@@ -413,3 +413,52 @@ def test_editor_html_is_sanitized_and_sent_with_the_plain_text(monkeypatch):
     sent.clear()
     ml.send({'to': 'a@b.c', 'body': 'plain only'})
     assert sent['html'] == ''
+
+
+def test_snippet_plain_and_quotes():
+    from ui_next.bridge import mail_snippet as sn
+    head = b'Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n'
+    body = 'Здравствуйте!\r\n> старая цитата\r\nСмотрите https://example.com/x\r\n------\r\nДо пятницы.'.encode()
+    assert sn.snippet(head, body) == 'Здравствуйте! Смотрите До пятницы.'
+
+
+def test_snippet_multipart_prefers_plain_and_survives_truncation():
+    from ui_next.bridge import mail_snippet as sn
+    head = b'Content-Type: multipart/alternative; boundary="B"\r\n'
+    body = (b'--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello there\r\n--B\r\nContent-Type: text/html\r\n\r\n<p>Hello <b>there</b></p>\r\n--B--\r\n')
+    assert sn.snippet(head, body) == 'Hello there'
+    assert sn.snippet(head, body[:70]).startswith('Hello')
+
+
+def test_snippet_html_only_drops_style_and_tags():
+    from ui_next.bridge import mail_snippet as sn
+    head = b'Content-Type: text/html; charset=utf-8\r\n'
+    assert sn.snippet(head, b'<style>a{color:red}</style><h1>Rechnung</h1><p>Betrag&nbsp;12 &euro;</p>') == 'Rechnung Betrag 12 €'
+
+
+def test_snippet_base64_cut_in_the_middle():
+    import base64
+    from ui_next.bridge import mail_snippet as sn
+    head = b'Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n'
+    enc = base64.b64encode('Привет, это тест длинного письма'.encode())
+    assert sn.snippet(head, enc[:41]).startswith('Привет')
+
+
+def test_parse_fetch_and_session_cache(monkeypatch):
+    from ui_next.bridge import mail_snippet as sn
+    h = b'Content-Type: text/plain\r\n'
+    data = [(b'1 (UID 7 BODY[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] {26}', h), (b' BODY[TEXT]<0> {5}', b'hi up'), b')',
+            (b'2 (UID 9 BODY[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] {26}', h), (b' BODY[TEXT]<0> {6}', b'second'), b')']
+    assert sn.parse_fetch(data) == {'7': (h, b'hi up'), '9': (h, b'second')}
+    calls = []
+
+    class C:
+        def uid(self, *a):
+            calls.append(a)
+            return 'OK', data
+
+    s = ims.Session()
+    monkeypatch.setattr(s, 'run', lambda fn: fn(C()))
+    monkeypatch.setattr(s, '_select', lambda conn, role: None)
+    assert s.snippets('inbox', ['7', '9']) == {'7': 'hi up', '9': 'second'}
+    assert s.snippets('inbox', ['7']) == {'7': 'hi up'} and len(calls) == 1

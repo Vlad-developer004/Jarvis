@@ -24,7 +24,7 @@ MAX_BYTES = 5_000_000
 MAX_EVENTS = 5000
 SECRET_RE = re.compile(r'(pass(word|wd)?|token|secret|api[_-]?key)', re.I)
 KEY_RE = re.compile(r'^[A-Za-z0-9_]{1,64}$')
-MACHINE_KEYS = frozenset({'audio_input_device_index', 'audio_output_device_name', 'best_sample_rate', 'onnx_threads', 'zoom_factor', 'scrollbar_width', 'sidebar_width_raw', 'sidebar_width_left',
+MACHINE_KEYS = frozenset({'audio_input_device_index', 'audio_input_device_name', 'audio_output_device_name', 'best_sample_rate', 'onnx_threads', 'zoom_factor', 'scrollbar_width', 'sidebar_width_raw', 'sidebar_width_left',
                           'sidebar_width_right', 'start_maximized', 'last_location', 'weather_yesterday', 'dep_sync_target'})
 UI_KEYS = ('jarvisTheme', 'jarvisCustom', 'jarvisAuto', 'uiScale', 'jarvisSfx', 'jarvisSfxVol', 'jarvisHide', 'jarvisFx')
 _pending: dict[str, dict] = {}

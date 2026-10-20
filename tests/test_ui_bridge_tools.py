@@ -106,6 +106,13 @@ def test_updates(env, monkeypatch):
     assert run(op='update_install')['error'] == 'not_ready'
 
 
+def test_ip_lookup_switch(env):
+    assert run(op='state')['ip_lookup'] is True
+    assert run(op='ip_lookup', on=False)['ip_lookup'] is False and settings(env)['allow_ip_lookup'] is False
+    from core import netpolicy
+    assert netpolicy.ip_lookup_allowed() is False
+
+
 def test_unknown_op(env):
     assert run(op='nope')['error'] == 'bad_op'
 
@@ -147,3 +154,13 @@ def test_video_details_are_fetched_in_the_background_and_only_for_youtube_ids(en
     assert r['items'] == {'https://youtu.be/dQw4w9WgXcQ': {'title': 'Песня', 'author': 'Автор', 'thumb': 'data:image/jpeg;base64,AAA', 'duration': '3:21'}} and r['pending'] == 0
     assert 'videos' not in r                                                 # a lookup does not return the whole state
     assert run(op='video_meta', urls='x')['items'] == {}
+
+
+def test_scenarios_roundtrip(env):
+    r = run(op='scenario_save', name='Работа', phrase='режим работы', steps='открой хром\nгромкость тридцать')
+    assert r['ok'] and r['scenarios'][0]['steps'] == ['открой хром', 'громкость тридцать'] and settings(env)['scenarios'][0]['name'] == 'Работа'
+    assert run(op='scenario_save', name='Другое', phrase='режим работы', steps='x')['error'] == 'exists'
+    assert run(op='scenario_save', name='X', phrase='y', steps='')['error'] == 'bad_steps'
+    r = run(op='scenario_save', old='Работа', name='Работа 2', phrase='режим работы', steps=['a'])
+    assert [s['name'] for s in r['scenarios']] == ['Работа 2']
+    assert run(op='scenario_del', name='Работа 2')['scenarios'] == []

@@ -30,7 +30,7 @@
     const from = Number.isFinite(el._fzv) ? el._fzv : to;
     el._fzv = to;
     cancelAnimationFrame(tweens.get(el));
-    if (lite() || document.hidden || Math.abs(to - from) < 1) { put(to); return; }
+    if (lite() || document.hidden || Math.abs(to - from) < 4 || root.dataset.st === 'IDLE' || !el.offsetParent) { put(to); return; }   // calm, small moves and values on another screen are set at once: a tween costs a layout per frame
     const t0 = performance.now();
     const step = (t) => { const k = Math.min(1, (t - t0) / 450), e = 1 - Math.pow(1 - k, 3); put(from + (to - from) * e); if (k < 1) tweens.set(el, requestAnimationFrame(step)); };
     tweens.set(el, requestAnimationFrame(step));

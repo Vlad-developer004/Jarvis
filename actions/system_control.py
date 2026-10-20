@@ -52,6 +52,21 @@ def restart_pc() -> tuple[bool, str]:
         return (True, 'Перезагрузка через 5 секунд')
     except Exception as e:
         return (False, str(e))
+def lock_pc() -> tuple[bool, str]:
+    try:
+        import ctypes
+        if not ctypes.windll.user32.LockWorkStation():
+            return (False, 'LockWorkStation failed')
+        return (True, 'Компьютер заблокирован')
+    except Exception as e:
+        return (False, str(e))
+def sleep_pc() -> tuple[bool, str]:
+    # SetSuspendState(hibernate=0, force=1, wakeupEventsDisabled=0); Windows hibernates instead when sleep is unavailable
+    try:
+        subprocess.Popen(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=134217728)
+        return (True, 'Спящий режим')
+    except Exception as e:
+        return (False, str(e))
 def schedule_shutdown(seconds: int) -> tuple[bool, str]:
     try:
         subprocess.Popen(['shutdown', '/s', '/t', str(seconds)])

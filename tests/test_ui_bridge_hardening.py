@@ -68,10 +68,14 @@ def test_command_endpoint_checks_token_origin_and_host(hub):
 
 def test_command_endpoint_rejects_bad_bodies(hub):
     hub.command_handler = lambda cmd, data: {'ok': True}
-    for raw in (b'', b'not json', b'[]', b'{"no_cmd": 1}', b'x' * 400_001):
+    for raw in (b'', b'not json', b'[]', b'{"no_cmd": 1}'):
         with pytest.raises(urllib.error.HTTPError) as e:
             _post(hub, None, raw=raw)
         assert e.value.code == 400, raw[:20]
+    # an oversized body is refused before it is read, so the client may see the 400 or the closed connection (Windows resets the socket)
+    with pytest.raises((urllib.error.HTTPError, urllib.error.URLError, ConnectionError)) as e:
+        _post(hub, None, raw=b'x' * 400_001)
+    assert getattr(e.value, 'code', 400) == 400
 
 
 def test_unknown_command_and_failing_command_do_not_break_the_server(hub):

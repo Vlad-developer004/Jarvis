@@ -1,8 +1,54 @@
 import json
 import os
 import subprocess
+import time
 import webbrowser
 from pathlib import Path
+
+_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)     # the packaged app has no console: do not flash one per git call
+_GIT_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GCM_INTERACTIVE': 'never'}     # never wait for a password prompt nobody can see
+
+
+def _git(repo: str, *args: str, timeout: float = 60.0, check: bool = False) -> subprocess.CompletedProcess:
+    """Runs `git -C repo ...` with the list form (no shell), UTF-8 paths unescaped, a timeout, and stdout/stderr as text.
+    Raises GitError (never a bare CalledProcessError or TimeoutExpired) so callers can show one readable line."""
+    cmd = ['git', '-c', 'core.quotepath=false', '-C', repo, *args]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout,
+                           env={**os.environ, **_GIT_ENV}, creationflags=_NO_WINDOW)
+    except FileNotFoundError as ex:
+        raise GitError('Git не найден. Установите Git for Windows и перезапустите Jarvis.') from ex
+    except subprocess.TimeoutExpired as ex:
+        raise GitError(f'git {args[0]} не ответил за {int(timeout)} с (хук, сеть или запрос пароля).') from ex
+    if check and r.returncode != 0:
+        raise GitError(explain_error((r.stderr or '') + (r.stdout or '')))
+    return r
+
+
+class GitError(RuntimeError):
+    """A git failure with a message fit to show or speak."""
+
+
+def explain_error(text: str) -> str:
+    """The readable form of git's output for the failures people actually hit; anything else is passed through, trimmed."""
+    t = (text or '').strip()
+    low = t.lower()
+    if 'please tell me who you are' in low or 'unable to auto-detect email' in low:
+        return 'Git не знает, кто вы. Выполните: git config --global user.name "Имя" и git config --global user.email "почта".'
+    if 'index.lock' in low:
+        return 'Другая программа сейчас работает с репозиторием (файл index.lock). Подождите несколько секунд: редактор обновляет индекс.'
+    if 'dubious ownership' in low or 'safe.directory' in low:
+        return 'Git считает папку небезопасной. Выполните: git config --global --add safe.directory "путь к репозиторию".'
+    if 'authentication failed' in low or 'could not read username' in low or 'permission denied' in low:
+        return 'Нет доступа к удалённому репозиторию: войдите в Git Credential Manager или проверьте ключ SSH.'
+    if 'non-fast-forward' in low or 'fetch first' in low or 'rejected' in low and 'behind' in low:
+        return 'На сервере есть изменения, которых нет у вас. Сначала git pull, затем отправьте снова.'
+    if 'nothing to commit' in low:
+        return 'Нет изменений для коммита.'
+    if 'hook' in low and ('failed' in low or 'declined' in low):
+        return 'Хук (например pre-commit) отклонил коммит:\n' + t[-600:]
+    return t[-600:] or 'git завершился с ошибкой'
+
 
 def _find_git_repo(start_path: str | None = None) -> str | None:
     try:
@@ -112,20 +158,20 @@ def _repo_from_window_title(hwnd) -> str | None:
     return None
 
 def _get_status(repo: str) -> list[dict]:
-    r = subprocess.run(
-        ['git', '-C', repo, 'status', '--porcelain'],
-        capture_output=True, text=True, encoding='utf-8'
-    )
-    files = []
-    # NOTE: do not .strip() the whole blob before splitlines() — porcelain
-    # status codes for the first entry are often space-prefixed (e.g. ' M'),
-    # and stripping the blob eats that leading space, shifting the fixed
-    # line[3:] slice by one character and truncating the filename.
-    for line in r.stdout.splitlines():
-        if not line.strip():
+    # -z: records end with NUL and paths are never quoted, so spaces, quotes and non-ASCII names survive; -uall lists the files of a new folder
+    # one by one. A rename or copy ("R", "C") is followed by a second record with the old path. Do not .strip() a record: the status code of the
+    # first entry is often space-prefixed (' M').
+    r = _git(repo, 'status', '--porcelain=v1', '-z', '-uall')
+    files, records = [], r.stdout.split('\0')
+    i = 0
+    while i < len(records):
+        rec = records[i]
+        i += 1
+        if len(rec) < 4:
             continue
-        status = line[:2].strip()
-        fname = line[3:].strip()
+        status, fname = rec[:2].strip(), rec[3:]
+        if status[:1] in ('R', 'C'):
+            i += 1
         files.append({'status': status, 'file': fname})
     return files
 
@@ -151,54 +197,58 @@ def _generate_message(changed: list[dict]) -> str:
 # ── branch helpers ──────────────────────────────────────────────────────────
 
 def get_current_branch(repo: str) -> str:
-    r = subprocess.run(
-        ['git', '-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD'],
-        capture_output=True, text=True, encoding='utf-8'
-    )
-    return r.stdout.strip() or 'main'
+    try:
+        r = _git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')
+    except GitError:
+        return 'main'
+    name = r.stdout.strip()
+    if name == 'HEAD':      # a repository without commits (rev-parse fails to name the branch) or a detached HEAD
+        return _unborn_branch(repo) or 'HEAD'
+    return name or _unborn_branch(repo) or 'main'
+
+
+def _unborn_branch(repo: str) -> str:
+    """The branch a repository without commits is on (`git branch --show-current` works there; rev-parse does not)."""
+    try:
+        return _git(repo, 'branch', '--show-current').stdout.strip()
+    except GitError:
+        return ''
+
 
 def get_branches(repo: str) -> list[str]:
     """Return local branch names, current branch first."""
     current = get_current_branch(repo)
-    r = subprocess.run(
-        ['git', '-C', repo, 'branch', '--format=%(refname:short)'],
-        capture_output=True, text=True, encoding='utf-8'
-    )
-    branches = [b.strip() for b in r.stdout.splitlines() if b.strip()]
+    try:
+        r = _git(repo, 'branch', '--format=%(refname:short)')
+    except GitError:
+        return [current]
+    branches = [b.strip() for b in r.stdout.splitlines() if b.strip() and not b.startswith('(')]     # "(HEAD detached at ...)" is not a branch
     if current in branches:
         branches.remove(current)
     return [current] + branches
 
-def create_branch(repo: str, name: str) -> tuple[bool, str]:
+
+def _switch(repo: str, *args: str) -> tuple[bool, str]:
     try:
-        subprocess.run(
-            ['git', '-C', repo, 'checkout', '-b', name],
-            check=True, capture_output=True, encoding='utf-8'
-        )
-        return True, name
-    except subprocess.CalledProcessError as e:
-        return False, (e.stderr or '').strip()
+        _git(repo, *args, check=True)
+        return True, args[-1]
+    except GitError as ex:
+        return False, str(ex)
+
+
+def create_branch(repo: str, name: str) -> tuple[bool, str]:
+    return _switch(repo, 'checkout', '-b', name)
+
 
 def checkout_branch(repo: str, name: str) -> tuple[bool, str]:
-    try:
-        subprocess.run(
-            ['git', '-C', repo, 'checkout', name],
-            check=True, capture_output=True, encoding='utf-8'
-        )
-        return True, name
-    except subprocess.CalledProcessError as e:
-        return False, (e.stderr or '').strip()
+    return _switch(repo, 'checkout', name)
 
 # ── PR URL helper ────────────────────────────────────────────────────────────
 
 def open_pull_request_url(repo: str, branch: str, pr_title: str = '') -> None:
     """Open browser to create a PR on GitHub or GitLab for the given branch."""
     try:
-        r = subprocess.run(
-            ['git', '-C', repo, 'remote', 'get-url', 'origin'],
-            capture_output=True, text=True, encoding='utf-8'
-        )
-        remote_url = r.stdout.strip()
+        remote_url = _git(repo, 'remote', 'get-url', 'origin').stdout.strip()
         if not remote_url:
             return
 
@@ -266,6 +316,29 @@ def detect_repo_and_status(active_hwnd=None) -> tuple[str | None, list[dict]]:
     return repo, _get_status(repo)
 
 
+def _stage(repo: str, files: list[str] | None) -> None:
+    """Index = exactly the chosen files (or everything when None). Paths go after `--`, so a name that starts with a dash is still a path."""
+    if files is None:
+        _git(repo, 'add', '-A', check=True)
+        return
+    _git(repo, 'reset', '-q')       # fails in a repository without commits: nothing to unstage there anyway
+    for i in range(0, len(files), 200):      # keeps the command line short on Windows
+        _git(repo, 'add', '-A', '--', *files[i:i + 200], check=True)
+
+
+def _commit(repo: str, msg: str) -> None:
+    """One retry when another program (the editor refreshing its view) holds index.lock for a moment."""
+    for attempt in (1, 2):
+        r = _git(repo, 'commit', '-m', msg, timeout=180.0)      # a pre-commit hook may run linters and tests
+        if r.returncode == 0:
+            return
+        out = (r.stderr or '') + (r.stdout or '')
+        if attempt == 1 and 'index.lock' in out:
+            time.sleep(1.5)
+            continue
+        raise GitError(explain_error(out))
+
+
 def git_commit_push(
     active_hwnd=None,
     custom_msg: str = '',
@@ -284,60 +357,44 @@ def git_commit_push(
 
     msg = custom_msg.strip() if custom_msg.strip() else _generate_message(status)
 
-    # Switch branch if requested
-    if target_branch:
-        current = get_current_branch(repo)
-        if target_branch != current:
-            branches = get_branches(repo)
-            if target_branch in branches:
-                ok, err = checkout_branch(repo, target_branch)
-            else:
-                ok, err = create_branch(repo, target_branch)
-            if not ok:
-                return False, f'Не удалось переключить ветку: {err}'
-
     try:
-        if files_to_add is not None:
-            subprocess.run(['git', '-C', repo, 'reset'], capture_output=True)
-            for f in files_to_add:
-                subprocess.run(['git', '-C', repo, 'add', f], check=True, capture_output=True)
-        else:
-            subprocess.run(['git', '-C', repo, 'add', '-A'], check=True, capture_output=True)
-
-        subprocess.run(['git', '-C', repo, 'commit', '-m', msg], check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
-        err = (e.stderr or b'').decode('utf-8', errors='replace').strip()
-        return False, f'Ошибка коммита: {err}'
+        # Switch branch if requested
+        if target_branch:
+            if target_branch != get_current_branch(repo):
+                ok, err = (checkout_branch if target_branch in get_branches(repo) else create_branch)(repo, target_branch)
+                if not ok:
+                    return False, f'Не удалось переключить ветку: {err}'
+        _stage(repo, files_to_add)
+        _commit(repo, msg)
+    except GitError as ex:
+        return False, f'Ошибка коммита: {ex}'
 
     if not push_enabled:
         return True, f'Комм+ит создан локально: {msg}'
 
-    remotes = subprocess.run(
-        ['git', '-C', repo, 'remote'], capture_output=True, text=True
-    ).stdout.strip()
+    try:
+        remotes = _git(repo, 'remote').stdout.strip()
+    except GitError:
+        remotes = ''
     if not remotes:
         return True, f'Комм+ит создан (нет remote): {msg}'
 
     push_branch = target_branch or get_current_branch(repo)
-    push_cmd = ['git', '-C', repo, 'push', 'origin', push_branch]
-    if force_push:
-        push_cmd.append('--force')
-    if set_upstream:
-        push_cmd.insert(4, '--set-upstream')  # push --set-upstream origin branch
-
+    if push_branch == 'HEAD':
+        return True, f'Комм+ит создан, но HEAD отсоединён: выберите или создайте ветку, чтобы отправить его. {msg}'
+    remote = 'origin' if 'origin' in remotes.split() else remotes.split()[0]
+    base = ['push', '--force-with-lease'] if force_push else ['push']       # a plain --force would also overwrite work that appeared on the server meanwhile
+    first = base + (['--set-upstream'] if set_upstream else [])
     try:
-        subprocess.run(push_cmd, check=True, capture_output=True)
+        _git(repo, *first, remote, push_branch, timeout=120.0, check=True)
         return True, f'Комм+ит отправлен: {msg}'
-    except subprocess.CalledProcessError as e:
-        err = (e.stderr or b'').decode('utf-8', errors='replace').strip()
+    except GitError as ex:
+        err = str(ex)
         # Common case: upstream not set — retry with --set-upstream automatically
-        if 'no upstream' in err.lower() or 'set-upstream' in err.lower():
+        if not set_upstream and ('no upstream' in err.lower() or 'set-upstream' in err.lower()):
             try:
-                push_cmd2 = ['git', '-C', repo, 'push', '--set-upstream', 'origin', push_branch]
-                if force_push:
-                    push_cmd2.append('--force')
-                subprocess.run(push_cmd2, check=True, capture_output=True)
+                _git(repo, *base, '--set-upstream', remote, push_branch, timeout=120.0, check=True)
                 return True, f'Комм+ит отправлен (upstream установлен): {msg}'
-            except subprocess.CalledProcessError as e2:
-                err = (e2.stderr or b'').decode('utf-8', errors='replace').strip()
-        return False, f'Комм+ит создан, но push упал: {err}'
+            except GitError as ex2:
+                err = str(ex2)
+        return False, f'Комм+ит создан, но push не прошёл: {err}'

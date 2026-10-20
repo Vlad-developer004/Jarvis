@@ -24,6 +24,13 @@ _stop_event = threading.Event()
 _owner_faces = []
 _recognizer = None
 _dnn_net = None
+def _cv2():
+    """OpenCV is not in the installer: it is fetched on first use (core/optional_pkgs.py)."""
+    from core.optional_pkgs import ensure
+    if not ensure('opencv'):
+        raise RuntimeError('OpenCV is not available')
+    import cv2
+    return cv2
 def _ensure_dnn_downloaded():
     # Model files live under models/, which is gitignored like the other
     # speech models (asr.py follows the same download-on-first-use pattern)
@@ -50,13 +57,13 @@ def _ensure_dnn_downloaded():
         os.replace(tmp, path)
 def _face_net():
     global _dnn_net
-    import cv2
+    cv2 = _cv2()
     if _dnn_net is None:
         _ensure_dnn_downloaded()
         _dnn_net = cv2.dnn.readNetFromCaffe(_DNN_PROTOTXT, _DNN_WEIGHTS)
     return _dnn_net
 def _capture():
-    import cv2
+    cv2 = _cv2()
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         return None
@@ -71,13 +78,13 @@ def _capture():
     cap.release()
     return frame
 def _clahe_gray(gray):
-    import cv2
+    cv2 = _cv2()
     # Adaptive histogram equalization compensates uneven/low light far better
     # than a global equalizeHist, which washes out contrast in dark frames.
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
     return clahe.apply(gray)
 def _extract_faces(frame):
-    import cv2
+    cv2 = _cv2()
     # The SSD face detector is far more tolerant of poor lighting, off-angle
     # faces and partial occlusion than a Haar cascade — the biggest source of
     # the "misjudged owner as stranger" complaints was faces the cascade
@@ -103,7 +110,7 @@ def _extract_faces(frame):
         crops.append(cv2.equalizeHist(crop))
     return crops
 def _train_recognizer(faces):
-    import cv2
+    cv2 = _cv2()
     import numpy as np
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     recognizer.train(faces, np.array([0] * len(faces)))
@@ -141,7 +148,7 @@ STRANGER_CONFIRM_FRAMES = 2
 
 def _guard_loop():
     global _stop_flag
-    import cv2
+    cv2 = _cv2()
     last_t = 0.0
     consec_stranger = 0
     while not _stop_flag:
@@ -185,6 +192,7 @@ def start_guard():
     if _guard_active:
         return (False, 'already active')
     try:
+        _cv2()
         _ensure_dnn_downloaded()
     except Exception:
         return (False, 'model download error')

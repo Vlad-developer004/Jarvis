@@ -68,8 +68,9 @@
   }
 
   function watch(root) {
-    const run = () => root.querySelectorAll('input[type=time]:not([data-tp])').forEach(enhance);
-    run(); new MutationObserver(run).observe(root, { childList: true, subtree: true });
+    const SEL = 'input[type=time]:not([data-tp])', run = () => root.querySelectorAll(SEL).forEach(enhance);
+    const added = (ms) => ms.some((m) => [...m.addedNodes].some((n) => n.nodeType === 1 && (n.matches(SEL) || n.querySelector(SEL))));   // text updates and unrelated nodes cost nothing
+    run(); new MutationObserver((ms) => { if (added(ms)) run(); }).observe(root, { childList: true, subtree: true });
   }
   window.fzTime = { watch, enhance, close };
   watch(document.body);

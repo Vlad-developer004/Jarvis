@@ -200,6 +200,7 @@ class Session:
         self.customs: list[str] = []
         self.pages: dict[str, dict] = {}
         self.bodies: OrderedDict = OrderedDict()
+        self.snips: dict[tuple[str, str], str] = {}
 
     # -- connection --
     def close(self):
@@ -215,6 +216,7 @@ class Session:
             self.close()
             self.pages.clear()
             self.bodies.clear()
+            self.snips.clear()
 
     def _open(self):
         from actions import mail_client
@@ -226,6 +228,7 @@ class Session:
             self.close()
             self.pages.clear()
             self.bodies.clear()
+            self.snips.clear()
         if self.conn is not None:
             try:
                 self.conn.noop()
@@ -325,6 +328,27 @@ class Session:
         if plain:
             self.pages[role] = res
         return {**res, 'cached': False}
+
+    def snippets(self, role: str, uids: list[str]) -> dict[str, str]:
+        """One-line previews for the given letters, fetched in one request and remembered (the text of a letter does not change)."""
+        from . import mail_snippet
+        with self.lock:
+            have = {u: self.snips[(role, u)] for u in uids if (role, u) in self.snips}
+        need = [u for u in uids if u not in have]
+        if need:
+            def go(conn):
+                self._select(conn, role)
+                typ, data = conn.uid('fetch', ','.join(need).encode('ascii'),
+                                     f'(UID BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] BODY.PEEK[TEXT]<0.{mail_snippet.PREVIEW_BYTES}>)')
+                return mail_snippet.parse_fetch(data) if typ == 'OK' else {}
+            got = self.run(go)
+            with self.lock:
+                if len(self.snips) > 3000:
+                    self.snips.clear()
+                for u in need:
+                    head, body = got.get(u, (b'', b''))
+                    have[u] = self.snips[(role, u)] = mail_snippet.snippet(head, body)
+        return have
 
     def patch_page(self, role: str, uid: str, **changes):
         page = self.pages.get(role)

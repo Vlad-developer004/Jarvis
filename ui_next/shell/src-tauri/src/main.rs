@@ -2,11 +2,22 @@
 // The core feeds it through a local bridge; the tray menu's Quit ends the shell, and the core follows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{thread, time::Duration};
 use sysinfo::{Disks, Networks, System};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+
+/// Is the main window on screen (not in the tray, not minimized). WebView2 keeps reporting `document.hidden == false` for such a window, so the page
+/// would go on drawing at the display rate: the shell tells it, and the sensor thread rests meanwhile.
+static VISIBLE: AtomicBool = AtomicBool::new(true);
+
+fn set_visible(app: &AppHandle, visible: bool) {
+    if VISIBLE.swap(visible, Ordering::Relaxed) != visible {
+        let _ = app.emit_to("main", "jarvis-visibility", visible);
+    }
+}
 
 /// Discovery file written by the Python core ({port, token, pid}); None when the core is not running.
 #[tauri::command]
@@ -91,6 +102,7 @@ fn show_main(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        set_visible(app, true);
     }
 }
 
@@ -130,10 +142,16 @@ fn main() {
             // the close button hides the window to the tray, the tray menu quits
             let closing = win.clone();
             win.on_window_event(move |ev| {
-                if let WindowEvent::CloseRequested { api, .. } = ev {
-                    api.prevent_close();
-                    save_state(&closing);
-                    let _ = closing.hide();
+                match ev {
+                    WindowEvent::CloseRequested { api, .. } => {
+                        api.prevent_close();
+                        save_state(&closing);
+                        let _ = closing.hide();
+                        set_visible(closing.app_handle(), false);
+                    }
+                    // a minimize and a restore both arrive as a resize
+                    WindowEvent::Resized(_) => set_visible(closing.app_handle(), !closing.is_minimized().unwrap_or(false)),
+                    _ => {}
                 }
             });
             let open = MenuItem::with_id(app, "open", "Открыть Jarvis", true, None::<&str>)?;
@@ -169,6 +187,12 @@ fn main() {
                 let mut disks = Disks::new_with_refreshed_list();
                 let mut nets = Networks::new_with_refreshed_list();
                 loop {
+                    // nobody looks at the numbers while the main window is away, unless the small monitor is open
+                    let monitor = handle.get_webview_window("perfmini").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+                    if !VISIBLE.load(Ordering::Relaxed) && !monitor {
+                        thread::sleep(Duration::from_secs(2));
+                        continue;
+                    }
                     sys.refresh_cpu_usage();
                     sys.refresh_memory();
                     let cpu = sys.global_cpu_usage();

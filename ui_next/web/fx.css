@@ -192,3 +192,5 @@ html .offl .ar > span { display: block; min-width: 0; flex: 1 1 auto; overflow: 
 /* short windows: parts of the hero's lower area give way (see fitHero), the menu scrolls (see fitNav) */
 #hero[data-fit~=np] #np, #hero[data-fit~=wave] #wave, #hero[data-fit~=reply] #reply { display: none !important; }
 #nav.scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: hsl(var(--h) 40% 40% / .6) transparent; }
+/* halo and lamps are driven by app.js on the core tick (beat): a CSS animation here would keep the compositor at the display rate */
+.glow, .pill i, .lamp { animation: none !important; }
