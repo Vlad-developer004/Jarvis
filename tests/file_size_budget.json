@@ -5,6 +5,7 @@
  "core/nlp/commands.py": 659,
  "core/handler/interactive.py": 656,
  "actions/dev_projects.py": 636,
- "core/engine/ets2_commands.py": 613,
- "features/ets2/phrases_job.py": 608
+ "core/engine/ets2_commands.py": 601,
+ "features/ets2/phrases_job.py": 608,
+ "actions/weather.py": 610
 }

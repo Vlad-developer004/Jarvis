@@ -94,16 +94,7 @@ def _wake_up_truck(slept_hours: int | None, wake_minutes: int | None = None) -> 
         from core.speech import speak_async
         from actions.ets2_telemetry import get as _tget
         from actions.game_input import get_binding, cast_command, press_robust
-        from actions import keysend
         data = _tget()
-        engine_key = get_binding('engine', 'e')
-        try:
-            keysend.key_down(engine_key)
-            time.sleep(2.0)
-            keysend.key_up(engine_key)
-        except Exception:
-            press_robust(engine_key, duration=2.0)
-        time.sleep(0.5)
         if data and data.get('parkBrake'):
             press_robust(get_binding('handbrake', 'space'))
             time.sleep(0.3)
@@ -112,7 +103,10 @@ def _wake_up_truck(slept_hours: int | None, wake_minutes: int | None = None) -> 
             greeting = _greeting_for_game_minutes(wake_minutes)
             from core.speech.pacing import add_pauses
             speak_async(add_pauses(f'{greeting} Отдохнули знатно — спали {format_duration_russian(slept_hours * 60)}. Заводим тягач и трогаемся.'))
-        cast_command('подготовь тягач', fuzzy_threshold=0.9)
+        # The "prepare the truck" command holds the engine key itself, so it is the only thing that starts the engine: pressing the key here
+        # as well toggled the engine on and straight off again. An engine the game left running is not touched.
+        if not (data and data.get('engineEnabled')):
+            cast_command('подготовь тягач', fuzzy_threshold=0.9)
     except Exception:
         _swallow()
 def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
@@ -503,19 +497,13 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 max_sec = 360
                 poll_sec = 1.0
                 elapsed = 0.0
-                last_pct = pct
                 while elapsed < max_sec and not _REFUEL_STOP.is_set():
                     _time.sleep(poll_sec)
                     elapsed += poll_sec
                     d = _tget()
                     if not d: break
                     pct = float(d.get('fuel', 0)) / cap * 100
-                    for milestone in (50, 75, 90, 95):
-                        if last_pct < milestone <= pct:
-                            _speak(f'Бак {milestone} процентов.')
-                            break
-                    last_pct = pct
-                    if pct >= 99.5:
+                    if pct >= 99.5:   # silent while filling: only the result is announced below
                         break
                 keysend.key_up(key)
                 if _REFUEL_STOP.is_set():

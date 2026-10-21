@@ -45,15 +45,23 @@ def _check_job_lifecycle(state: _MonitorState, data: dict) -> None:
         state.last_delivered_rev = delivered_rev
 
 
+FUEL_RISE_LITRES = 0.3
+REFUEL_HOLD_SECONDS = 8.0
+
+
 def _check_fuel(state: _MonitorState, data: dict) -> None:
     from .monitor import _speak
+    now = time.monotonic()
     current_fuel = float(data.get("fuel", 0))
-    if state.last_fuel is not None and current_fuel > state.last_fuel + 5.0:
-        state.fired_fuel.clear()
+    fuel_range = float(data.get("fuelRange", 0))
+    if state.last_fuel is not None and current_fuel > state.last_fuel + FUEL_RISE_LITRES:
+        # Filling up: say nothing until the pump has been quiet for REFUEL_HOLD_SECONDS, then judge the final level. Thresholds the range
+        # has climbed back over are armed again (a slow fill never rises by a big step between two polls).
+        state.refuel_until = now + REFUEL_HOLD_SECONDS
+        state.fired_fuel = {t for t in state.fired_fuel if t >= fuel_range}
         state.fired_fuel_shortage = False
     state.last_fuel = current_fuel
-    fuel_range = float(data.get("fuelRange", 0))
-    if fuel_range <= 0:
+    if fuel_range <= 0 or now < state.refuel_until:
         return
     for threshold in FUEL_THRESHOLDS:
         if threshold in state.fired_fuel: continue

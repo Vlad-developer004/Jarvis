@@ -12,6 +12,7 @@ class _MonitorState:
     """Per-session detector state for _monitor_loop's independent checks."""
     fired_fuel: set = _field(default_factory=set)
     last_fuel: Optional[float] = None
+    refuel_until: float = 0.0
     last_speed_warn: float = 0.0
     speed_was_over: bool = False
     fired_wear: set = _field(default_factory=set)
@@ -66,6 +67,7 @@ class _MonitorState:
         startup_wear_spoken, last_speed_warn and last_auto_lights deliberately
         survive a telemetry blip — they don't depend on continuous polling."""
         self.last_fuel = None
+        self.refuel_until = 0.0
         self.fired_fuel.clear()
         self.speed_was_over = False
         self.last_engine_on = None
