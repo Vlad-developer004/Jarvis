@@ -115,3 +115,84 @@ def test_bad_op():
 def test_list_reports_the_ram_the_header_percentage_needs():
     r = run(op='list')
     assert r['ram']['total'] > 0 and 0 < r['ram']['used'] <= r['ram']['total']
+
+
+def test_parse_sign_reads_status_and_publisher():
+    ok = procs.parse_sign('{"st":"Valid","sub":"CN=Microsoft Windows, O=Microsoft Corporation"}')
+    assert ok == {'status': 'valid', 'signer': 'Microsoft Windows'}
+    assert procs.parse_sign('{"st":"Valid","sub":"CN=\\"Acme, Inc.\\", O=Acme"}')['signer'] == 'Acme, Inc.'
+    assert procs.parse_sign('{"st":"NotSigned","sub":""}')['status'] == 'unsigned'
+    assert procs.parse_sign('{"st":"HashMismatch","sub":"CN=X"}')['status'] == 'invalid'
+    assert procs.parse_sign('not json')['status'] == 'unknown'
+
+
+@pytest.mark.parametrize('name,exe,expected', [('eurotrucks2.exe', '', True), ('x.exe', r'D:\SteamLibrary\steamapps\common\G\g.exe', True), ('chrome.exe', r'C:\Program Files\Google\chrome.exe', False)])
+def test_is_game(name, exe, expected):
+    assert procs.is_game(name, exe, frozenset({'eurotrucks2.exe'})) is expected
+
+
+def test_affinity_reads_own_cores_and_rejects_bad_sets():
+    r = run(op='affinity', pid=os.getpid())
+    assert r['ok'] and r['cores'] and r['total'] >= len(r['cores'])
+    for bad in ([], [-1], [10 ** 6], ['0'], [True], 'all'):
+        assert run(op='affinity', pid=os.getpid(), cores=bad)['error'] == 'bad_cores'
+    assert run(op='affinity', pid=2 ** 22 + 7)['error'] == 'gone'
+
+
+def test_snapshot_rows_carry_game_flag_and_current_user():
+    r = run(op='list')
+    assert r['me'] and all(isinstance(p['game'], bool) for p in r['procs'])
+
+
+def test_search_opens_browser_for_a_live_process(monkeypatch):
+    seen = []
+    monkeypatch.setattr(procs.webbrowser, 'open', seen.append)
+    assert run(op='search', pid=os.getpid())['ok'] and seen and seen[0].startswith('https://www.google.com/search?q=')
+    assert run(op='search', pid=2 ** 22 + 7)['error'] == 'gone'
+
+
+def test_png_encoder_makes_a_decodable_image():
+    import io
+    from PIL import Image
+    px = bytes([255, 0, 0, 255]) * 4 + bytes([0, 0, 255, 128]) * 4
+    im = Image.open(io.BytesIO(procs._png(4, 2, px))).convert('RGBA')
+    assert im.size == (4, 2) and im.getpixel((0, 0)) == (255, 0, 0, 255) and im.getpixel((0, 1)) == (0, 0, 255, 128)
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='icons come from Win32')
+def test_icons_for_a_live_program_and_for_nothing():
+    import base64
+    me = next(p for p in run(op='list')['procs'] if p['pid'] == os.getpid())
+    r = run(op='icons', items=[{'pid': os.getpid(), 'started': me['started']}, {'pid': 2 ** 22 + 7, 'started': 1}, 'junk'])
+    assert r['ok']
+    own = r['icons'][f"{os.getpid()}:{me['started']}"]
+    assert base64.b64decode(own)[:8] == b'\x89PNG\r\n\x1a\n'
+    assert r['icons'][f'{2 ** 22 + 7}:1'] == ''
+
+
+def test_icons_batch_is_capped():
+    items = [{'pid': 2 ** 22 + i, 'started': 1} for i in range(40)]
+    assert len(run(op='icons', items=items)['icons']) == 24
+
+
+def test_exe_of_path_takes_the_program_from_a_command_line():
+    assert procs._exe_of_path(f'"{sys.executable}" -k netsvcs -p') == sys.executable
+    assert procs._exe_of_path(__file__) == '' and procs._exe_of_path('') == '' and procs._exe_of_path(None) == ''
+    assert procs._exe_of_path('Z:/no/such/program.exe /x') == ''
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='icons come from Win32')
+def test_icons_by_path_read_only_an_existing_exe():
+    import base64
+    r = run(op='icons', items=[{'path': sys.executable}, {'path': 'Z:/no/such/program.exe'}, {'path': __file__}])
+    assert base64.b64decode(r['icons'][f'p:{sys.executable}'])[:4] == b'\x89PNG'
+    assert r['icons']['p:Z:/no/such/program.exe'] == '' and r['icons'][f'p:{__file__}'] == ''
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='version resources are a Windows thing')
+def test_icons_carry_a_description_from_the_exe_version_info():
+    from ui_next.bridge import proc_desc
+    assert proc_desc.description(sys.executable) == 'Python'
+    assert proc_desc.description('Z:/no/such/program.exe') == '' and proc_desc.description(__file__) == ''
+    r = run(op='icons', items=[{'path': sys.executable}, {'path': 'Z:/no/such/program.exe'}])
+    assert r['desc'][f'p:{sys.executable}'] == 'Python' and r['desc']['p:Z:/no/such/program.exe'] == ''
