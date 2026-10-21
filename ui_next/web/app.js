@@ -5,7 +5,7 @@ const C = { cyan: hsl2hex(THEME.h - 8, 100 * THEME.sk, 59), star: hsl2hex(THEME.
 let micMuted = false, VIEW = 'dash'; const DIMCOL = '#6f8396'; let coreTint = ''; const curCol = () => (micMuted ? DIMCOL : (coreTint || SC[m.state] || SC.IDLE));
 const SC = { IDLE: C.cyan, LISTENING: C.cyan, SPEAKING: C.star }, SRU = { IDLE: 'ОЖИДАНИЕ', LISTENING: 'СЛУШАЮ', SPEAKING: 'ГОВОРЮ' };
 const P = { home: 'M3 11l9-8 9 8v10h-6v-6H9v6H3z', mic: 'M9 3h6v9l-2 2h-2l-2-2zM5 11v2l4 4h6l4-4v-2M12 17v4M8 21h8', list: 'M4 6h16M4 12h16M4 18h10',
-  bell: 'M12 3l5 4v6l3 4H4l3-4V7zM9 20h6', cal: 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4', play: 'M8 5v14l11-7z', music: 'M9 18V5l10-2v13M9 18l-3 2-3-2 3-2zM19 16l-3 2-3-2 3-2z', mail: 'M3 5h18v14H3zM3 5l9 8 9-8', pad: 'M6 8h12l4 6-3 5h-3l-2-3h-4l-2 3H5l-3-5zM8 11v3M6.5 12.5h3',
+  bell: 'M12 3l5 4v6l3 4H4l3-4V7zM9 20h6', cal: 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4', play: 'M8 5v14l11-7z', music: 'M9 18V5l10-2v13M9 18l-3 2-3-2 3-2zM19 16l-3 2-3-2 3-2z', mail: 'M3 5h18v14H3zM3 5l9 8 9-8', pad: 'M7 7h10l4 4v3l-2 4h-3l-2-3h-4l-2 3H5l-2-4v-3zM8.5 10v4M6.5 12h4M15.5 10.5h.6M17.5 12.5h.6',
   ext: 'M4 8h5V4h4v4h5v5h-4v4h4v3H4z', gear: 'M12 2l8 4.5v9L12 22l-8-6.5v-9zM12 9l3 1.7v3.6L12 16l-3-1.7v-3.6z', timer: 'M12 4l8 4v8l-8 4-8-4V8zM12 8v5l3 2M9 1h6', search: 'M10 3l5 2 2 5-2 5-5 2-5-2-2-5 2-5zM16 16l5 5', check: 'M4 12l5 5L20 6', warn: 'M12 3l10 18H2zM12 10v5M12 18v1', theme: 'M12 3l9 5v8l-9 5-9-5V8zM12 12l9-4M12 12v9M12 12L3 8', cam: 'M3 7h4l2-3h6l2 3h4v13H3zM9 13l3-3 3 3-3 3z', shield: 'M12 2l8 3v7l-8 10-8-10V5z', chip: 'M7 7h10v10H7zM10 2v3M14 2v3M10 19v3M14 19v3M2 10h3M2 14h3M19 10h3M19 14h3' };
 const ic = (k, col = 'currentColor', s = 20) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter"><path d="${P[k]}"/></svg>`;
 const hmDate = (t) => { const [h, mm] = t.split(':').map(Number), d = new Date(); d.setHours(h, mm, 0, 0); return d; };
@@ -149,6 +149,7 @@ function paintWeather() { const S = sunState(), tip = TIP[WX.cond]; $('wdeg').te
   const rest = S.day ? Math.round((S.ss - S.t)) : Math.round(S.t < S.sr ? S.sr - S.t : 1440 - S.t + S.sr); $('wleft').textContent = S.day ? `до заката ${Math.floor(rest / 60)} ч ${rest % 60} мин` : `до рассвета ${Math.floor(rest / 60)} ч ${rest % 60} мин`;
   const wi = (d) => `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const num = (v) => v !== null && v !== undefined && v !== '' && !Number.isNaN(+v), DIRS = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
+  const aql = (a) => (a <= 20 ? 'хорошее' : a <= 40 ? 'приемлемое' : a <= 60 ? 'умеренное' : a <= 80 ? 'плохое' : a <= 100 ? 'очень плохое' : 'крайне плохое');
   const uvl = (u) => (u < 3 ? 'низкий' : u < 6 ? 'умеренный' : u < 8 ? 'высокий' : u < 11 ? 'очень высокий' : 'экстремальный');
   const chips = [
     num(WX.wind) && [wi('<path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/>'), `${(+WX.wind).toFixed(1)} м/с${num(WX.wdir) ? ' ' + DIRS[Math.round(WX.wdir / 45) % 8] : ''}`, `Ветер${num(WX.wdir) ? ', ' + Math.round(WX.wdir) + '°' : ''}${num(WX.gust) ? `, порывы до ${(+WX.gust).toFixed(0)} м/с` : ''}`],
@@ -156,6 +157,8 @@ function paintWeather() { const S = sunState(), tip = TIP[WX.cond]; $('wdeg').te
     num(WX.pres) && [wi('<path d="M4 17a8 8 0 1 1 16 0M12 17l4-5"/>'), `${Math.round(WX.pres)} мм`, 'Атмосферное давление, мм рт. ст.'],
     num(WX.uv) && [wi('<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>'), `УФ ${Math.round(WX.uv)}`, `УФ-индекс сегодня: ${uvl(WX.uv)}`],
     num(WX.pop) && [wi('<path d="M7 15a4 4 0 0 1 .5-8 5.5 5.5 0 0 1 10.5 1.5A3.3 3.3 0 0 1 17.5 15M9 18v3M13 18v3M17 18v3"/>'), `${Math.round(WX.pop)}%`, 'Вероятность осадков сегодня'],
+    num(WX.aqi) && [wi('<path d="M4 9h10a3 3 0 1 0-3-3M3 14h14a3 3 0 1 1-3 3M3 19h6"/>'), `AQI ${Math.round(WX.aqi)}`, `Качество воздуха (европейский индекс): ${aql(WX.aqi)}`],
+    num(WX.yest) && Math.abs(WX.yest) >= 2 && [wi('<path d="M12 19V5M5 12l7-7 7 7"' + (WX.yest < 0 ? ' transform="rotate(180 12 12)"' : '') + '/>'), `${WX.yest > 0 ? '+' : ''}${Math.round(WX.yest)}°`, `${WX.yest > 0 ? 'Теплее' : 'Холоднее'}, чем вчера`],
     num(WX.vis) && [wi('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'), `${+WX.vis >= 10 ? Math.round(WX.vis) : (+WX.vis).toFixed(1)} км`, 'Видимость'],
   ].filter(Boolean);
   $('wstats').innerHTML = chips.map(([ic, v, t]) => `<span class="wxs" title="${t}">${ic}<b>${v}</b></span>`).join('');
@@ -304,6 +307,12 @@ function beat(t, quiet) {
   if (gl) { gl.style.opacity = (1 - .45 * kb).toFixed(3); gl.style.transform = `scale(${(1 - .06 * kb).toFixed(3)})`; }
   document.querySelectorAll('.pill i, .lamp').forEach((e) => { e.style.opacity = (1 - .65 * kp).toFixed(3); e.style.transform = `scale(${(1 - .2 * kp).toFixed(3)})`; });
 }
+/* The status lamps keep breathing where beat() does not run: every screen except the overview, and the calm overview (4 writes a second, one tiny element; fx lite stays static). */
+setInterval(() => {
+  if (document.hidden || html.dataset.fx === 'lite' || (VIEW === 'dash' && !calm())) return;
+  const kp = .5 - .5 * Math.cos(Date.now() / 1000 * 6.2832 / 2.6);
+  document.querySelectorAll('.pill i, .lamp').forEach((e) => { e.style.opacity = (1 - .65 * kp).toFixed(2); e.style.transform = `scale(${(1 - .2 * kp).toFixed(2)})`; });
+}, 250);
 function draw(now) {
   const NXs = window.NX || NO_NX; if (now - lastSlow > 80) { lastSlow = now; if (sky.width && !NXs.has('sky')) drawSky(now); if (cam.width && !NXs.has('cam')) drawCam(now); }          // weather and camera at ~9 fps (clouds drift slowly)
   const quiet = calm();
@@ -336,7 +345,7 @@ J.on('timers', () => { const t = m.timers || {}, up = []; timerEnd = 0;
   for (const r of t.reminders || []) up.push({ kind: 'reminder', label: r.text, t: toT(r.at), note: 'напоминание' });
   m.upcoming = up; renderNext(); setBadge('Напоминания', (t.reminders || []).length); });
 J.on('history', () => { m.log = m.history.map((h) => ({ t: toT(h.ts), said: h.said, did: h.did, kind: 'info' })); renderHist(); });
-J.on('weather', () => { const w = m.weather; if (!w || !w.ok) return; Object.assign(WX, { city: w.city, temp: w.temp, feels: w.feels, wind: w.wind, wdir: w.wind_dir, gust: w.gust, hum: w.humidity, pres: w.pressure, uv: w.uv, pop: w.pop, vis: w.vis_km, tmax: w.tmax, tmin: w.tmin, sr: w.sunrise, ss: w.sunset, cond: WCODE(w.code, w.desc) }); paintWeather(); });
+J.on('weather', () => { const w = m.weather; if (!w || !w.ok) return; Object.assign(WX, { city: w.city, temp: w.temp, feels: w.feels, wind: w.wind, wdir: w.wind_dir, gust: w.gust, hum: w.humidity, pres: w.pressure, uv: w.uv, pop: w.pop, vis: w.vis_km, tmax: w.tmax, tmin: w.tmin, aqi: w.aqi, yest: w.vs_yesterday, sr: w.sunrise, ss: w.sunset, cond: WCODE(w.code, w.desc) }); paintWeather(); });
 
 
 // ---- views: Overview (dashboard) and Commands; other sections announce that they are coming ----
@@ -356,8 +365,14 @@ J.on('uicmd', () => { const c = m.uicmd || {};
   else if (c.op === 'view') showView(c.name || 'dash');
   else if (c.op === 'wizard') { showView('dash'); if (window.openWizard) window.openWizard(); }
   else if (c.op === 'compose') { showView('mail'); if (window.MailC) window.MailC.open(); }
+  else if (c.op === 'mail') {   // the core's background check found new mail or a changed unread count (ui_next/bridge/mail_watch.py)
+    setBadge('Почта', c.unread);
+    const A = window.MailApp; if (A) { A.S.unreadInbox = c.unread; if (VIEW === 'mail') { if (c.new) A.loadList({ silent: true, refresh: true }); else A.refreshUnread(); } }
+  }
   else if (c.op === 'reactor') { if (c.what === 'color') coreTint = CORE_TINT[c.color] || ''; else if (c.what === 'reset') coreTint = ''; else if (c.what === 'pulse') coreBurst(); else if (c.what === 'glitch') { const keep = coreTint; ['red', 'magenta', 'white', 'cyan'].forEach((k, i) => setTimeout(() => { coreTint = CORE_TINT[k]; }, i * 110)); setTimeout(() => { coreTint = keep; }, 520); coreBurst(); } }
 });
+
+J.on('conn', () => { if (m.connected) J.send('mail', { op: 'unread' }).then((r) => { if (r && r.ok && r.unread != null) setBadge('Почта', r.unread); }); });   // a window that opens later still shows the count
 
 // ---- microphone card: configured gain/threshold (live from the core), "hearing" readout from the last voice onset, Windows autostart ----
 let autoOn = false;

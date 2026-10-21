@@ -29,6 +29,10 @@ _NAME_ROLE = (('sent', ('sent', 'отправлен', 'надіслан')), ('dr
 _LIST_RE = re.compile(r'\((?P<attrs>[^)]*)\)\s+(?:"(?:[^"\\]|\\.)*"|NIL)\s+(?P<name>.+)$')
 HEADERS = '(UID FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE MESSAGE-ID CONTENT-TYPE)])'
 PAGE = 40
+IDLE_PING = 20.0        # seconds of silence after which the connection is checked with a NOOP (a round trip on every command made each one slower)
+UNREAD_TTL = 10.0       # the unread counter is a slow STATUS on a big mailbox; it is reused this long unless a letter changed
+PAGE_FRESH = 30.0        # a cached first page younger than this is reported fresh: the window does not refetch it in the background
+SNIP_BATCH = 10         # previews are fetched in small batches so a letter the user opens in between does not wait for all of them
 _BODY_CACHE_MAX = 10
 _BODY_CACHE_BYTES = 8_000_000
 
@@ -201,6 +205,10 @@ class Session:
         self.pages: dict[str, dict] = {}
         self.bodies: OrderedDict = OrderedDict()
         self.snips: dict[tuple[str, str], str] = {}
+        self.last_io = 0.0
+        self.page_at: dict[str, float] = {}
+        self.seen_todo: OrderedDict = OrderedDict()   # (role, uid) of letters opened but not yet flagged Seen on the server
+        self.unread: tuple[float, int] | None = None
 
     # -- connection --
     def close(self):
@@ -217,6 +225,8 @@ class Session:
             self.pages.clear()
             self.bodies.clear()
             self.snips.clear()
+            self.seen_todo.clear()
+            self.unread = None
 
     def _open(self):
         from actions import mail_client
@@ -229,7 +239,7 @@ class Session:
             self.pages.clear()
             self.bodies.clear()
             self.snips.clear()
-        if self.conn is not None:
+        if self.conn is not None and time.monotonic() - self.last_io > IDLE_PING:
             try:
                 self.conn.noop()
             except Exception:
@@ -240,6 +250,7 @@ class Session:
             except Exception as ex:
                 raise MailError('failed', mail_client.format_mail_error(ex))
             self.key, self.sel, self.cfg = key, None, cfg
+            self.last_io = time.monotonic()
         return self.conn
 
     def run(self, fn):
@@ -248,7 +259,9 @@ class Session:
             for attempt in (0, 1):
                 conn = self._open()
                 try:
-                    return fn(conn)
+                    res = fn(conn)
+                    self.last_io = time.monotonic()
+                    return res
                 except (imaplib.IMAP4.abort, OSError, ssl.SSLError) as ex:
                     self.close()
                     if attempt:
@@ -281,17 +294,21 @@ class Session:
             self.sel = raw
         return raw
 
-    def folder_list(self) -> dict:
+    def folder_list(self, unread: bool = True) -> dict:
+        """Roles and custom folders; `unread=False` skips the (slow) unread counter and reports the last known one."""
         def go(conn):
+            self._flush_seen(conn)       # the counter must not race the flags still waiting to be stored
             fm = self.folder_map(conn)
-            unread = 0
-            try:
-                typ, data = conn.status(_q(fm['inbox']), '(UNSEEN)')
-                m = re.search(r'UNSEEN\s+(\d+)', data[0].decode('utf-8', errors='replace') if typ == 'OK' and data and data[0] else '', re.I)
-                unread = int(m.group(1)) if m else 0
-            except Exception:
-                _swallow()
-            return {'roles': [r for r in ROLES if r in fm], 'unread': unread,
+            n = self.unread[1] if self.unread else 0
+            if unread and not (self.unread and time.monotonic() - self.unread[0] < UNREAD_TTL):
+                try:
+                    typ, data = conn.status(_q(fm['inbox']), '(UNSEEN)')
+                    m = re.search(r'UNSEEN\s+(\d+)', data[0].decode('utf-8', errors='replace') if typ == 'OK' and data and data[0] else '', re.I)
+                    n = int(m.group(1)) if m else 0
+                    self.unread = (time.monotonic(), n)
+                except Exception:
+                    _swallow()
+            return {'roles': [r for r in ROLES if r in fm], 'unread': n,
                     'custom': [{'id': f'f{i + 1}', 'name': utf7_decode(raw).replace('/', ' / ')} for i, raw in enumerate(self.customs)]}
         return self.run(go)
 
@@ -299,10 +316,24 @@ class Session:
     def page(self, role: str, flt: str = 'all', q: str = '', offset: int = 0, limit: int = PAGE, refresh: bool = False) -> dict:
         plain = flt == 'all' and not q and offset == 0
         if plain and not refresh and role in self.pages:
-            return {**self.pages[role], 'cached': True}
+            return {**self.pages[role], 'cached': True, 'fresh': time.monotonic() - self.page_at.get(role, 0.0) < PAGE_FRESH}
 
         def go(conn):
-            self._select(conn, role)
+            raw = self._select(conn, role)
+            if plain or (flt == 'all' and not q):
+                # The plain list needs only the count and the newest letters: a STATUS and a fetch by sequence number, not a SEARCH that
+                # returns every UID of a mailbox of ten thousand letters.
+                total = self._message_count(conn, raw)
+                if total is not None:
+                    end = max(0, total - offset)
+                    lo = max(1, end - limit + 1)
+                    rows = []
+                    if end >= 1:
+                        typ_f, msgdata = conn.fetch(f'{lo}:{end}', HEADERS)
+                        if typ_f != 'OK':
+                            raise MailError('failed', 'Не удалось получить список писем')
+                        rows = parse_header_rows(msgdata, 'to' if role in ('sent', 'drafts') else 'from')
+                    return {'rows': rows, 'total': total, 'more': lo > 1}
             crit = {'all': [], 'unread': ['UNSEEN'], 'flagged': ['FLAGGED']}.get(flt, [])
             more, text = parse_query(q)
             crit = (crit + more) or ['ALL']
@@ -327,7 +358,17 @@ class Session:
         res = self.run(go)
         if plain:
             self.pages[role] = res
-        return {**res, 'cached': False}
+            self.page_at[role] = time.monotonic()
+        return {**res, 'cached': False, 'fresh': True}
+
+    @staticmethod
+    def _message_count(conn, raw: str) -> int | None:
+        try:
+            typ, data = conn.status(_q(raw), '(MESSAGES)')
+            m = re.search(r'MESSAGES\s+(\d+)', data[0].decode('utf-8', errors='replace') if typ == 'OK' and data and data[0] else '', re.I)
+            return int(m.group(1)) if m else None
+        except Exception:
+            return None
 
     def snippets(self, role: str, uids: list[str]) -> dict[str, str]:
         """One-line previews for the given letters, fetched in one request and remembered (the text of a letter does not change)."""
@@ -335,17 +376,19 @@ class Session:
         with self.lock:
             have = {u: self.snips[(role, u)] for u in uids if (role, u) in self.snips}
         need = [u for u in uids if u not in have]
-        if need:
-            def go(conn):
+        for i in range(0, len(need), SNIP_BATCH):
+            batch = need[i:i + SNIP_BATCH]
+
+            def go(conn, batch=batch):
                 self._select(conn, role)
-                typ, data = conn.uid('fetch', ','.join(need).encode('ascii'),
+                typ, data = conn.uid('fetch', ','.join(batch).encode('ascii'),
                                      f'(UID BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] BODY.PEEK[TEXT]<0.{mail_snippet.PREVIEW_BYTES}>)')
                 return mail_snippet.parse_fetch(data) if typ == 'OK' else {}
-            got = self.run(go)
+            got = self.run(go)       # the lock is free between batches, so opening a letter does not wait for the whole page of previews
             with self.lock:
                 if len(self.snips) > 3000:
                     self.snips.clear()
-                for u in need:
+                for u in batch:
                     head, body = got.get(u, (b'', b''))
                     have[u] = self.snips[(role, u)] = mail_snippet.snippet(head, body)
         return have
@@ -362,6 +405,67 @@ class Session:
             if r['uid'] == uid:
                 r.update(changes)
 
+    def _mark_seen(self, role: str, uid: str) -> bool:
+        """Sets the Seen flag on the server if it is missing; returns whether the letter was unread."""
+        def go(conn):
+            self._select(conn, role)
+            typ, data = conn.uid('fetch', uid.encode('ascii'), '(FLAGS)')
+            head = ' '.join((d[0] if isinstance(d, tuple) else d).decode('ascii', errors='ignore') for d in (data or []) if isinstance(d, (bytes, tuple)))
+            if typ != 'OK' or re.search(r'FLAGS\s*\([^)]*\\Seen', head, re.I):
+                return False
+            try:
+                conn.uid('STORE', uid.encode('ascii'), '+FLAGS', r'(\Seen)')
+            except Exception:
+                _log.debug('mark seen failed', exc_info=True)
+                return False
+            return True
+        done = self.run(go)
+        if done:
+            self.unread = None
+        return done
+
+    # -- the Seen flag of an opened letter is stored after the letter is shown (it used to cost the reader one more round trip) --
+    def _mark_later(self, role: str, uid: str):
+        with self.lock:
+            self.seen_todo[(role, uid)] = None
+        threading.Thread(target=self._seen_worker, daemon=True, name='imap-seen').start()
+
+    def _seen_worker(self):
+        try:
+            with self.lock:
+                self.run(self._flush_seen)
+        except Exception:
+            _log.debug('storing the Seen flags failed', exc_info=True)
+
+    def _flush_seen(self, conn):
+        while self.seen_todo:
+            (role, uid), _ = self.seen_todo.popitem(last=False)
+            try:
+                self._select(conn, role)
+                conn.uid('STORE', uid.encode('ascii'), '+FLAGS', r'(\Seen)')
+                self.unread = None
+            except (imaplib.IMAP4.abort, OSError, ssl.SSLError):
+                self.pages.pop(role, None)      # the list showed it as read; let the next listing ask the server
+                raise
+            except Exception:
+                _log.debug('mark seen failed', exc_info=True)
+                self.pages.pop(role, None)
+
+    def _forget_seen(self, role: str, uids=None):
+        """A later change to these letters (unread again, moved, deleted) replaces the pending Seen flag."""
+        with self.lock:
+            for key in [k for k in self.seen_todo if k[0] == role and (uids is None or k[1] in uids)]:
+                del self.seen_todo[key]
+
+    def settle(self, timeout: float = 2.0):
+        """Waits until the pending Seen flags are stored (the tests and a clean shutdown use it)."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            with self.lock:
+                if not self.seen_todo:
+                    return
+            time.sleep(0.005)
+
     # -- one letter --
     def message(self, role: str, uid: str, mark: bool = True):
         """Returns (parsed email message, was unread). Cached for a few letters, so toggling images or reopening is instant."""
@@ -370,7 +474,20 @@ class Session:
             hit = self.bodies.get(key)
             if hit is not None:
                 self.bodies.move_to_end(key)
+        if hit is not None:
+            # A body cached by a no-mark read (snippet prefetch, attachment, preview) must still mark the letter when it is opened.
+            if not mark:
                 return hit, False
+            row = next((r for r in (self.pages.get(role) or {}).get('rows', []) if r['uid'] == uid), None)
+            if row is None:
+                unread = self._mark_seen(role, uid)      # a letter outside the cached listing: ask the server, which flags it at once
+            else:
+                unread = bool(row.get('unread'))         # the listing knows; the flag is stored in the background
+                if unread:
+                    self._mark_later(role, uid)
+            if unread:
+                self.patch_page(role, uid, unread=False)
+            return hit, unread
 
         def go(conn):
             self._select(conn, role)
@@ -380,11 +497,6 @@ class Session:
             head = data[0][0].decode('ascii', errors='ignore') + ' ' + ''.join(d.decode('ascii', errors='ignore') for d in data[1:] if isinstance(d, bytes))
             unread = not re.search(r'FLAGS\s*\([^)]*\\Seen', head, re.I)
             raw = bytes(data[0][1])
-            if unread and mark:
-                try:
-                    conn.uid('STORE', uid.encode('ascii'), '+FLAGS', r'(\Seen)')
-                except Exception:
-                    _log.debug('mark seen failed', exc_info=True)
             return raw, unread
         raw, unread = self.run(go)
         msg = BytesParser(policy=email_policy).parsebytes(raw)
@@ -394,11 +506,13 @@ class Session:
                 while len(self.bodies) > _BODY_CACHE_MAX:
                     self.bodies.popitem(last=False)
         if unread and mark:
+            self._mark_later(role, uid)
             self.patch_page(role, uid, unread=False)
         return msg, unread
 
     # -- changes --
     def set_flag(self, role: str, uids: list[str], flag: str, on: bool):
+        self._forget_seen(role, set(uids))
         imap_flag = {'seen': r'\Seen', 'flagged': r'\Flagged'}[flag]
 
         def go(conn):
@@ -407,11 +521,13 @@ class Session:
             if typ != 'OK':
                 raise MailError('failed', 'Сервер не принял изменение')
         self.run(go)
+        self.unread = None
         for uid in uids:
             self.patch_page(role, uid, **({'unread': not on} if flag == 'seen' else {'flagged': on}))
 
     def remove(self, role: str, uids: list[str], to: str = '') -> str:
         """Moves letters to `to` (trash, archive, junk or a folder id) or deletes them for good. Returns where they ended up."""
+        self._forget_seen(role, set(uids))
         def go(conn):
             self._select(conn, role)
             dest = self.folder_map(conn).get(to) if to and to != role else None
@@ -431,6 +547,7 @@ class Session:
                 _swallow()
             return to if dest else 'gone'
         where = self.run(go)
+        self.unread = None
         for uid in uids:
             self.patch_page(role, uid, gone=True)
             self.bodies.pop((role, uid), None)
@@ -438,17 +555,20 @@ class Session:
         return where
 
     def mark_all_read(self, role: str):
+        self._forget_seen(role)
         def go(conn):
             self._select(conn, role)
             typ, _ = conn.uid('STORE', '1:*', '+FLAGS', r'(\Seen)')
             if typ != 'OK':
                 raise MailError('failed', 'Сервер не принял изменение')
         self.run(go)
+        self.unread = None
         for r in (self.pages.get(role) or {}).get('rows', []):
             r['unread'] = False
 
     def empty(self, role: str):
         """Deletes everything in a folder for good (the caller only allows trash and junk)."""
+        self._forget_seen(role)
         def go(conn):
             self._select(conn, role)
             typ, _ = conn.uid('STORE', '1:*', '+FLAGS', r'(\Deleted)')
@@ -456,6 +576,7 @@ class Session:
                 raise MailError('failed', 'Сервер не принял удаление')
             conn.expunge()
         self.run(go)
+        self.unread = None
         self.pages.pop(role, None)
         self.bodies.clear()
 

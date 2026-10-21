@@ -182,7 +182,7 @@ def load_profile(profile_name: str) -> tuple[bool, str]:
                 entry.get('wiper_target') or entry.get('response') or
                 entry.get('telemetry_action') or entry.get('binding')
             )
-            if not has_action:
+            if not has_action and not entry.get('assign'):   # "assign": a spell the player has to bind to a key; asking for it says so
                 skipped += 1
                 continue
             for variant in entry.get('variants', [entry['name']]):
@@ -275,7 +275,8 @@ def match_command(text: str, threshold: float = 0.75) -> tuple[dict, float] | No
 def get_command_list() -> str:
     if not _entries:
         return 'Профиль не загружен.'
-    active = [e['name'] for e in _entries if (e.get('key') and e.get('key') != 'MACRO') or e.get('keys') or e.get('sequence')]
+    active = [e['name'] for e in _entries if (e.get('key') and e.get('key') != 'MACRO') or e.get('keys') or e.get('sequence') or e.get('mouse')
+              or e.get('telemetry_action') or e.get('lights_target') or e.get('wiper_target')]
     preview = ', '.join(active[:8])
     more = '...' if len(active) > 8 else ''
     return f'Доступно {len(active)} команд: {preview}{more}.'

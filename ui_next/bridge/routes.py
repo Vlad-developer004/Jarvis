@@ -124,7 +124,7 @@ def voice(data: dict) -> dict:
 
 def mail(data: dict) -> dict:
     """Mail screen (see mail): op `state` | `folders` | `list` {folder, filter, q, offset, refresh} | `snippets` {folder, uids} | `read` {folder, uid, images, mark} | `flag` {folder, uids, flag, on} |
-    `remove` {folder, uids, to} | `read_all` {folder} | `empty` {folder} | `save` {folder, uid, idx} | `reveal` {path} | `prefs` | `prefs_set` {signature} | `unsubscribe` {folder, uid} | `draft` {...} |
+    `remove` {folder, uids, to} | `read_all` {folder} | `empty` {folder} | `save` {folder, uid, idx} | `reveal` {path} | `prefs` | `prefs_set` {signature?, notify?} | `unread` | `unsubscribe` {folder, uid} | `draft` {...} |
     `send` {to, cc, bcc, subject, body, quote, replace, in_reply_to, references, attach} | `pick` | `drop` {id}."""
     from . import mail as ml
     op = str(data.get('op', 'state'))
@@ -132,7 +132,7 @@ def mail(data: dict) -> dict:
     if op == 'state':
         return {'ok': True, **ml.configured()}
     if op == 'folders':
-        return ml.folders()
+        return ml.folders(data.get('unread', True) is not False)
     if op == 'list':
         return ml.list_messages(folder, str(data.get('filter', 'all')), data.get('q', ''), data.get('offset', 0), data.get('limit', 40), bool(data.get('refresh')))
     if op == 'snippets':
@@ -154,7 +154,10 @@ def mail(data: dict) -> dict:
     if op == 'prefs':
         return ml.get_prefs()
     if op == 'prefs_set':
-        return ml.set_prefs(data.get('signature', ''))
+        return ml.set_prefs(data.get('signature'), data.get('notify'))
+    if op == 'unread':
+        from . import mail_watch
+        return {'ok': True, 'unread': mail_watch.last_unread()}
     if op == 'unsubscribe':
         return ml.unsubscribe(folder, data.get('uid', ''))
     if op == 'draft':

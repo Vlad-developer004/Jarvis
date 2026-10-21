@@ -189,18 +189,28 @@ def _timer_set(text_lower):
     from actions.game_timer import set_timer
     import re
     secs = extract_duration_seconds(text_lower)
+    clock = None
     if secs <= 0:
-        speak('Скажите продолжительность, например: таймер на тридцать минут.')
+        # "на 13 15": a time of day, the timer runs until its next occurrence
+        from core.nlp.clock_time import parse_clock, seconds_until
+        clock = parse_clock(text_lower)
+        if clock:
+            secs = seconds_until(clock)
+    if secs <= 0:
+        speak('Скажите продолжительность или время, например: таймер на тридцать минут или таймер на тринадцать пятнадцать.')
         return
     from core.nlp.commands import normalize_numbers
     text_norm = normalize_numbers(text_lower)
     label_raw = re.sub(
-        r'(засеки|дай|поставь|таймер|на|постав|год[иі]ну|час\w*|хвилин\w*|минут\w*|секунд\w*|\d+)',
+        r'(засеки|дай|поставь|таймер|на|\bдо\b|\bк\b|\bровно\b|\bвечера\b|\bутра\b|\bдня\b|\bночи\b|постав|год[иі]ну|час\w*|хвилин\w*|минут\w*|секунд\w*|\d+|[:.])',
         '', text_norm
     ).strip()
     label = label_raw if len(label_raw) > 2 else ''
     duration_str = set_timer(secs, label, speak)
-    speak(f'Таймер запущен на {duration_str}. Предупрежу заблаговременно.')
+    if clock:
+        speak(f'Таймер до {clock[0]}:{clock[1]:02d}, это через {duration_str}. Предупрежу заблаговременно.')
+    else:
+        speak(f'Таймер запущен на {duration_str}. Предупрежу заблаговременно.')
 
 def _timer_add(text_lower):
     from core.nlp import extract_duration_seconds, format_remaining_russian

@@ -16,7 +16,8 @@ _log = logging.getLogger(__name__)
 TEXT_MAX = 6000
 IMAGE_SIDE = 420
 _lock = threading.Lock()
-_state = {'id': 0, 'visible': False, 'subject': '', 'text': '', 'image': '', 'video': False}
+_state = {'id': 0, 'visible': False, 'subject': '', 'text': '', 'image': '', 'video': False, 'links': []}
+LINKS_MAX = 4
 _cancel = threading.Event()
 _publish = None                      # set by the bridge: callable(topic, payload)
 
@@ -62,7 +63,7 @@ def show(subject: str, fetch_image: bool = True) -> None:
         _state['visible'] = True
         if fresh:
             _state['id'] += 1
-            _state['text'], _state['video'] = '', False
+            _state['text'], _state['video'], _state['links'] = '', False, []
         _state['subject'] = str(subject or '')[:120]
         _state['image'] = '' if fetch_image or fresh else _state['image']
         sid = _state['id']
@@ -92,6 +93,17 @@ def set_text(text: str) -> None:
         if not _state['visible']:
             return
         _state['text'] = _plain(text)[:TEXT_MAX]
+    _emit()
+
+
+def set_links(links) -> None:
+    """Buttons under the text: [{'label', 'url'}]. Only http(s) links, at most LINKS_MAX; the window opens them through `open_url`."""
+    clean = [{'label': str(x.get('label', ''))[:24], 'url': str(x.get('url', ''))[:600]} for x in (links or []) if isinstance(x, dict)
+             and str(x.get('url', '')).startswith(('https://', 'http://')) and x.get('label')][:LINKS_MAX]
+    with _lock:
+        if not _state['visible']:
+            return
+        _state['links'] = clean
     _emit()
 
 
@@ -162,7 +174,7 @@ def close() -> None:
 
 def event(kind: str, *args) -> bool:
     """Entry for the core: returns True when the new window took the event (so the old window must stay closed)."""
-    fn = {'show': show, 'text': set_text, 'image': set_image, 'video': set_video, 'hide': hide, 'cancel_hide': cancel_hide}.get(kind)
+    fn = {'show': show, 'text': set_text, 'links': set_links, 'image': set_image, 'video': set_video, 'hide': hide, 'cancel_hide': cancel_hide}.get(kind)
     if fn is None:
         return False
     fn(*args)

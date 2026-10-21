@@ -3,9 +3,7 @@
  "actions/calendar_hub.py": 610,
  "core/speech/llm_chat.py": 661,
  "core/nlp/commands.py": 659,
- "core/handler/interactive.py": 656,
+ "core/handler/interactive.py": 651,
  "actions/dev_projects.py": 636,
- "core/engine/ets2_commands.py": 601,
- "features/ets2/phrases_job.py": 608,
- "actions/weather.py": 610
+ "features/ets2/phrases_job.py": 608
 }

@@ -17,7 +17,7 @@
  "actions/windows_parts/windowing.py": 6,
  "actions/youtube.py": 6,
  "core/audio_utils.py": 2,
- "core/engine/jarvis.py": 7,
+ "core/engine/jarvis.py": 3,
  "core/handler/commands/creative.py": 8,
  "core/handler/commands/files.py": 2,
  "core/speech/tts.py": 12,

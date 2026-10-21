@@ -203,6 +203,11 @@ def build_catalog() -> dict:
             it['try'] = run_phrase_for(every, it['id'], match_command)
             if it['try'] is None:
                 it['mode'] = 'voice'
+    items.extend(_semantic_only_items(items, uk))
+    from .catalog_weather import weather_cards
+    at = next((i for i, it in enumerate(items) if it['id'] == 'weather'), None)
+    if at is not None:
+        items[at + 1:at + 1] = weather_cards(uk)
     exts = _extensions()
     for it in items:
         need = _needs(it['id'])
@@ -211,6 +216,26 @@ def build_catalog() -> dict:
     groups, game_items = game_catalog(exts)
     return {'categories': [{'key': k, 'title': (CATEGORIES_UK.get(k) or (t, h))[0] if uk else t, 'hint': (CATEGORIES_UK.get(k) or (t, h))[1] if uk else h} for k, t, h in CATEGORIES], 'items': items + game_items, 'games': groups, 'ext': {k: v for k, v in exts.items() if k in {i.get('needs') for i in items}},
             'starters': [s for s in STARTERS if any(i['id'] == s for i in items)]}
+
+
+def _semantic_only_items(items: list[dict], uk: bool) -> list[dict]:
+    """Cards for the commands the matcher tables do not list (see catalog_semantic); their phrases are the model's training examples."""
+    from core.nlp.intents import INTENTS
+    from .catalog_semantic import SEMANTIC_ONLY
+    have = {it['id'] for it in items}
+    out = []
+    for cid, (cat_key, runnable) in SEMANTIC_ONLY.items():
+        if cid in have:
+            continue
+        name, desc, example = META.get(cid, (cid.replace('_', ' ').capitalize(), '', ''))
+        if uk and cid in META_UK:
+            name, desc = META_UK[cid]
+        every = _all_phrases(example, [], INTENTS.get(cid, []))
+        if uk:
+            every = _ukrainian_first(every)
+        out.append({'id': cid, 'name': name, 'desc': desc, 'cat': cat_key, 'phrases': _display(every), 'mode': 'run' if runnable and every else 'voice',
+                    'try': every[0] if runnable and every else None, 'semantic': True})
+    return out
 
 
 def run_phrase_for(phrases: list[str], cid: str, match_command) -> str | None:

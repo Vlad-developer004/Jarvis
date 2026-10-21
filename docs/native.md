@@ -67,7 +67,7 @@ when stdin closes (Jarvis exited or crashed) it gives back every volume it had l
 | `play_pcm` | `data` (base64 16-bit PCM), `rate`, `channels`, `volume`, `channel` | the same for synthesised sound |
 | `stop` | `channel` (`tts`, `sfx`, `all`) | cuts playback; answers once it took effect |
 | `player_status` | | `busy`, `queued`, `remaining`, `ready`, `device`, `rebuilds`, `error` |
-| `sessions` / `duck` / `unduck` | `enable`, `skip_pid` | audio sessions; lower other apps to 45% while Jarvis speaks (nested calls counted, the program's own voice is never lowered); give them back |
+| `sessions` / `duck` / `unduck` | `enable`, `skip_pid` | audio sessions; lower other apps to 30% of their own volume (about -10 dB) while Jarvis speaks (nested calls counted, the program's own voice is never lowered); give them back |
 | `set_app` / `set_session` | `name` or `session`, `level` | volume of one program or session |
 | `master_get` / `master_set` | `level`, `muted` | the default device's volume and mute |
 

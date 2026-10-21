@@ -46,6 +46,7 @@
   function paint() {
     const msg = m.prompt;
     if (!msg || !msg.open || !m.connected) { if (root && (!msg || msg.id === shownId || !msg.open)) close(); return; }
+    if (msg.kind === 'notice' && window.__TAURI__) return;   // reminders, timers and the camera guard appear in the pop-up window (popup.js), over any program
     const k = KINDS[msg.kind]; if (!k) return;
     if (root && msg.id === shownId && k.update) { k.update(root, msg.data); return; }
     if (root && msg.id === shownId) return;

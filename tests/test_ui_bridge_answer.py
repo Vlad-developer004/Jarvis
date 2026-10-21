@@ -11,7 +11,7 @@ from ui_next.bridge import answer
 def card(monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr(answer, '_publish', lambda topic, payload: sent.append((topic, payload)))
-    monkeypatch.setattr(answer, '_state', {'id': 0, 'visible': False, 'subject': '', 'text': '', 'image': '', 'video': False})
+    monkeypatch.setattr(answer, '_state', {'id': 0, 'visible': False, 'subject': '', 'text': '', 'image': '', 'video': False, 'links': []})
     monkeypatch.setattr(answer, '_speech_busy', lambda: False)
     monkeypatch.setattr(answer.time, 'sleep', lambda s: None)
     monkeypatch.setattr(answer, '_find_image', lambda subject, sid: None)
@@ -148,3 +148,19 @@ def test_speech_markup_is_not_shown_on_the_card(card):
     answer.show('Марс', False)
     answer.set_text('Марс — пустыня. <break time="300ms"/> Выживание *крайне* сложно.')
     assert last(card)['text'] == 'Марс — пустыня.  Выживание крайне сложно.'
+
+
+def test_links_become_buttons_only_for_web_urls_and_reset_with_a_new_card(card):
+    answer.show('Песня', False)
+    answer.set_links([{'label': 'YouTube', 'url': 'https://www.youtube.com/watch?v=x'}, {'label': 'Bad', 'url': 'javascript:alert(1)'},
+                      {'label': 'Apple', 'url': 'intent://music.apple.com/x'}, {'label': '', 'url': 'https://a.b'}, 'junk'])
+    assert last(card)['links'] == [{'label': 'YouTube', 'url': 'https://www.youtube.com/watch?v=x'}]
+    answer.hide(0)
+    assert wait_hidden()
+    answer.show('Другой ответ', False)
+    assert last(card)['links'] == []
+
+
+def test_links_are_ignored_while_no_card_is_open(card):
+    answer.set_links([{'label': 'YouTube', 'url': 'https://www.youtube.com'}])
+    assert answer.snapshot()['links'] == []

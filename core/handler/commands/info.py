@@ -21,24 +21,40 @@ def _currency_rate(handler, cmd, text_lower):
 def _weather(handler, cmd, text_lower):
     from actions.weather import get_weather, is_weather_voice_cached
     from actions.weather_forecast import extract_date_offset, extract_period, get_weather_period
+    from actions.weather_geo import find_place
+    from core.nlp.weather_route import parse
     import re
-    offset, q = extract_date_offset(text_lower)
+    wq = parse(text_lower)              # rain / what to wear / week / weekend / air, or None for the plain weather
+    place, q = find_place(wq.rest)      # "у мамы" -> the city saved under that name
+    offset, q = extract_date_offset(q)
     period = None
-    if offset == 0:
+    if offset == 0 and wq.kind not in ('week', 'weekend'):
         period, q = extract_period(q)
-    fillers = ['какая', 'какую', 'будет', 'узнай', 'скажи', 'сейчас', 'погода', 'погоду', 'в', 'городе', 'сегодня', 'на', 'улице', 'там', 'же', 'а']
+    fillers = ['какая', 'какую', 'будет', 'узнай', 'скажи', 'сейчас', 'погода', 'погоду', 'прогноз', 'в', 'городе', 'сегодня', 'на', 'улице', 'там', 'же', 'а',
+               'мне', 'ли', 'для', 'у', 'эти', 'эту']
+    q_pre = q
     for sw in fillers:
         q = re.sub(rf'\b{sw}\b', '', q)
     loc = q.strip()
-    loc_arg = loc if loc else None
+    if wq.kind:
+        # a question like "какое качество воздуха" is full of words that are not a city: only what follows a preposition is one
+        m = re.search(r'\b(?:в|во|для|у)\s+(.+)$', re.sub(r'\b(?:сегодня|сейчас|сьогодні|зараз|пожалуйста|будь ласка)\b', '', q_pre).strip())
+        loc = m.group(1).strip() if m else ''
+    loc_arg = place or (loc if loc else None)
+    # rain, clothes and air are about now; a named day or part of the day turns the question into the usual forecast
+    kind = wq.kind if (wq.kind in ('week', 'weekend') or (offset == 0)) else None
+    if kind:
+        period, offset = None, 0
 
-    cache_key = loc_arg if loc_arg else f"__auto___{offset}_{period or ''}"
-    if not is_weather_voice_cached(cache_key):
+    if kind or not is_weather_voice_cached(loc_arg, offset, period):
         city_display = loc_arg if loc_arg else '(текущее местоположение)'
-        handler.speak(spk('weather.fetching', city=city_display), wait=True)
+        handler.speak(spk('weather.fetching', city=city_display))
 
     def _w_task():
-        if period:
+        if kind:
+            from actions.weather_extra import answer
+            ok, res = answer(kind, loc_arg)
+        elif period:
             ok, res = get_weather_period(loc_arg, period)
         else:
             ok, res = get_weather(loc_arg, date_offset=offset)
@@ -49,26 +65,38 @@ def _weather(handler, cmd, text_lower):
     fallback = 'Не вдалося отримати погоду.' if get_language() == 'uk' else 'Не удалось получить погоду.'
     run_speaking_task(_w_task, error_message=fallback, thread_name='weather-task', speak_fn=handler.speak)
 
+_PLACE_RX = None
+
+def _save_place(handler, text_lower) -> bool:
+    """"запомни город Львов как мама": a named place for "погода у мамы". True when the phrase was of that form."""
+    global _PLACE_RX
+    import re
+    if _PLACE_RX is None:
+        _PLACE_RX = re.compile(r'(?:запомни|сохрани|добавь|запам.ятай|збережи|додай)\s+(?:город|место|місто|місце)\s+(.+?)\s+(?:как|як)\s+(.+)$')
+    m = _PLACE_RX.search(text_lower.strip())
+    if not m:
+        return False
+    city, alias = m.group(1).strip().title(), m.group(2).strip().lower()
+    from actions.weather_geo import add_place
+    handler.speak(spk('weather.place_saved', alias=alias, city=city) if add_place(alias, city) else spk('weather.city_save_error'))
+    return True
+
 def _set_weather_city(handler, cmd, text_lower):
-    import re, json, os
+    import re
+    if _save_place(handler, text_lower):
+        return
     q = text_lower
     for sw in ['установи', 'город', 'запомни', 'смени', 'мой', 'на']:
         q = re.sub(rf'\b{sw}\b', '', q)
     city = q.strip().title()
     if city:
         try:
-            from config_pack.config import get_settings_path
-            settings_path = get_settings_path()
-            s = {}
-            if os.path.exists(settings_path):
-                with open(settings_path, 'r', encoding='utf-8') as f:
-                    s = json.load(f)
-            s['manual_city'] = city
+            from core import settings_io
+            if not settings_io.update({'manual_city': city}):
+                raise OSError('settings not written')
             # Clear HUD cache to force refresh
             from actions.weather import _hud_cache
             _hud_cache.clear()
-            with open(settings_path, 'w', encoding='utf-8') as f:
-                json.dump(s, f, ensure_ascii=False, indent=2)
             handler.speak(spk('weather.city_saved', city=city))
         except Exception:
             handler.speak(spk('weather.city_save_error'))
@@ -140,7 +168,7 @@ def _my_ip(handler, cmd, text_lower):
 _calc_fallback = [0.0]
 
 def _calc(handler, cmd, text_lower):
-    from core.nlp.calc import evaluate, spoken
+    from core.nlp.calc import evaluate, remember_result, spoken
     try:
         value = evaluate(text_lower)
     except ZeroDivisionError:
@@ -152,11 +180,12 @@ def _calc(handler, cmd, text_lower):
             handler.speak(spk('calc.error')); return
         _calc_fallback[0] = now
         handler.handle('llm_chat', text_lower); return
+    remember_result(value)
     handler.speak(spk('calc.result', result=spoken(value)))
 
 def _nasa_apod(handler, cmd, text_lower):
     from actions.nasa import get_apod
-    handler.speak(spk('nasa.fetching'), wait=True)
+    handler.speak(spk('nasa.fetching'))
     def _apod_task():
         r = get_apod()
         if not r['ok']:

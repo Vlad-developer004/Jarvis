@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from actions.briefing_config import load_briefing_prefs
 from core.system import app_state, module_enabled
 from core.safe import swallow as _swallow
+from core.logging_setup import get_logger as _get_logger
+_log = _get_logger('briefing')
 LOG_DIR  = os.path.join('logs')
 LOG_FILE = os.path.join(LOG_DIR, 'last_briefing.txt')
 EVENING_LOG_FILE = os.path.join(LOG_DIR, 'last_evening_summary.txt')
@@ -207,7 +209,28 @@ def speak_daily_summary(handler=None) -> None:
         return
     from core.speech import speak
     speak(' '.join(parts))
+def _say_ready_after_summary():
+    try:
+        from core.system.bootstrap import speak_ready
+        speak_ready(after_summary=True)
+    except Exception as e:
+        _log.error('ready line after the summary failed: %s', e, exc_info=True)
+def summary_due() -> bool:
+    """True when the morning or evening summary will be spoken at this start. Mirrors the checks in try_morning_briefing / try_evening_summary."""
+    if not module_enabled('morning_briefing'):
+        return False
+    hour, today = datetime.now().hour, date.today().isoformat()
+    if MORNING_START <= hour < MORNING_END:
+        return _read_last_date() != today
+    if EVENING_START <= hour < EVENING_END:
+        return _read_last_evening_date() != today
+    return False
 def _do_briefing(handler):
+    try:
+        _run_briefing(handler)
+    finally:
+        _say_ready_after_summary()      # the startup greeting waits for the summary, so Jarvis announces itself last
+def _run_briefing(handler):
     import time
     waited = 0.0
     while getattr(handler, 'is_speaking', False) and waited < 10.0:
@@ -308,6 +331,11 @@ def build_evening_parts(handler=None) -> list[str]:
     ]
     return [p for p in fast_parts + ordered_slow if p]
 def _do_evening_summary(handler):
+    try:
+        _run_evening_summary(handler)
+    finally:
+        _say_ready_after_summary()
+def _run_evening_summary(handler):
     import time
     waited = 0.0
     while getattr(handler, 'is_speaking', False) and waited < 10.0:

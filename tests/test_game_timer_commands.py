@@ -178,3 +178,16 @@ def test_spell_list_speaks_empty_message_when_none(monkeypatch):
     game_cmd.handle_game_extra(None, 'spell_list', 'какие у меня заклинания')
 
     assert spoken == ['У вас нет активных заклинаний в этом профиле.']
+
+
+def test_timer_set_accepts_a_clock_time(monkeypatch):
+    from datetime import datetime
+    from core.nlp import clock_time
+    spoken = _Speaks()
+    monkeypatch.setattr(game_cmd, 'speak', spoken)
+    captured = []
+    monkeypatch.setattr('actions.game_timer.set_timer', lambda secs, label, speak_fn: captured.append((secs, label)) or 'два часа')
+    monkeypatch.setattr(clock_time, 'datetime', type('D', (), {'now': staticmethod(lambda: datetime(2026, 10, 21, 11, 0))}))
+    game_cmd._timer_set('поставь таймер на 13 15')
+    assert captured == [(8100, '')]
+    assert '13:15' in spoken[-1] and 'через два часа' in spoken[-1]

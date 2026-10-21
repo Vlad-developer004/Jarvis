@@ -1,0 +1,12 @@
+/* The pop-up window (popup.html, popup.js): the cards of answer.css stacked in the bottom right corner of a transparent window.
+   The body is as tall as the visible cards, so the shell can size the window to it (popup_fit). */
+html, body { margin: 0; background: transparent; overflow: hidden; color: var(--ink); font: 500 14px Onest, sans-serif; user-select: none; }
+body.popup { position: absolute; right: 0; bottom: 0; width: 440px; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-end; gap: 12px; padding: 0 12px 12px; }
+[hidden] { display: none !important; }
+body.popup:not(:has(.an:not([hidden]))) { padding: 0; }   /* nothing to show: zero height, the shell hides the window */
+body.popup .an { position: relative; right: auto; bottom: auto; flex: none; width: 100%; max-height: 26rem; }
+/* a reminder is a decision, not a read-only answer: bigger text, the buttons are the point; an alert (the camera guard) is red */
+.an.pn .an-t { margin-right: 0; font-size: .85rem; } .an.pn .an-txt { font-size: 1rem; }
+.an.pn.alert { border-color: #ff6b6b99; box-shadow: 0 .8rem 2.4rem #0009, 0 0 1.6rem #ff6b6b44; } .an.pn.alert .an-t { color: #ff8a8a; }
+.an-links button.primary { background: hsl(var(--h) 70% 34%); border-color: var(--cyan); color: #fff; }
+.an-links button:focus { outline: none; }

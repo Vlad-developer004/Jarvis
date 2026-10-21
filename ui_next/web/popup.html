@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jarvis: уведомление</title>
+<script>window.__POPUP__ = true;</script>
+<style>
+  @font-face { font-family: Tektur; src: url(fonts/Tektur.ttf); font-weight: 400 900; font-stretch: 75% 100%; }
+  @font-face { font-family: Onest; src: url(fonts/Onest.ttf); font-weight: 100 900; }
+  :root { --h: 205; --sk: 1; --ic: hsl(calc(var(--h) - 5) calc(70% * var(--sk)) 80%); --ink: hsl(calc(var(--h) + 4) calc(100% * var(--sk)) 94.3%); --dim: hsl(calc(var(--h) + 1) calc(37% * var(--sk)) 72%); --cyan: hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2%); --green: #3df5ac; --amber: #ffb347; --red: #ff6b6b; --purple: #a98bff; --mag: #ff3fd0; --yel: #ffd21f; --state: hsl(calc(var(--h) + -8) calc(100% * var(--sk)) 59.2%); --bg1: hsl(calc(var(--h) + 5) calc(81% * var(--sk)) 16.5%);
+          --navw: 12.5rem; --sidew: 22.5rem; --bottomh: 11.5rem; --gap: .75rem; }
+  * { box-sizing: border-box; }
+</style>
+<link rel="stylesheet" href="answer.css">
+<link rel="stylesheet" href="popup.css">
+</head><body class="popup">
+<!-- The pop-up window (a separate Tauri window, always on top, never takes the focus): the answer card and the reminders / timers / camera alerts
+     show here, over any program and while the main window is in the tray. The cards are built by answer.js and popup.js; the shell sizes the window to them. -->
+<script src="shared.js"></script>
+<script>const $ = (id) => document.getElementById(id), m = J.model, esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));</script>
+<script src="popup.js"></script>
+<script src="answer.js"></script>
+</body></html>

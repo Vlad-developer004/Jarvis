@@ -10,7 +10,7 @@ _PC_WORDS = ('с компьютера', 'на компьютере', 'с ком�
 
 
 def handle_song(handler, cmd, text_lower):
-    source = 'pc' if any(w in text_lower for w in _PC_WORDS) else 'mic'
+    source = 'pc' if any(w in text_lower for w in _PC_WORDS) else 'auto'   # auto: the PC's own audio on headphones, the mic otherwise
     handler.speak(spk('song.listening'), wait=True)
     # wait=True's "finished" signal fires slightly before the audio device
     # actually stops playing (same lag core/mic_calibration.py works around
@@ -42,7 +42,8 @@ def handle_song(handler, cmd, text_lower):
 
     def _show_song_card(res: dict) -> None:
         try:
-            from ui_next.host import show_ai_window, update_ai_window_text, set_ai_window_image, hide_ai_window
+            from ui_next.host import show_ai_window, update_ai_window_text, set_ai_window_image, set_ai_window_links, hide_ai_window
+            from ui_next.bridge.songs import link
             show_ai_window(res.get('title') or 'Песня', fetch_image=False)
             lines = []
             if res.get('artist'):
@@ -51,14 +52,10 @@ def handle_song(handler, cmd, text_lower):
                 lines.append(f"Альбом: {res['album']}")
             if res.get('release_date'):
                 lines.append(f"Дата выхода: {res['release_date']}")
-            lines.append('')
-            if res.get('spotify_url'):
-                lines.append(f"Spotify: {res['spotify_url']}")
-            if res.get('apple_music_url'):
-                lines.append(f"Apple Music: {res['apple_music_url']}")
-            if res.get('youtube_url'):
-                lines.append(f"YouTube: {res['youtube_url']}")
             update_ai_window_text('\n'.join(lines))
+            # the services are buttons, not raw text: Shazam's Apple link is an Android intent:// URI that is useless (and long) on a PC
+            set_ai_window_links([{'label': label, 'url': u} for label, kind in (('Spotify', 'spotify'), ('Apple Music', 'apple'), ('YouTube', 'youtube'))
+                                 if (u := link(res, kind))])
             if res.get('cover_path'):
                 set_ai_window_image(res['cover_path'])
             hide_ai_window(delay_ms=15000)

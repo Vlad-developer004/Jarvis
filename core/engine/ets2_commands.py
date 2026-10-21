@@ -103,10 +103,9 @@ def _wake_up_truck(slept_hours: int | None, wake_minutes: int | None = None) -> 
             greeting = _greeting_for_game_minutes(wake_minutes)
             from core.speech.pacing import add_pauses
             speak_async(add_pauses(f'{greeting} Отдохнули знатно — спали {format_duration_russian(slept_hours * 60)}. Заводим тягач и трогаемся.'))
-        # The "prepare the truck" command holds the engine key itself, so it is the only thing that starts the engine: pressing the key here
-        # as well toggled the engine on and straight off again. An engine the game left running is not touched.
-        if not (data and data.get('engineEnabled')):
-            cast_command('подготовь тягач', fuzzy_threshold=0.9)
+        # The "prepare the truck" command holds the engine key itself (only when the engine is off, see "when" in the profile): pressing the key
+        # here as well toggled the engine on and straight off again.
+        cast_command('подготовь тягач', fuzzy_threshold=0.9)
     except Exception:
         _swallow()
 def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
@@ -520,7 +519,7 @@ def _handle_telemetry_action(action: str, handler, text: str = '') -> None:
                 try:
                     from actions import keysend
                     from actions.game_input import get_binding
-                    keysend.key_up(get_binding('refuel', 'r'))
+                    keysend.key_up(get_binding('refuel', 'enter'))
                 except Exception:
                     _swallow()
                 _speak(f'Ошибка заправки: {_re}')

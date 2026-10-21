@@ -11,6 +11,7 @@ from core.system import app_state
 from core.voice_debug_log import voice_event
 from core.logging_setup import get_logger as _get_logger
 from .recognition import handle_recognized_text, flush_final
+from .echo_guard import EchoGuard
 
 _log = _get_logger('engine')
 from config_pack.config import (
@@ -54,7 +55,16 @@ class JarvisEngine:
         self._ADAPT_MULT_OFF = 1.3
         self._ADAPT_MIN = float(MIN_THRESH)
         self._last_tts_skip_log = 0.0
-        self._last_tts_active_ts = 0.0
+        self._echo = EchoGuard()
+        self._last_warn = {}
+    def _warn_every(self, key: str, interval: float, msg: str, *args, **kw) -> None:
+        """Logs a recurring failure of the audio loop at most once per `interval` seconds, so a stuck component leaves a trace without
+        flooding the log at one line per audio frame."""
+        now = time.time()
+        if now - self._last_warn.get(key, 0.0) >= interval:
+            self._last_warn[key] = now
+            _log.warning(msg, *args, **kw)
+
     def update_params(self, new_thresh: int, new_gain: float, new_vol: float):
         self.energy_thresh = new_thresh
         self.voice_on = self.energy_thresh
@@ -132,6 +142,7 @@ class JarvisEngine:
         threading.Thread(target=self.asr.warmup_stt, daemon=True).start()
         threading.Thread(target=self._fg_poll_worker, daemon=True, name='FG-Poll').start()
         from config_pack.config import MIC_GAIN
+        from ui_next import host as _hud
         try:
             while True:
                 now_ts = time.time()
@@ -142,48 +153,19 @@ class JarvisEngine:
                 except OSError:
                     if not self._reopen_stream(): break
                     continue
-                _tts_blocks = self.handler.is_tts_audio_playing
-                if _tts_blocks:
-                    self._last_tts_active_ts = now_ts
-                # Extends the "TTS is playing" window by a short tail after
-                # is_tts_audio_playing itself drops — it's a thin wrapper
-                # around pygame's get_busy()/queue-empty check, which can
-                # read False for a brief moment between two chunks of a
-                # multi-sentence reply (each sentence is queued/generated
-                # somewhat independently), or before room echo/reverb from
-                # the speaker has actually died out. Either gap was enough
-                # for a speaker-only (no-AEC) setup to have the mic pick up
-                # Jarvis's own words as a "new" utterance right as it
-                # finished speaking — which is what fed a second concurrent
-                # call into the local model and crashed it (see
-                # core/speech/llm_chat.py's _infer_lock).
-                _ECHO_TAIL_SEC = 0.6
-                _tts_recently = _tts_blocks or (now_ts - self._last_tts_active_ts < _ECHO_TAIL_SEC)
-                # General safety net: whichever code path spoke (TTSManager's
-                # own queue, or a one-off core.speech.speak() call like the
-                # early-greeting on startup), once TTS has genuinely finished
-                # the HUD should reflect that right away — not sit on
-                # "speaking" until a new sound arrives or the (up to 30s)
-                # inactivity timeout below happens to fire. Runs every loop
-                # iteration (cheap: just a mode comparison) whenever TTS isn't
-                # actually active, so recovery is bounded by the audio chunk
-                # interval, not by unrelated timers.
+                _tts_recently = self._echo.update(self.handler.is_tts_audio_playing, now_ts)
+                # Once TTS has genuinely finished the HUD should reflect that right away, not sit on "speaking" until a new sound
+                # arrives or the inactivity timeout fires. Runs every iteration (cheap: a mode comparison), so recovery is bounded
+                # by the audio chunk interval.
                 if not _tts_recently:
-                    try:
-                        from ui_next import host as _hud
-                        if _hud.STATE and _hud.STATE.mode == _hud.HudState.SPEAKING:
-                            _hud.STATE.mode = _hud.HudState.IDLE
-                    except Exception: pass
+                    _hud.set_mode_if(_hud.HudState.SPEAKING, _hud.HudState.IDLE)
                 if _tts_recently and (not self.handler.interactive_state):
                     from core.audio_utils import is_jarvis_output_headphones
                     if not is_jarvis_output_headphones() and not app_state.game_mode:
-                        try:
-                            from ui_next import host as _hud
-                            if _hud.STATE and _hud.STATE.mode != _hud.HudState.SPEAKING:
-                                _hud.STATE.mode = _hud.HudState.SPEAKING
-                        except Exception: pass
+                        _hud.set_mode(_hud.HudState.SPEAKING)
                         if now_ts - self._last_tts_skip_log >= 4.0:
                             self._last_tts_skip_log = now_ts
+                            _log.debug('mic frames skipped while TTS is audible')
                         continue
                 gain = getattr(self.handler, 'mic_gain', MIC_GAIN)
                 if gain != 1.0:
@@ -205,10 +187,7 @@ class JarvisEngine:
                 ):
                     if not self.speaking and (not app_state.dictation_mode) and (not self.handler.interactive_state) and (not self.handler.is_speaking):
                         app_state.jarvis_active = False
-                        try:
-                            from ui_next import host as _hud
-                            if _hud.STATE: _hud.STATE.mode = _hud.HudState.IDLE
-                        except Exception: pass
+                        _hud.set_mode(_hud.HudState.IDLE)
                 if not self.speaking and not self.handler.is_speaking:
                     if app_state.game_mode:
                         et = float(self.energy_thresh)
@@ -226,6 +205,7 @@ class JarvisEngine:
                         vad_prob = self.asr.vad_check(data)
                     except Exception:
                         vad_prob = 0.0
+                        self._warn_every('vad', 30.0, 'vad_check failed, falling back to RMS only', exc_info=True)
                 _vad_thresh = VAD_CONFIDENCE_THRESHOLD
                 if not self.speaking:
                     self.pre_buf.append(data)
@@ -243,11 +223,8 @@ class JarvisEngine:
                         self.asr.reset()
                         for _pb in self.pre_buf: self.asr.accept(_pb)
                         self.asr.accept(data); self.pre_buf.clear()
-                        try:
-                            from ui_next import host as _hud
-                            if _hud.STATE and not self.handler.is_tts_audio_playing:
-                                _hud.STATE.mode = _hud.HudState.LISTENING
-                        except Exception: pass
+                        if not self.handler.is_tts_audio_playing:
+                            _hud.set_mode(_hud.HudState.LISTENING)
                 else:
                     self.asr.accept(data)
                     if rms > self.voice_off or vad_prob > _vad_thresh:

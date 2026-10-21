@@ -135,3 +135,7 @@ html[data-skin=command] #top .clock .secbar { margin-top: .22rem; }
 html[data-skin=command] #top .clock { left: calc(50% - (var(--navw) + var(--gap)) / 2); }
 html[data-skin=command] #top .msg { max-width: calc(50% - (var(--navw) + var(--gap)) / 2 - 9.4rem); }
 @media (min-width: 1400px) { html[data-skin=command] #top .msg { max-width: calc(50% - (var(--navw) + var(--gap)) / 2 - 10.2rem); } }
+
+/* the clock is no longer the loudest thing in the header: smaller, a softer glow */
+html[data-skin=command] #top .clock #clk { font-size: 1.45rem; color: hsl(var(--h) 100% 68%); text-shadow: 0 0 .7rem hsl(var(--h) 100% 60% / .4); }
+html[data-skin=command] #top { min-height: 4.5rem; }

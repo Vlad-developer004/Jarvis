@@ -16,6 +16,11 @@ def general(built):
     return [i for i in built['items'] if i['mode'] != 'game']
 
 
+def intents(built):
+    """General items that are an intent of the matcher; the weather cards share the `weather` intent and are checked on their own."""
+    return [i for i in general(built) if 'cmd' not in i and not i.get('semantic')]
+
+
 def test_catalog_items_are_well_formed(built):
     ids = [i['id'] for i in built['items']]
     assert len(ids) == len(set(ids)) > 150
@@ -28,7 +33,7 @@ def test_catalog_items_are_well_formed(built):
 
 def test_every_command_has_a_real_name(built):
     # ids without display metadata would show as "Vol set"; all current ids are covered
-    assert [i['id'] for i in general(built) if i['id'] not in cat.META] == []
+    assert [i['id'] for i in intents(built) if i['id'] not in cat.META] == []
 
 
 def test_destructive_commands_never_run_without_confirm(built):
@@ -40,7 +45,7 @@ def test_destructive_commands_never_run_without_confirm(built):
 
 def test_try_phrase_resolves_to_the_same_command(built):
     from core.nlp.commands import match_command
-    for it in general(built):
+    for it in intents(built):
         if it['mode'] != 'voice':
             assert match_command(it['try']) == it['id'], it['id']
         else:
@@ -236,3 +241,90 @@ def test_extensions_payload_matches_the_catalog():
     rows = extensions_payload()
     assert rows and all({'id', 'name', 'installed', 'simple', 'category'} <= set(r) for r in rows)
     assert {r['id'] for r in rows if r['simple']} == SIMPLE & {r['id'] for r in rows}
+
+
+# ── the weather questions listed next to "Погода" ──────────────────────────
+
+WEATHER_CARDS = {'weather_rain': 'rain', 'weather_wear': 'wear', 'weather_week': 'week', 'weather_weekend': 'weekend', 'weather_air': 'air'}
+
+
+def test_weather_questions_are_listed_right_after_the_weather(built):
+    ids = [i['id'] for i in built['items']]
+    at = ids.index('weather')
+    assert ids[at + 1:at + 7] == ['weather_rain', 'weather_wear', 'weather_week', 'weather_weekend', 'weather_air', 'weather_place']
+    assert all(i['cat'] == 'assistant' for i in built['items'] if i['id'].startswith('weather_'))
+
+
+def test_each_weather_card_runs_a_phrase_the_weather_command_understands(built):
+    from core.nlp.weather_route import parse
+    by_id = {i['id']: i for i in built['items']}
+    for cid, kind in WEATHER_CARDS.items():
+        it = by_id[cid]
+        assert it['mode'] == 'run' and it['cmd'] == 'weather'
+        assert parse(it['try']).kind == kind, cid
+        assert it['try'] in it['phrases'] or any(it['try'].split()[0] in p for p in it['phrases'])
+    assert by_id['weather_place']['mode'] == 'voice' and by_id['weather_place']['try'] is None
+
+
+def test_weather_cards_have_ukrainian_text(monkeypatch):
+    from ui_next.bridge.catalog_weather import weather_cards
+    ru, uk = weather_cards(False), weather_cards(True)
+    assert [c['id'] for c in ru] == [c['id'] for c in uk]
+    assert all(r['name'] != u['name'] and r['phrases'] != u['phrases'] for r, u in zip(ru, uk))
+    assert 'Погода: дощ' in {c['name'] for c in uk}
+
+
+def test_run_sends_a_weather_card_to_the_weather_command(wired):
+    r = bridge.run_command('run', {'id': 'weather_rain'})
+    assert r == {'ok': True, 'phrase': 'будет ли дождь'}
+    assert wired.done.wait(2) and wired.calls == [('weather', 'будет ли дождь')]
+
+
+def test_place_card_is_not_runnable(wired):
+    assert bridge.run_command('run', {'id': 'weather_place'}) == {'ok': False, 'error': 'not_runnable'}
+    assert wired.calls == []
+
+
+# ── commands that only the model or a phrase router knows ─────────────────
+
+def test_every_command_the_model_knows_has_a_card(built):
+    """The catalog is built from the matcher tables; a command that only INTENTS lists would silently be missing from the screen."""
+    from core.handler import dispatch
+    from core.nlp.intents import INTENTS
+    from ui_next.bridge.catalog_semantic import is_listed_elsewhere
+    ids = {i['id'] for i in built['items']}
+
+    def handled(c):
+        return c in dispatch._EXACT or any(c.startswith(p) for p, _ in dispatch._PREFIXES)
+    missing = sorted(c for c in INTENTS if handled(c) and c not in ids and not is_listed_elsewhere(c))
+    assert missing == [], f'no catalog card: {missing}; add them to ui_next/bridge/catalog_semantic.py (and META/META_UK) or to its exclusions'
+
+
+def test_semantic_only_cards_are_well_formed(built):
+    from ui_next.bridge.catalog_semantic import SEMANTIC_ONLY
+    by_id = {i['id']: i for i in built['items']}
+    keys = {c['key'] for c in built['categories']}
+    for cid, (cat_key, runnable) in SEMANTIC_ONLY.items():
+        it = by_id[cid]
+        assert it['semantic'] and it['cat'] == cat_key in keys and it['phrases'], cid
+        assert it['mode'] == ('run' if runnable else 'voice') and bool(it['try']) == runnable, cid
+
+
+def test_cinema_cards_sit_in_the_media_category(built):
+    assert {i['cat'] for i in built['items'] if i['id'].startswith('cinema_')} == {'media'}
+
+
+def test_run_sends_a_semantic_card_under_its_own_id(wired):
+    r = bridge.run_command('run', {'id': 'cinema_now'})
+    assert r == {'ok': True, 'phrase': 'что сейчас играет'}
+    assert wired.done.wait(2) and wired.calls == [('cinema_now', 'что сейчас играет')]
+    assert bridge.run_command('run', {'id': 'close_obs'}) == {'ok': False, 'error': 'not_runnable'}
+
+
+def test_semantic_cards_have_ukrainian_text(monkeypatch):
+    from ui_next.bridge import catalog as c
+    monkeypatch.setattr(c, '_interface_is_uk', lambda: True)
+    by_id = {i['id']: i for i in c.build_catalog()['items']}
+    assert by_id['session_save']['name'] == 'Сесія: Зберегти'
+    assert by_id['cinema_now']['try'] == 'що зараз грає'
+    assert 'Калькулятор' == by_id['calc']['name']

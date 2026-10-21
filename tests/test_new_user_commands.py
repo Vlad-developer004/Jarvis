@@ -86,3 +86,45 @@ def test_new_commands_are_registered_in_dispatch_and_catalog():
     for cmd in ('lock_pc', 'sleep_pc', 'calc'):
         assert cmd in dispatch._EXACT
     assert catalog._CAT_OF['lock_pc'] == 'pc' and catalog._CAT_OF['calc'] == 'assistant'
+
+
+@pytest.mark.parametrize('said,want', [('двести двадцать пять минус сто пятьдесят два', 73), ('сколько будет сто пятьдесят два плюс сто тридцать три', 285),
+                                       ('две тысячи пятьсот плюс тысяча', 3500), ('одиннадцать плюс двадцать один', 32), ("скільки буде двісті п'ятдесят мінус сто", 150),
+                                       ('сто двадцать пять разделить на пять', 25)])
+def test_calc_composes_spoken_numbers(said, want):
+    from core.nlp.calc import evaluate
+    assert evaluate(said) == want
+
+
+def test_calc_continues_the_last_answer_and_expires():
+    from core.nlp import calc
+    calc.forget_result()
+    assert calc.route('и плюс сто тридцать три') is None            # nothing to continue
+    assert calc.route('двести двадцать пять минус сто пятьдесят два') == ('calc', 'двести двадцать пять минус сто пятьдесят два')
+    calc.remember_result(73)
+    cmd, phrase = calc.route('и плюс сто тридцать три')
+    assert (cmd, calc.evaluate(phrase)) == ('calc', 206)
+    calc.remember_result(206)
+    assert calc.evaluate(calc.route('умножить на два')[1]) == 412
+    assert calc.route('а теперь разделить на ноль')[0] == 'calc'      # the handler reports the division by zero
+    calc._last = (73, calc._last[1] - calc.TTL - 1)
+    assert calc.route('и плюс сто') is None
+    calc.forget_result()
+
+
+@pytest.mark.parametrize('said', ['13:15', 'громкость плюс десять', 'плюс сто', 'сколько лететь до луны', 'двадцать пять двадцать'])
+def test_route_ignores_what_is_not_arithmetic(said):
+    from core.nlp import calc
+    calc.forget_result()
+    assert calc.route(said) is None
+
+
+def test_calc_handler_remembers_the_result(monkeypatch):
+    from core.handler.commands import info
+    from core.nlp import calc
+    calc.forget_result()
+    said = []
+    h = type('H', (), {'speak': lambda self, t, **k: said.append(t)})()
+    info._calc(h, 'calc', 'сколько будет двести двадцать пять минус сто пятьдесят два')
+    assert calc._last[0] == 73
+    calc.forget_result()

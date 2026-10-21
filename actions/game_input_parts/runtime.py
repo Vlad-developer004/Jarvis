@@ -19,9 +19,21 @@ _held_keys: dict[str, bool] = {}   # клавиши зажатые команд�
 def _switch_panel(target: int):
     press_robust(f'f{target}', duration=0.1)
     time.sleep(0.05)
+def _step_applies(step: dict) -> bool:
+    """A sequence step may carry "when": {"engineEnabled": false, ...}: it runs only if every named telemetry field has that truth value.
+    Without telemetry the state is unknown and the step runs, as it always did."""
+    cond = step.get('when')
+    if not cond:
+        return True
+    try:
+        from actions.ets2_telemetry import get as _tget
+        data = _tget()
+    except Exception:
+        data = None
+    return not data or all(bool(data.get(k)) == bool(v) for k, v in cond.items())
 def _execute_sequence(steps: list[dict]):
     for step in steps:
-        if step.get('_disabled'):
+        if step.get('_disabled') or not _step_applies(step):
             continue
         if 'wait' in step:
             time.sleep(step['wait'])
@@ -278,7 +290,7 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
     lights_target = entry.get('lights_target')
     lights_target_raw = lights_target
 
-    if name == "Код: красный (3) — боевая готовность" or name == "Макрос: Вторжение пиратов" or key == "3":
+    if entry.get('alert_sound') == 'red_alert':
         try:
             from core.speech.sound import play_alert_sound
             play_alert_sound('red_alert')
@@ -379,6 +391,12 @@ def cast_command(text: str, fuzzy_threshold: float | None = None) -> tuple[bool,
     has_key = key and key != 'MACRO'
     telemetry = telemetry_action
 
+    if entry.get('assign') and not (has_key or has_keys or mouse or sequence):   # a spell the player has not bound to a key yet
+        now = time.time()
+        if now - _last_cast.get(name, 0) >= CAST_COOLDOWN:
+            _last_cast[name] = now
+            threading.Thread(target=_speak_response, args=(f'Заклинание {name} не назначено на клавишу. Назначьте его в редакторе профиля.',), daemon=True).start()
+        return (True, name, None)
     if not has_key and not has_keys and not mouse and not sequence and not telemetry and not response and not binding_name:
         # If we already did wiper/lights, we returned above or continue here
         return (False, '', None) if not (wiper_target is not None or lights_target) else (True, name, telemetry_action)

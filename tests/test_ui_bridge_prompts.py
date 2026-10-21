@@ -215,3 +215,16 @@ def test_git_dialog_data_carries_warnings_counts_and_a_suggested_message(pr, mon
     assert d['suggest'].startswith('feat')
     answer('cancel')
     t.join(2)
+
+
+def test_a_notice_stays_in_the_popup_but_a_question_brings_the_main_window(pr, monkeypatch):
+    from ui_next import host
+    shown = []
+    monkeypatch.setattr(host, 'command', lambda op, **a: shown.append(op) or True)
+    assert prompts.open_prompt('notice', {'title': 'T', 'text': 'x', 'actions': [], 'tone': 'info', 'image': ''}, {'validate': lambda v: None}, lambda s, v: None)
+    assert shown == []                                           # a reminder appears in the pop-up window over any program, the main window stays where it is
+    prompts.run({'op': 'answer', 'id': prompts.current_id(), 'status': 'ok', 'value': None})
+    box, t = run_bg(dialogs.ask_text, **TEXT)
+    assert shown == ['show']                                     # a question that needs typing must not wait in a window hidden in the tray
+    answer('cancel')
+    t.join(2)

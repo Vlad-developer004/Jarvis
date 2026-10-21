@@ -6,5 +6,7 @@
  "vocoder_v5_ru.onnx": "fc75bccb0e6e3a548278aec8753c0e8d46fd1bfa16d04e172dae069220e41358",
  "istft_48k.onnx": "e7c8a3d01732ab1facb5fad0acd757451cfa3a87feec2d8577df16ee1ec5cd09",
  "silero_stress.onnx": "904056c963c8df0043770123fc68ab12703232ca19c70a593acfdf3647cb463b",
- "ngram_core.onnx": "ba02557b9e135b39dc25626c352c36af633fc94f97aba28949b52bf4dcb190d6"
+ "ngram_core.onnx": "ba02557b9e135b39dc25626c352c36af633fc94f97aba28949b52bf4dcb190d6",
+ "model.int8.onnx": "f86ebfa0429ced91be6054fc344827e9c6c2572f3c318416cd974b06f66437ec",
+ "model.gguf": "afc25c1a08f5c857e7d4369cbe9100d9a3fcca0c3876c359ed7cbc7251138521"
 }

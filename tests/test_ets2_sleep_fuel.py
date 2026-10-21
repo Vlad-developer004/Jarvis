@@ -33,10 +33,10 @@ def test_wake_up_starts_the_engine_only_through_the_prepare_command(wake):
     assert ('press', 'e') not in calls          # a second engine press toggled the engine straight back off
 
 
-def test_wake_up_releases_the_handbrake_and_leaves_a_running_engine_alone(wake):
+def test_wake_up_releases_the_handbrake_and_still_runs_the_prepare_command(wake):
     calls = wake({'engineEnabled': True, 'parkBrake': True})
     assert ('press', 'space') in calls
-    assert not [c for c in calls if c[0] == 'cast']
+    assert ('press', 'e') not in calls and [c for c in calls if c[0] == 'cast'] == [('cast', 'подготовь тягач')]   # the profile skips the engine step itself
 
 
 @pytest.fixture

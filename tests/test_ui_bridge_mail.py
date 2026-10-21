@@ -25,6 +25,7 @@ class FakeConn:
     def __init__(self):
         self.calls = []
         self.literal = None
+        self.seen = set()
 
     def list(self):
         return 'OK', [b'(\\HasNoChildren) "/" "INBOX"', b'(\\HasNoChildren \\Sent) "/" "[Gmail]/Sent Mail"', b'(\\HasNoChildren \\Trash) "/" "[Gmail]/Trash"',
@@ -35,7 +36,16 @@ class FakeConn:
         return 'OK', [b'1']
 
     def status(self, name, what):
+        self.calls.append(('status', what))
+        if what == '(MESSAGES)':
+            return 'OK', [b'"INBOX" (MESSAGES 5)']
         return 'OK', [b'"INBOX" (UNSEEN 3)']
+
+    def fetch(self, seq, items):
+        """A fetch by sequence number (the fake mailbox has UID == sequence number)."""
+        self.calls.append(('seqfetch', (seq,)))
+        lo, hi = (int(x) for x in seq.split(':'))
+        return 'OK', [hdr(str(u), '\Seen' if u == 2 else '', f'S{u}', 'Anna K <anna@x.org>') for u in range(lo, hi + 1)]
 
     def noop(self):
         return 'OK', []
@@ -47,8 +57,13 @@ class FakeConn:
         if cmd.lower() == 'fetch' and 'HEADER' in args[1]:
             wanted = args[0].split(b',')
             return 'OK', [hdr(u.decode(), '\\Seen' if u == b'2' else '', f'S{u.decode()}', 'Anna K <anna@x.org>') for u in wanted]
+        if cmd.upper() == 'STORE' and r'\Seen' in args[2]:
+            self.seen.add(args[0])
+        flags = b'(\Seen)' if args[0] in self.seen else b'()'
+        if cmd.lower() == 'fetch' and args[1] == '(FLAGS)':
+            return 'OK', [b'1 (UID 5 FLAGS ' + flags + b')']
         if cmd.lower() == 'fetch':
-            return 'OK', [(b'1 (UID 5 FLAGS () BODY[] {10}', b'Subject: Hi\r\nFrom: A <a@b.c>\r\nMessage-ID: <1@x>\r\n\r\nhello\r\n'), b')']
+            return 'OK', [(b'1 (UID 5 FLAGS ' + flags + b' BODY[] {10}', b'Subject: Hi\r\nFrom: A <a@b.c>\r\nMessage-ID: <1@x>\r\n\r\nhello\r\n'), b')']
         return 'OK', []
 
     def expunge(self):
@@ -109,17 +124,31 @@ def test_folder_and_uid_are_validated(conn):
 def test_read_marks_seen_once_and_caches(conn):
     ml.list_messages()
     r = ml.read_message('inbox', '5')
+    ims.SESSION.settle()
     assert r['ok'] and r['body'] == 'hello' and r['name'] == 'A' and r['reply_to'] == 'a@b.c' and r['was_unread'] is True
     stores = [c for c in conn.calls if c[0] == 'STORE']
     assert len(stores) == 1 and stores[0][1][1:] == ('+FLAGS', r'(\Seen)')
     assert ims.SESSION.pages['inbox']['rows'][0]['unread'] is False                  # the cached list follows
     ml.read_message('inbox', '5')
+    ims.SESSION.settle()
     assert len([c for c in conn.calls if c[0] == 'STORE']) == 1
 
 
 def test_read_without_mark_leaves_the_letter_unread(conn):
     assert ml.read_message('inbox', '5', mark=False)['ok']
     assert not [c for c in conn.calls if c[0] == 'STORE']
+
+
+def test_opening_a_letter_cached_by_a_no_mark_read_still_marks_it_seen(conn):
+    ml.list_messages()
+    assert ml.read_message('inbox', '5', mark=False)['ok']                                # prefetch / preview: body cached, flag untouched
+    assert not [c for c in conn.calls if c[0] == 'STORE']
+    r = ml.read_message('inbox', '5')
+    ims.SESSION.settle()
+    assert r['was_unread'] is True
+    assert len([c for c in conn.calls if c[0] == 'STORE']) == 1
+    assert ims.SESSION.pages['inbox']['rows'][0]['unread'] is False
+    assert ml.read_message('inbox', '5')['was_unread'] is False
 
 
 def test_remove_moves_to_trash_or_deletes_for_good(conn):

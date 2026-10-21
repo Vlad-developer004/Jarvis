@@ -10,9 +10,10 @@
 
   function build() {
     el = document.createElement('aside'); el.className = 'an'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); el.hidden = true;
-    el.innerHTML = '<button type="button" class="an-x" aria-label="Закрыть ответ">×</button><div class="an-pic" hidden></div><div class="an-b"><h4 class="an-t"></h4><div class="an-txt"></div><small class="an-vid" hidden>К ответу прилагается видео, оно показывается в старом окне.</small></div>';
+    el.innerHTML = '<button type="button" class="an-x" aria-label="Закрыть ответ">×</button><div class="an-pic" hidden></div><div class="an-b"><h4 class="an-t"></h4><div class="an-txt"></div><div class="an-links" hidden></div><small class="an-vid" hidden>К ответу прилагается видео, оно показывается в старом окне.</small></div>';
     document.body.appendChild(el);
     el.querySelector('.an-x').addEventListener('click', () => { dismissed = shownId; paint(); if (m.connected) J.send('answer', { op: 'close' }); });
+    el.querySelector('.an-links').addEventListener('click', (e) => { const b = e.target.closest('[data-url]'); if (b && m.connected) J.send('open_url', { url: b.dataset.url }); });
     const t = el.querySelector('.an-txt'); t.addEventListener('scroll', () => { stick = t.scrollTop + t.clientHeight >= t.scrollHeight - 12; });
   }
 
@@ -32,13 +33,16 @@
 
   function paint() {
     const a = m.answer; if (!el) build();
-    const on = !!(a && a.visible && a.id !== dismissed && m.connected);
+    const on = !!(a && a.visible && a.id !== dismissed && m.connected) && (!window.__TAURI__ || !!window.__POPUP__);   // in the shell the pop-up window shows it, over any program
     if (!on) { if (!el.hidden) { el.classList.remove('in'); el.hidden = true; } return; }
     if (a.id !== shownId) { shownId = a.id; stick = true; target = ''; shown = 0; acc = 0; el.querySelector('.an-txt').scrollTop = 0; }
     el.querySelector('.an-t').textContent = a.subject || 'J.A.R.V.I.S.';
     const pic = el.querySelector('.an-pic');
     if (a.image) { if (pic.dataset.src !== a.image) { pic.dataset.src = a.image; pic.style.setProperty('--src', `url("${a.image}")`); } pic.hidden = false; } else { pic.hidden = true; pic.dataset.src = ''; pic.style.removeProperty('--src'); }
     el.querySelector('.an-vid').hidden = !a.video;
+    const ln = el.querySelector('.an-links'), links = a.links || [], key = JSON.stringify(links);
+    if (ln.dataset.k !== key) { ln.dataset.k = key; ln.innerHTML = links.map((x) => `<button type="button" data-url="${esc(x.url)}">${esc(x.label)}</button>`).join(''); }
+    ln.hidden = !links.length;
     const t = el.querySelector('.an-txt'); reveal(t, a.text || '');
     t.hidden = !a.text;
     if (el.hidden) { el.hidden = false; requestAnimationFrame(() => el.classList.add('in')); }

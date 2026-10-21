@@ -1,6 +1,7 @@
 import threading
 import queue
 import re
+import time
 from core.nlp import extract_amount
 from core.system import module_enabled
 from core.responses import spk
@@ -387,6 +388,20 @@ class CommandHandler(BaseHandler):
                 self._execute_command(cmd, text, text_lower, amount)
             except Exception as e:
                 _log.error('command worker error: cmd=%r: %s', cmd, e, exc_info=True)
+            finally:
+                self._cmd_queue.task_done()
+    def wait_commands_idle(self, timeout: float = 5.0) -> bool:
+        """Blocks until every queued command has been executed (or `timeout` passes). A chain of commands spoken as one phrase runs with
+        silent_mode set; the caller resets it only after this returns, so the flag is not cleared while the worker still has commands."""
+        q = self._cmd_queue
+        end = time.monotonic() + timeout
+        with q.all_tasks_done:
+            while q.unfinished_tasks:
+                left = end - time.monotonic()
+                if left <= 0:
+                    return False
+                q.all_tasks_done.wait(left)
+        return True
     def handle(self, cmd: str, text: str):
         text_lower = text.lower().strip()
         amount = extract_amount(text_lower)

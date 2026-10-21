@@ -9,6 +9,9 @@
   const say = (t) => { toast.textContent = t; toast.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 3200); };
   const vdate = (ts) => { const r = /^(\d{4})-(\d\d)-(\d\d) (\d\d:\d\d)/.exec(ts); return r ? `${+r[3]} ${MON[+r[2] - 1]} ${r[1]}, ${r[4]}` : ts; };
   const thumbOk = (t) => /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(t || '');
+  // the picture needs no help from the core: YouTube serves it to the page directly, so it shows while the title is still on its way
+  const vidOf = (u) => (/^https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/.exec(u) || [])[1];
+  const thumbOf = (x, u) => (thumbOk(x.thumb) ? x.thumb : vidOf(u) ? `https://i.ytimg.com/vi/${vidOf(u)}/mqdefault.jpg` : '');
   const short = (u) => (u.length > 46 ? u.slice(0, 44) + '…' : u);
   const pl = (n) => `${n} видео`;
 
@@ -19,7 +22,7 @@
     const list = f ? videos.filter((v) => { const x = vm[v.url] || {}; return `${x.title || ''} ${x.author || ''} ${v.url}`.toLowerCase().includes(f); }) : videos;
     if (!list.length) { body.innerHTML = `<div class="vd-empty">${f ? 'Ничего не найдено.' : 'Пока ничего не сохранено. Скажите «сохрани видео», когда оно играет.'}</div>`; return; }
     body.innerHTML = `<div class="vd-grid">${list.map((v) => { const x = vm[v.url] || {};
-      return `<div class="vd-card"><span class="vd-th"${thumbOk(x.thumb) ? ` style="background-image:url('${x.thumb}')"` : ''}>${x.duration ? `<em>${esc(x.duration)}</em>` : ''}</span>`
+      return `<div class="vd-card"><span class="vd-th"${thumbOf(x, v.url) ? ` style="background-image:url('${thumbOf(x, v.url)}')"` : ''}>${x.duration ? `<em>${esc(x.duration)}</em>` : ''}</span>`
         + `<div class="vd-t"><b>${esc(x.title || short(v.url))}</b><small>${x.author ? esc(x.author) + ' · ' : ''}${esc(vdate(v.ts))}</small>`
         + `<div class="vd-b"><button type="button" class="cm-try" data-open="${esc(v.url)}">Открыть</button><button type="button" class="cm-try tl-del" data-del="${esc(v.ts)}" data-url="${esc(v.url)}">Удалить</button></div></div></div>`; }).join('')}</div>`;
   }
@@ -27,7 +30,7 @@
     if (!m.connected || !videos.length) return;
     const r = await J.send('tools', { op: 'video_meta', urls: videos.map((v) => v.url) }); if (!r || !r.ok) return;
     Object.assign(vm, r.items); if (VIEW === 'videos') render();
-    if (r.pending > 0 && metaTry++ < 10) setTimeout(fetchMeta, 1500);
+    if (r.pending > 0 && metaTry++ < 20) setTimeout(fetchMeta, 600);
   }
   async function load() {
     if (!m.connected) { videos = DEMO.map((v) => ({ ...v })); render(); return; }

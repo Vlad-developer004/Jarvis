@@ -141,9 +141,9 @@ class SemanticIntentClassifier:
                 from config_pack.config import get_settings_path
                 import json as _json
                 with open(get_settings_path(), encoding='utf-8') as _f:
-                    self._unload_timeout = float(_json.load(_f).get('semantic_unload_timeout', 600.0))
+                    self._unload_timeout = float(_json.load(_f).get('semantic_unload_timeout', 0.0))
             except Exception:
-                self._unload_timeout = 600.0
+                self._unload_timeout = 0.0
         tout = self._unload_timeout
         if tout <= 0:
             return

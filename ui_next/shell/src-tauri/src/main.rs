@@ -97,6 +97,74 @@ async fn open_perf_mini(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Width of the pop-up window in CSS pixels (the card is 24rem wide plus its margins); its height follows the content.
+const POPUP_W: f64 = 440.0;
+const POPUP_MARGIN: i32 = 8;
+
+/// A transparent, always-on-top window in the corner of the screen for what the assistant tells the user (an answer card, a reminder): it is
+/// visible over any program, also while the main window sits in the tray, and it never takes the keyboard focus. Hidden until it has content.
+fn build_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    WebviewWindowBuilder::new(app, "popup", WebviewUrl::App("popup.html".into()))
+        .title("Jarvis: уведомление")
+        .inner_size(POPUP_W, 120.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focusable(false)
+        .focused(false)
+        .visible(false)
+        .build()
+}
+
+#[cfg(windows)]
+mod user32 {
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn ShowWindow(hwnd: isize, cmd: i32) -> i32;
+    }
+}
+
+/// Shows a window without activating it: `show()` makes the program the foreground one, which would take the keyboard from what the user is typing.
+fn show_without_focus(win: &WebviewWindow) {
+    #[cfg(windows)]
+    if let Ok(hwnd) = win.hwnd() {
+        const SW_SHOWNOACTIVATE: i32 = 4;
+        // SAFETY: a plain Win32 call on the window handle of a live window
+        unsafe { user32::ShowWindow(hwnd.0 as isize, SW_SHOWNOACTIVATE) };
+        return;
+    }
+    let _ = win.show();
+}
+
+/// Sizes the pop-up to its content (`height` in CSS pixels), puts it in the bottom right corner of the primary monitor's work area (above the
+/// taskbar) and shows it without activating it.
+#[tauri::command]
+fn popup_fit(app: AppHandle, height: f64) -> Result<(), String> {
+    let win = app.get_webview_window("popup").ok_or("no pop-up window")?;
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let (w, h) = ((POPUP_W * scale).round() as u32, (height.clamp(40.0, 1200.0) * scale).round() as u32);
+    let monitor = win.primary_monitor().map_err(|e| e.to_string())?.ok_or("no monitor")?;
+    let area = monitor.work_area();
+    let x = area.position.x + area.size.width as i32 - w as i32 - POPUP_MARGIN;
+    let y = area.position.y + area.size.height as i32 - h as i32 - POPUP_MARGIN;
+    win.set_size(PhysicalSize::new(w, h)).map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+    if !win.is_visible().unwrap_or(false) {
+        show_without_focus(&win);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn popup_hide(app: AppHandle) {
+    if let Some(w) = app.get_webview_window("popup") {
+        let _ = w.hide();
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -116,7 +184,7 @@ fn main() {
     tauri::Builder::default()
         // a second launch brings the running window forward instead of opening another one
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
-        .invoke_handler(tauri::generate_handler![bridge_info, get_quality, open_perf_mini, show_window])
+        .invoke_handler(tauri::generate_handler![bridge_info, get_quality, open_perf_mini, show_window, popup_fit, popup_hide])
         .setup(move |app| {
             // JARVIS_PAGE and JARVIS_SIZE (WxH) are for tests: another page, a fixed size without restoring the saved placement
             let page = std::env::var("JARVIS_PAGE").unwrap_or_else(|_| "app".into());
@@ -139,6 +207,7 @@ fn main() {
                 restore_state(&win);
                 let _ = win.show();
             }
+            build_popup(app.handle())?;
             // the close button hides the window to the tray, the tray menu quits
             let closing = win.clone();
             win.on_window_event(move |ev| {

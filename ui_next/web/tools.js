@@ -5,7 +5,7 @@
   const root = $('lk-tools'), modal = $('lk-modal'), mbox = $('lk-mbox'), U = window.LOOK.ui;
   const DEMO = { ok: true, max_videos: 10, videos: [{ ts: '2026-10-18 21:40', url: 'https://youtu.be/dQw4w9WgXcQ' }, { ts: '2026-10-17 09:12', url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' }], videos_total: 2,
     meetings: [{ name: 'Математика', phrase: 'заходим на пару по математике', url: 'https://zoom.us/j/1234567890' }], keep: ['discord', 'spotify'], launch: { chrome: 'switch', code: 'new' },
-    remote: { token_set: false, chat_id: '', enabled: false }, update: { auto: true, version: '0.1.0', available: '', staged: false }, ip_lookup: true, scenarios: [{ name: 'Работа', phrase: 'режим работы', steps: ['открой хром', 'громкость тридцать'] }] };
+    remote: { token_set: false, chat_id: '', enabled: false }, update: { auto: true, version: '0.2.0', available: '', staged: false }, ip_lookup: true, scenarios: [{ name: 'Работа', phrase: 'режим работы', steps: ['открой хром', 'громкость тридцать'] }] };
   const ERR = { required: 'Заполните все поля', bad_url: 'Нужна ссылка, которая начинается с http:// или https://', exists: 'Такая запись уже есть', too_many: 'Записей уже слишком много', bad_steps: 'Нужен хотя бы один шаг, не больше двенадцати', bad_value: 'Значение не подошло',
     write_failed: 'Не удалось сохранить', not_found: 'Записи уже нет', not_ready: 'Обновление ещё не загружено', failed: 'Не получилось', no_handler: 'Jarvis ещё запускается' };
   const UIKEYS = ['jarvisTheme', 'jarvisCustom', 'jarvisAuto', 'uiScale', 'jarvisSfx', 'jarvisSfxVol', 'jarvisHide', 'jarvisFx'];   // appearance choices live in the browser storage: they go into the backup from here

@@ -406,18 +406,13 @@ def _state_weather_city_ask(handler, text_lower, words, data, global_cmd):
         handler._set_interactive('weather_city_ask', data, timeout=20.0)
         return {'new_state': 'weather_city_ask', 'new_data': data, 'timeout': 20.0}
     handler._set_interactive(None)
-    import json, os
     from core.responses import spk as _spk
     try:
-        from config_pack.config import get_settings_path
+        from core import settings_io
         from actions.weather import _hud_cache
-        sp = get_settings_path()
-        s = {}
-        if os.path.exists(sp):
-            with open(sp, 'r', encoding='utf-8') as f: s = json.load(f)
-        s['manual_city'] = city
+        if not settings_io.update({'manual_city': city}):
+            raise OSError('settings not written')
         _hud_cache.clear()
-        with open(sp, 'w', encoding='utf-8') as f: json.dump(s, f, ensure_ascii=False, indent=2)
         handler.speak(_spk('weather.city_saved', city=city))
     except Exception:
         handler.speak(_spk('weather.city_save_error'))

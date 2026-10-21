@@ -10,7 +10,7 @@ TTL = 120.0     # seconds after the previous command during which a follow-up st
 _lock = threading.Lock()
 _last: tuple[str, str, float] | None = None
 
-_DAY = r'(?:сегодня|завтра|послезавтра|утром|днём|днем|вечером|ночью|через\s+\w+\s+дн\w+)'
+_DAY = r'(?:сегодня|завтра|послезавтра|утром|днём|днем|вечером|ночью|через\s+\w+\s+дн\w+|на\s+выходные|на\s+неделю|выходные|неделю)'
 _WEATHER_DAY = re.compile(rf'^(?:а|и|ну|а как|а что)?\s*(?:там\s+)?(?:на\s+)?({_DAY})$')
 _WEATHER_CITY = re.compile(r'^(?:а|и)\s+(?:в|во)\s+([а-яёіїєґa-z][а-яёіїєґa-z\- ]{1,29})$')
 _TIMER_MORE = re.compile(r'^(?:и\s+|а\s+)?(?:ещё|еще)\s+(.+)$')
@@ -18,6 +18,13 @@ _AGAIN = {'ещё', 'еще', 'ещё немного', 'еще немного', 
           'давай ещё', 'давай еще', 'продолжай'}
 _REPEATABLE = ('vol_up', 'vol_down', 'brightness_up', 'brightness_down')
 _TIMER_CMDS = ('timer_set', 'timer_add', 'timer_sub')
+
+
+def early(text: str) -> tuple[str, str] | None:
+    """Phrases that are unambiguous on their own and must not wait for the semantic model: spoken arithmetic, also a continuation of the last
+    calculator answer ("и плюс сто тридцать три"). Asked before the normal parse."""
+    from core.nlp import calc, weather_route
+    return calc.route(text) or weather_route.route(text)
 
 
 def remember(cmd: str, segment: str) -> None:

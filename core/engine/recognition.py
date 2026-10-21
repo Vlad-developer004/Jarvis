@@ -285,6 +285,11 @@ def _sem_parse(text: str, is_waiting_answer: bool = False) -> list[tuple[str, st
     return []
 
 
+def _settle(handler) -> None:
+    """Waits for the commands of a chained phrase to run before silent_mode is cleared; handle() only queues them for the command worker."""
+    wait = getattr(handler, 'wait_commands_idle', None)
+    if wait:
+        wait()
 def handle_recognized_text(text: str, handler):
     text_low = text.lower().strip()
     print(f"[RECOGNITION] Jarvis heard: {text!r}", flush=True)
@@ -385,7 +390,6 @@ def handle_recognized_text(text: str, handler):
             app_state.last_command_time = time.time()
             for c, seg in passthrough:
                 handler.handle(c, seg)
-                time.sleep(0.05)
             return
 
         # STRICT GAME MODE: If in game mode and no game command matched, do not process global commands.
@@ -443,7 +447,6 @@ def handle_recognized_text(text: str, handler):
             app_state.last_command_time = time.time()
             for c, seg in early:
                 handler.handle(c, seg)
-                time.sleep(0.05)
             return
         if handler.interactive_state:
             app_state.jarvis_active = True
@@ -458,7 +461,6 @@ def handle_recognized_text(text: str, handler):
                 app_state.last_command_time = time.time()
                 for c, seg in cmds_listen:
                     handler.handle(c, seg)
-                    time.sleep(0.05)
             return
         elif is_wake:
             app_state.jarvis_active = True; app_state.last_command_time = time.time()
@@ -478,8 +480,9 @@ def handle_recognized_text(text: str, handler):
                 handler.silent_mode = len(real) > 1
                 print(f"[RECOGNITION] Global commands matched: {[c for c, _ in real]}", flush=True)
                 for c, seg in real:
-                    handler.handle(c, seg); time.sleep(0.1)
+                    handler.handle(c, seg)
                 if handler.silent_mode:
+                    _settle(handler)
                     handler.silent_mode = False; handler.play_response('confirm', override_silent=True)
     else:
         # While in AI conversation mode: if no recognizable command matched, route to qa_clarify
@@ -508,7 +511,7 @@ def handle_recognized_text(text: str, handler):
                 app_state.last_command_time = time.time(); _scn.run(handler, _sc, _sem_parse); return
         except Exception:
             _swallow()
-        cmds = parsed_cmds if parsed_cmds is not None else _sem_parse(text)
+        cmds = [_ar] if (_ar := followup.early(_WAKE_RE.sub('', text_lower, count=1))) else (parsed_cmds if parsed_cmds is not None else _sem_parse(text))
         if not cmds and (_fu := followup.resolve(_WAKE_RE.sub('', text_lower, count=1))):
             cmds = [_fu]      # "а завтра?" after the weather, "ещё" after "громче"
         # If wake word ate the whole command, strip it and re-parse the remainder
@@ -548,8 +551,8 @@ def handle_recognized_text(text: str, handler):
                     print(f"[RECOGNITION] Executing global command: action={c!r}, segment={seg!r}", flush=True)
                     handler.handle(c, seg)
                     if c != 'wake': followup.remember(c, seg)
-                time.sleep(0.1)
             if handler.silent_mode:
+                _settle(handler)
                 handler.silent_mode = False; handler.play_response('confirm', override_silent=True)
         elif not getattr(app_state, 'ignore_mode', False):
             # Jarvis is active (mid-conversation, within the wake-mode follow-up

@@ -61,3 +61,14 @@ def test_no_animation_changes_a_layout_property():
     assert len(frames) > 10, 'no @keyframes found: the pattern is stale'
     bad = ['%s: @keyframes %s' % (f, n) for f, n, body in frames if _LAYOUT_PROPS.search(body)]
     assert not bad, bad
+
+
+def test_hidden_answer_card_parts_really_disappear():
+    """`.an { display: flex }` beat the browser's [hidden] rule, so a dismissed answer card stayed on screen at opacity 0: invisible, still clickable.
+    Every part the script hides with `.hidden = true` needs its own [hidden] rule, and a card that is not shown must not take the pointer."""
+    css = re.sub(r'/\*.*?\*/', '', open(os.path.join(WEB, 'answer.css'), encoding='utf-8').read(), flags=re.S)
+    js = open(os.path.join(WEB, 'answer.js'), encoding='utf-8').read()
+    toggled = {'an'} | set(re.findall(r"querySelector\('\.([\w-]+)'\)\.hidden", js)) | {'an-pic', 'an-links', 'an-txt'}
+    for cls in sorted(toggled):
+        assert re.search(rf'\.{re.escape(cls)}\[hidden\][^{{}}]*\{{[^}}]*display\s*:\s*none', css), f'.{cls}[hidden] does not hide it'
+    assert re.search(r'\.an:not\(\.in\)\s*\{[^}]*pointer-events\s*:\s*none', css)

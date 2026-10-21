@@ -42,12 +42,25 @@ class HudState:
         with self._lock:
             self._mode = v
 
+    def transition(self, expected: str, new: str) -> bool:
+        """Sets `new` only if the mode is still `expected`, in one step, so a check-then-set from the audio loop cannot overwrite a change made by
+        another thread in between."""
+        with self._lock:
+            if self._mode != expected:
+                return False
+            self._mode = new
+            return True
+
 
 STATE = HudState()
 
 
 def set_mode(mode: str) -> None:
     STATE.mode = mode
+
+
+def set_mode_if(expected: str, mode: str) -> bool:
+    return STATE.transition(expected, mode)
 
 
 # ---- notices: short messages shown in the window's header strip ----
@@ -167,6 +180,11 @@ def update_ai_window_text(text: str) -> None:
     _answer('text', text)
 
 
+def set_ai_window_links(links: list) -> None:
+    """Buttons on the answer card: [{'label', 'url'}] (web links only)."""
+    _answer('links', links)
+
+
 def set_ai_window_image(path: str) -> None:
     _answer('image', path)
 
@@ -188,13 +206,24 @@ def show_alert(title: str, text: str, *, tone: str = 'info', image: str = '', ac
     try:
         from ui_next.bridge import prompts
         data = {'tone': tone, 'title': str(title)[:120], 'text': str(text)[:600], 'image': image, 'actions': [{'id': str(a['id']), 'label': str(a['label'])[:40], 'primary': bool(a.get('primary'))} for a in (actions or [])]}
-        shown = prompts.open_prompt('notice', data, {'validate': lambda v: v if v in ids else None}, done or (lambda s, v: None), timeout=timeout, voice=voice)
-        if shown:
-            command('show')
-        return shown
+        return prompts.open_prompt('notice', data, {'validate': lambda v: v if v in ids else None}, done or (lambda s, v: None), timeout=timeout, voice=voice)
     except Exception:
         _swallow()
         return False
+
+
+def toast(key: str, title: str, text: str, *, color: str = CYAN, tone: str = 'info', actions: list | None = None, done=None, timeout: float | None = 30,
+          notice_ms: int = 20000) -> bool:
+    """A message the user can see without hearing it: a notice in the header strip, and a pop-up unless game mode is on (a pop-up over a game
+    would still pull the player's eyes out of it). Returns whether the pop-up was shown."""
+    notify(key, f'{title}. {text}', color, duration=notice_ms)
+    try:
+        from core.system import app_state
+        if app_state.game_snapshot()[0]:
+            return False
+    except Exception:
+        _swallow()
+    return show_alert(title, text, tone=tone, actions=actions, done=done, timeout=timeout)
 
 
 def show_timer_done(label: str) -> bool:

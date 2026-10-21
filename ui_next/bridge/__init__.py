@@ -80,7 +80,8 @@ def _cmd_run(data: dict) -> dict:
     phrase = item.get('try')
     if not phrase:
         return {'ok': False, 'error': 'not_runnable'}
-    threading.Thread(target=_run_phrase, args=(handler, phrase, cid), daemon=True, name='ui-bridge-run').start()
+    # a card without an intent of its own (the weather questions) names the command that answers its phrase
+    threading.Thread(target=_run_phrase, args=(handler, phrase, item.get('cmd', cid)), daemon=True, name='ui-bridge-run').start()
     return {'ok': True, 'phrase': phrase}
 
 
@@ -304,6 +305,8 @@ def start(handler=None) -> int | None:
     perf.bind(publish)
     from . import mail as _mail
     threading.Thread(target=_mail.warm, daemon=True, name='ui-bridge-mail-warm').start()
+    from . import video_meta
+    threading.Thread(target=video_meta.warm, daemon=True, name='ui-bridge-video-warm').start()
     _log.info('UI bridge listening on 127.0.0.1:%s', port)
     return port
 

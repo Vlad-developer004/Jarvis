@@ -193,3 +193,16 @@ def test_stop_terminates_a_running_shell(fresh_shell, monkeypatch):
     monkeypatch.setattr(shell, '_proc', proc)
     shell.stop()
     assert proc.terminated is True
+
+
+def test_toast_shows_notice_and_popup_but_only_the_notice_in_game_mode(monkeypatch):
+    from core.system import app_state
+    seen = {'notice': [], 'alert': []}
+    monkeypatch.setattr(host, 'notify', lambda *a, **k: seen['notice'].append(a))
+    monkeypatch.setattr(host, 'show_alert', lambda *a, **k: seen['alert'].append(a) or True)
+    monkeypatch.setattr(app_state, 'game_snapshot', lambda: (False, ''))
+    assert host.toast('k', 'Заголовок', 'Текст') is True
+    assert seen['notice'][0][:2] == ('k', 'Заголовок. Текст') and seen['alert'][0][:2] == ('Заголовок', 'Текст')
+    monkeypatch.setattr(app_state, 'game_snapshot', lambda: (True, 'ets2'))
+    assert host.toast('k', 'Заголовок', 'Текст') is False
+    assert len(seen['notice']) == 2 and len(seen['alert']) == 1

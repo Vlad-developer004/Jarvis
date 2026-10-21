@@ -246,6 +246,11 @@ def _background_init():
                     start_calendar_reminders(handler)
                 except Exception as e:
                     _log.error('calendar_ics failed: %s', e, exc_info=True)
+            try:
+                from ui_next.bridge.mail_watch import start_mail_watch
+                start_mail_watch()
+            except Exception as e:
+                _log.error('mail_watch failed: %s', e, exc_info=True)
             if AUTO_UPDATE_ENABLED and module_enabled('updater') and getattr(sys, 'frozen', False):
                 try:
                     from core.system import app_updater

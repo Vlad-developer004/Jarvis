@@ -2,15 +2,16 @@
 
 /// Sessions quieter than this are left alone (nothing audible to lower).
 pub const MIN_AUDIBLE: f32 = 0.02;
-/// Volume other apps are lowered to while Jarvis speaks, if they were louder.
-pub const DUCK_LEVEL: f32 = 0.45;
+/// Share of its own volume that another app keeps while Jarvis speaks (about -10 dB). An absolute cap (0.45) left music that
+/// was playing at full volume only about 7 dB down, so it still drowned the voice.
+pub const DUCK_FACTOR: f32 = 0.3;
 
 /// New volume for a session that is currently at `current`, or None when it should not be touched.
 pub fn target_for(current: f32) -> Option<f32> {
     if current <= MIN_AUDIBLE {
         return None;
     }
-    let target = current.min(DUCK_LEVEL);
+    let target = (current * DUCK_FACTOR).max(MIN_AUDIBLE);
     (target < current).then_some(target)
 }
 
@@ -57,12 +58,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_louder_audible_sessions_are_lowered() {
-        assert_eq!(target_for(1.0), Some(0.45));
-        assert_eq!(target_for(0.46), Some(0.45));
-        assert_eq!(target_for(0.45), None);
-        assert_eq!(target_for(0.3), None);
-        assert_eq!(target_for(0.02), None);
+    fn audible_sessions_are_lowered_to_a_share_of_their_own_volume() {
+        let near = |got: Option<f32>, want: f32| (got.expect("lowered") - want).abs() < 1e-6;
+        assert!(near(target_for(1.0), 0.3));
+        assert!(near(target_for(0.6), 0.18));
+        assert!(near(target_for(0.3), 0.09));
+        assert!(near(target_for(0.03), MIN_AUDIBLE));   // never all the way to silence
+        assert_eq!(target_for(MIN_AUDIBLE), None);      // nothing audible to lower
         assert_eq!(target_for(0.0), None);
     }
 

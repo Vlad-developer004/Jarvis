@@ -107,10 +107,11 @@
     const uids = [S.sel]; if (!S.sel) return;
     popMenu(anchor, [...(has('junk') && S.folder !== 'junk' ? [{ label: 'Это спам', onPick: () => removeRows(uids, 'junk') }, { sep: 1 }] : []), { head: 'Переместить в' }, ...targets(uids)]);
   }
-  function listMenu(anchor) {
+  async function listMenu(anchor) {
+    if (m.connected && S.notifyOn === undefined) { const r = await call({ op: 'prefs' }); S.notifyOn = r.notify !== false; }
     const items = [{ label: 'Отметить все прочитанными', onPick: () => dlg({ title: 'Отметить всё прочитанным?', body: `Все письма в папке «${A.folderName(S.folder)}» будут отмечены прочитанными.`, ok: 'Отметить', onOk: markAll }) }];
     if (S.folder === 'trash' || S.folder === 'junk') items.push({ label: 'Очистить папку…', danger: true, onPick: () => dlg({ title: `Очистить «${A.folderName(S.folder)}»?`, body: 'Все письма в этой папке будут удалены навсегда.', ok: 'Очистить', danger: true, onOk: emptyFolder }) });
-    items.push({ sep: 1 }, { label: A.logosOn() ? 'Логотипы отправителей: вкл' : 'Логотипы отправителей: выкл', onPick: () => { A.setLogos(!A.logosOn()); A.paintItems(); if (S.cur) A.paintHeader(); say(A.logosOn() ? 'Логотипы берутся с сайтов отправителей' : 'Логотипы отключены'); } }, { label: 'Подпись…', onPick: signatureDlg }, { label: 'Горячие клавиши', onPick: helpDlg });
+    items.push({ sep: 1 }, { label: A.logosOn() ? 'Логотипы отправителей: вкл' : 'Логотипы отправителей: выкл', onPick: () => { A.setLogos(!A.logosOn()); A.paintItems(); if (S.cur) A.paintHeader(); say(A.logosOn() ? 'Логотипы берутся с сайтов отправителей' : 'Логотипы отключены'); } }, { label: S.notifyOn === false ? 'Уведомления о новых письмах: выкл' : 'Уведомления о новых письмах: вкл', onPick: async () => { const want = S.notifyOn === false; if (m.connected) { const r = await call({ op: 'prefs_set', notify: want }); if (!r.ok) { say('Не удалось сохранить'); return; } S.notifyOn = r.notify; } else S.notifyOn = want; say(S.notifyOn ? 'Уведомления о новых письмах включены' : 'Уведомления о новых письмах выключены'); } }, { label: 'Подпись…', onPick: signatureDlg }, { label: 'Горячие клавиши', onPick: helpDlg });
     popMenu(anchor, items);
   }
   function advPanel(anchor) {

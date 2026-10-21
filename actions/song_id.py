@@ -15,7 +15,8 @@ match first, but that occasionally mismatched an unrelated new recording
 against an old cached entry and silently reported the wrong song, which is
 worse than the extra network round-trip it was saving.
 
-Two audio sources:
+Three audio sources ('auto' is the default of the voice command):
+  - 'auto' — 'pc' when the default playback device is headphones or a headset (the mic cannot hear them), 'mic' otherwise.
   - 'mic'  — reads from the shared ring buffer the always-on engine keeps
     filled (core/audio_ring.py), rather than opening a second PyAudio stream
     on the same device (which on Windows can silently return near-silence
@@ -39,6 +40,8 @@ _log = get_logger('song_id')
 _CHANNELS = 1
 _CHUNK = 1024
 _RECORD_SECONDS = 10
+_LOOPBACK_MIN_SHARE = 0.3   # less audio than this share of the window means nothing was playing
+_FIRST_TRY_SECONDS = 5      # a clear recording is usually enough: try it first and listen longer only when Shazam does not know it yet
 
 
 def _write_wav(path: str, raw: bytes, rate: int, channels: int) -> None:
@@ -73,7 +76,7 @@ def _normalize_gain(raw: bytes) -> bytes:
     return boosted.tobytes()
 
 
-def _record_mic(seconds: float):
+def _record_mic(seconds: float, wait: float | None = None):
     """Returns (raw_16bit_mono_pcm, rate) or None.
 
     Does NOT open its own PyAudio stream on the mic — the always-on engine
@@ -84,10 +87,11 @@ def _record_mic(seconds: float):
     next to the mic) rather than sharing the device or raising — so this
     just waits out the window and reads it from the shared ring buffer
     (core/audio_ring.py) that the engine's loop keeps fed in real time.
+    `wait` is how long to wait before reading the last `seconds` (the second, longer try has already waited part of that).
     """
     try:
         from core import audio_ring
-        time.sleep(seconds)
+        time.sleep(seconds if wait is None else wait)
         raw, rate = audio_ring.read_last_seconds(seconds)
         if not raw:
             _log.error('mic ring buffer is empty — is the engine running?')
@@ -118,16 +122,26 @@ def _record_loopback(seconds: float):
                     return None
             rate = int(default_speakers['defaultSampleRate'])
             channels = int(default_speakers['maxInputChannels']) or 2
+            frames: list[bytes] = []
+
+            def _collect(in_data, frame_count, time_info, status):
+                frames.append(in_data)
+                return (None, pyaudio.paContinue)
             stream = pa.open(format=pyaudio.paInt16, channels=channels, rate=rate,
                               input=True, input_device_index=default_speakers['index'],
-                              frames_per_buffer=_CHUNK)
+                              frames_per_buffer=_CHUNK, stream_callback=_collect, start=False)
             try:
-                n_chunks = int(rate / _CHUNK * seconds)
-                frames = [stream.read(_CHUNK, exception_on_overflow=False) for _ in range(n_chunks)]
+                # A callback, not blocking reads: a WASAPI loopback delivers nothing while no sound is playing, and a blocking read would hang.
+                stream.start_stream()
+                time.sleep(seconds)
             finally:
                 stream.stop_stream()
                 stream.close()
-            return _normalize_gain(b''.join(frames)), rate, channels
+            data = b''.join(frames)
+            if len(data) < rate * channels * 2 * seconds * _LOOPBACK_MIN_SHARE:
+                _log.info('loopback heard (almost) nothing: nothing is playing on this PC')
+                return None
+            return _normalize_gain(data), rate, channels
         finally:
             pa.terminate()
     except Exception as e:
@@ -318,7 +332,33 @@ def _query_audd(wav_path: str) -> dict:
     }
 
 
-def recognize_song(source: str = 'mic', seconds: float = _RECORD_SECONDS) -> dict:
+def _resolve_source(source: str) -> str:
+    """'auto' becomes 'pc' (loopback) on headphones, where the mic hears nothing of the music, and 'mic' on speakers."""
+    if source != 'auto':
+        return source
+    try:
+        from core import native_audio
+        info = native_audio.query_output()
+    except Exception:
+        info = None
+    if info and info.get('is_headphones'):
+        _log.info('playback device is %s: recording the PC audio instead of the mic', info.get('kind'))
+        return 'pc'
+    return 'mic'
+
+
+def recognize_song(source: str = 'auto', seconds: float = _RECORD_SECONDS) -> dict:
+    """A short recording first (most songs are known from five seconds), a longer one only when the service answers "no match"."""
+    source = _resolve_source(source)
+    first = min(seconds, _FIRST_TRY_SECONDS)
+    res = _recognize_once(source, first)
+    if res.get('error') == 'no_match' and seconds > first:
+        # the mic ring already holds `first` seconds: wait only for the rest; a loopback capture has to be recorded again
+        res = _recognize_once(source, seconds, wait=seconds - first)
+    return res
+
+
+def _recognize_once(source: str, seconds: float, wait: float | None = None) -> dict:
     raw = rate = channels = None
     if source == 'pc':
         rec = _record_loopback(seconds)
@@ -327,7 +367,7 @@ def recognize_song(source: str = 'mic', seconds: float = _RECORD_SECONDS) -> dic
         else:
             source = 'mic'  # no loopback support here — fall back
     if raw is None:
-        rec = _record_mic(seconds)
+        rec = _record_mic(seconds, wait if source == 'mic' else None)
         if rec is None:
             return {'ok': False, 'error': 'record_failed'}
         raw, rate = rec

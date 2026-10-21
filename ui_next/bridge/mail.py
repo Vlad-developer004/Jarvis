@@ -73,10 +73,10 @@ def _uids(value) -> list[str]:
 
 
 @_guard
-def folders() -> dict:
+def folders(unread=True) -> dict:
     if not configured()['configured']:
         return {'ok': False, 'error': 'not_configured'}
-    info = SESSION.folder_list()
+    info = SESSION.folder_list(bool(unread))
     return {'ok': True, 'folders': info['roles'], 'unread': info['unread'], 'custom': info['custom']}
 
 
@@ -89,7 +89,7 @@ def list_messages(folder='inbox', flt='all', q='', offset=0, limit=40, refresh=F
     flt = flt if flt in FILTERS else 'all'
     q = ' '.join(str(q or '').split())[:100]
     res = SESSION.page(role, flt, q, max(0, int(offset or 0)), max(1, min(int(limit or 40), 100)), bool(refresh))
-    return {'ok': True, 'email': c['email'], 'folder': role, 'rows': res['rows'], 'total': res['total'], 'more': res['more'], 'cached': res['cached']}
+    return {'ok': True, 'email': c['email'], 'folder': role, 'rows': res['rows'], 'total': res['total'], 'more': res['more'], 'cached': res['cached'], 'fresh': res.get('fresh', False)}
 
 
 @_guard
@@ -235,12 +235,20 @@ MAX_SIGNATURE = 500
 
 def get_prefs() -> dict:
     from core import settings_io
-    return {'ok': True, 'signature': str(settings_io.read().get('mail_signature') or '')[:MAX_SIGNATURE]}
+    s = settings_io.read()
+    return {'ok': True, 'signature': str(s.get('mail_signature') or '')[:MAX_SIGNATURE], 'notify': s.get('mail_notify', True) is not False}
 
 
-def set_prefs(signature) -> dict:
+def set_prefs(signature=None, notify=None) -> dict:
+    """Only the given parts change: the signature text and/or the new-mail notifications switch."""
     from core import settings_io
-    settings_io.update({'mail_signature': str(signature or '').strip()[:MAX_SIGNATURE]})
+    upd = {}
+    if signature is not None:
+        upd['mail_signature'] = str(signature).strip()[:MAX_SIGNATURE]
+    if notify is not None:
+        upd['mail_notify'] = bool(notify)
+    if upd:
+        settings_io.update(upd)
     return get_prefs()
 
 

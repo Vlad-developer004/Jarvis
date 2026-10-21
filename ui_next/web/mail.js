@@ -109,19 +109,20 @@
     if (!m.connected) { S.state = 'ok'; S.email = 'demo@example.com'; S.folders = ['inbox', 'sent', 'drafts', 'junk', 'trash', 'archive']; S.custom = [{ id: 'f1', name: 'Работа' }, { id: 'f2', name: 'Билеты' }]; S.rows = DEMO_ROWS.map((r) => ({ ...r })); S.total = S.rows.length; S.more = false; S.unreadInbox = 2; paintAll(); return; }
     if (!opts.silent && !S.rows.length) { S.state = 'loading'; paintAll(); }
     if (!ready) {
-      const [f, r] = await Promise.all([call({ op: 'folders' }), call({ op: 'list', folder, filter: flt })]);
+      const [f, r] = await Promise.all([call({ op: 'folders', unread: false }), call({ op: 'list', folder, filter: flt })]);
       if (n !== seq) return;
       if (f.error === 'not_configured' || r.error === 'not_configured') { S.state = 'none'; paintAll(); return; }
       if (!f.ok || !r.ok) { S.state = 'error'; S.err = r.message || f.message || 'Jarvis ещё запускается'; paintAll(); return; }
       ready = true; S.folders = f.folders; S.custom = f.custom || []; S.unreadInbox = f.unread; S.email = r.email; applyList(r, opts); S.state = 'ok'; paintAll();
-      if (r.cached) loadList({ silent: true, refresh: true });
+      if (r.cached && !r.fresh) loadList({ silent: true, refresh: true });
+      refreshUnread();   // the unread counter is a slow request on a big mailbox: the list is painted first
       return;
     }
     const r = await call({ op: 'list', folder, filter: flt, q: S.srv, refresh: !!opts.refresh });
     if (n !== seq) return;
     if (!r.ok) { if (!opts.silent) { S.state = 'error'; S.err = r.message || 'Не удалось получить список писем'; paintAll(); } return; }
     S.email = r.email; applyList(r, opts); S.state = 'ok'; paintAll();
-    if (r.cached && !opts.refresh && !S.srv) loadList({ silent: true, refresh: true });
+    if (r.cached && !r.fresh && !opts.refresh && !S.srv) loadList({ silent: true, refresh: true });
     if (folder === 'inbox') refreshUnread();
   }
   function applyList(r, opts) {

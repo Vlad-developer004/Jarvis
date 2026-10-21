@@ -38,6 +38,18 @@ def get_battery_phrase(percent, lang):
     return None
 
 
+def _show(key, title, text, popup=True, percent=100):
+    """The same alert as text, for when the voice is off, muted or drowned out by a game."""
+    try:
+        from ui_next import host
+        if popup:
+            host.toast(key, title, text, color=host.RED if percent <= 10 else host.AMBER, tone='alert' if percent <= 10 else 'info')
+        else:
+            host.notify(key, f'{title}. {text}', host.AMBER, duration=10000)
+    except Exception:
+        _swallow()
+
+
 def check_battery_alerts():
     global last_alert_percent, last_alert_time
     was_plugged = True
@@ -62,6 +74,7 @@ def check_battery_alerts():
 
                 if was_plugged and (not plugged):
                     activate_economy_mode()
+                    _show('battery_plug', 'Питание отключено', 'Включён режим экономии энергии.', popup=False)
                     speak(
                         "Живлення відключено від мережі. Комп'ютер переведено в режим економії енергії."
                         if lang == 'uk' else
@@ -75,6 +88,8 @@ def check_battery_alerts():
                         if time.time() - last_alert_time > 300:
                             phrase = get_battery_phrase(percent, lang)
                             if phrase:
+                                if percent <= 20:
+                                    _show('battery', 'Низкий заряд' if percent > 10 else 'Заряд на исходе', f'Осталось {percent}%. Подключите зарядку.', percent=percent)
                                 speak(phrase)
                                 last_alert_percent = percent
                                 last_alert_time = time.time()

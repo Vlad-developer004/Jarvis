@@ -117,24 +117,33 @@ def bootstrap():
             i18n.set_language(lang)
     except Exception:
         pass
+def speak_ready(after_summary: bool = False):
+    """Says that Jarvis is running. After the morning or evening summary (which opens with its own greeting) only the readiness line is spoken."""
+    from core.speech import speak
+    from core.i18n import get_language
+    from core.address import get_address
+    lang = get_language()
+    addr = get_address(lang)
+    if lang == 'uk':
+        greeting = "Всі системи готові." if after_summary else f"Джарвіс до вашої уваги, {addr}. Всі системи готові."
+    else:
+        greeting = "Я запущен и готов к работе." if after_summary else f"Приветствую, {addr}. Я запущен и готов к работе."
+    print(f"[EARLY-GREETING] speak() called: {greeting!r}", flush=True)
+    speak(greeting)
 def play_early_greeting(volume=1.0):
+    # When a startup summary is due it is spoken first and ends with the readiness line (features/morning_briefing.py), so the greeting
+    # is skipped here. Decided before the thread starts: the summary cannot have finished by now, so the answer is stable.
+    try:
+        from features.morning_briefing import summary_due
+        if summary_due():
+            return
+    except Exception as e:
+        _log.error('summary_due check failed: %s', e, exc_info=True)
     def _task():
         try:
             # Wait for TTS engine to be ready
             time.sleep(1.0)
-            from core.speech import speak
-            from core.i18n import get_language
-            lang = get_language()
-            from core.address import get_address
-            addr = get_address(lang)
-            if lang == 'uk':
-                greeting = f"Джарвіс до вашої уваги, {addr}. Всі системи готові."
-            else:
-                greeting = f"Приветствую, {addr}. Я запущен и готов к работе."
-            # TEMP DIAGNOSTIC: pin down the early greeting's exact timing
-            # relative to the HUD-flicker reports. Remove once confirmed.
-            print(f"[EARLY-GREETING] speak() called: {greeting!r}", flush=True)
-            speak(greeting)
+            speak_ready()
         except Exception as e:
             _log.error('Early greeting TTS error: %s', e, exc_info=True)
     threading.Thread(target=_task, daemon=True).start()

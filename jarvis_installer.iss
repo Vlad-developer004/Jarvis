@@ -6,7 +6,7 @@
 ; (or open this file in the Inno Setup Compiler GUI and press Build)
 
 #define MyAppName "J.A.R.V.I.S."
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.2.0"
 #define MyAppExeName "Jarvis.exe"
 #define DownloadsDir GetEnv("USERPROFILE") + "\Downloads"
 
@@ -30,8 +30,8 @@ OutputDir={#DownloadsDir}
 OutputBaseFilename=JarvisInstaller
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; "fast" instead of the lzma2 default: most of the payload (PyTorch DLLs,
-; ONNX/sherpa-onnx models) is already compressed binary data, so lzma2 spends
+; "fast" instead of the lzma2 default: most of the payload (ONNX runtime
+; DLLs, bundled models) is already compressed binary data, so lzma2 spends
 ; a very long time for near-zero size savings on those files.
 Compression=lzma2/fast
 SolidCompression=no
@@ -43,6 +43,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
+[InstallDelete]
+; The PyInstaller runtime is replaced whole on every install: files of an older
+; build that no longer exist (dropped libraries) must not stay behind. Models,
+; settings and logs live outside _internal and are untouched.
+Type: filesandordirs; Name: "{app}\_internal"
 
 [Files]
 ; Requires an existing PyInstaller build — run build.bat first.

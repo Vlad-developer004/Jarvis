@@ -155,7 +155,7 @@ hiddenimports = (
         "actions.notes", "actions.ocr", "actions.recent", "actions.screenshot",
         "actions.sensor_bridge", "actions.session_ghost",
         "actions.system", "actions.system_control", "actions.volume",
-        "actions.weather", "actions.windows", "actions.youtube",
+        "actions.weather", "actions.weather_codes", "actions.weather_geo", "actions.weather_forecast", "actions.weather_extra", "actions.weather_cache", "core.nlp.weather_route", "actions.windows", "actions.youtube",
         "actions.ets2_telemetry", "actions.ets2_telemetry_installer",
         "actions.briefing_config", "actions.calendar_ics", "actions.inbox_imap",
         "actions.mail_client", "actions.meetings", "actions.programming_extensions",
@@ -210,7 +210,7 @@ hiddenimports = (
         "yt_dlp",
         "screen_brightness_control",
         "speedtest", "winsdk",
-        "num2words", "g2p_en",
+        "num2words",
         "dotenv", "winsound", "pyperclip",
         "importlib_resources", "importlib.resources",
         "webbrowser", "socket", "threading", "queue",
@@ -241,6 +241,9 @@ a = Analysis(
         # ML stacks of the dev environment that no Jarvis module imports (the build must not depend on what happens to be installed)
         "transformers", "sklearn", "pandas", "pyarrow", "datasets", "huggingface_hub", "hf_xet", "av", "librosa", "openwakeword",
         "google", "googleapiclient", "grpc", "selenium", "cv2", "vosk", "scipy",   # downloaded on first use (core/optional_pkgs.py) or not shipped
+        "sentencepiece",   # nothing imports it; PyInstaller's isolated import of it dies with 0xC0000005 during analysis
+        "g2p_en", "nltk",   # no Jarvis module imports them (cmudict is read directly); they would bring ~13 MB of nltk_data
+        "tkinter", "_tkinter",   # the old Tk interface is gone; pyautogui/pymsgbox only use it for message boxes, which Jarvis never opens
         "faster_whisper", "setfit", "peft", "optimum", "accelerate", "evaluate", "ultralytics", "deepface", "retinaface", "seaborn",
     ],
     noarchive=False,

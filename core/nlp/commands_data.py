@@ -110,7 +110,7 @@ CANON_SIMPLE = {'джарвис': 'wake',
     'покажи хад': 'show_hud', 'открой хад': 'show_hud', 'покажи худ': 'show_hud', 'открой худ': 'show_hud', 'открйо худ': 'show_hud', 'покажи интерфейс': 'show_hud', 'открой интерфейс': 'show_hud', 'разверни худ': 'show_hud', 'разверни хад': 'show_hud',
     'скрой худ': 'min_win', 'сверни худ': 'min_win', 'убери худ': 'min_win', 'закрой худ': 'min_win',
 'открой настройки': 'open_settings', 'покажи настройки': 'open_settings', 'настройки системы': 'open_settings',
-'установи город': 'set_weather_city', 'запомни город': 'set_weather_city', 'смени город': 'set_weather_city', 'мой город': 'set_weather_city',
+'установи город': 'set_weather_city', 'запомни город': 'set_weather_city', 'смени город': 'set_weather_city', 'мой город': 'set_weather_city', 'сохрани город': 'set_weather_city', 'добавь город': 'set_weather_city',
 'открой макросы': 'open_keybinds', 'открой клавиши': 'open_keybinds', 'настрой клавиши': 'open_keybinds', 'бинды': 'open_keybinds', 'настройка кнопок': 'open_keybinds',
     'открой расширения': 'open_extensions', 'покажи расширения': 'open_extensions', 'центр модулей': 'open_extensions',
     'мониторинг ресурсов': 'open_perf', 'открой мониторинг': 'open_perf', 'покажи нагрузку': 'open_perf', 'статус ресурсов': 'open_perf',
@@ -330,7 +330,7 @@ CANON_SIMPLE_UK = {
     'збережи відео': 'save_video', 'запам\'ятай відео': 'save_video',
     'відкрий збережене відео': 'open_saved',
     # --- Міста / погода ---
-    'встанови місто': 'set_weather_city', 'змінити місто': 'set_weather_city', 'моє місто': 'set_weather_city',
+    'встанови місто': 'set_weather_city', 'змінити місто': 'set_weather_city', 'моє місто': 'set_weather_city', 'збережи місто': 'set_weather_city', 'додай місто': 'set_weather_city', 'запам\'ятай місто': 'set_weather_city',
     # --- Лайка ---
     'ти дурень': 'system_insult', 'дурень': 'system_insult', 'ти дура': 'system_insult',
     'йди нахер': 'system_insult', 'йди лісом': 'system_insult', 'заткнись': 'system_insult',

@@ -172,7 +172,7 @@ class Observer:
             try:
                 from actions.weather import get_weather_hud
                 d = get_weather_hud()
-                payload = {k: d.get(k) for k in ('ok', 'city', 'temp', 'feels', 'desc', 'code', 'sunrise', 'sunset', 'wind', 'humidity', 'pressure', 'wind_dir', 'gust', 'clouds', 'vis_km', 'uv', 'pop', 'tmax', 'tmin')}
+                payload = {k: d.get(k) for k in ('ok', 'city', 'temp', 'feels', 'desc', 'code', 'sunrise', 'sunset', 'wind', 'humidity', 'pressure', 'wind_dir', 'gust', 'clouds', 'vis_km', 'uv', 'pop', 'tmax', 'tmin', 'aqi', 'vs_yesterday')}
                 if self._changed('weather', payload):
                     self._publish('weather', payload)
             except Exception:

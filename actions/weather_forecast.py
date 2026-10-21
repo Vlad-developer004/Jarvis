@@ -4,8 +4,11 @@ actions.weather.resolve_location instead of duplicating it."""
 import re
 import time
 from core.i18n import get_language
+from core.safe import swallow as _swallow
 from actions.weather import resolve_location, _location_error_text, _get_wmo_desc, _inflect_degree
 
+_FORECAST_ERROR_RU = 'Ошибка при получении прогноза.'
+_FORECAST_ERROR_UK = 'Помилка при отриманні прогнозу.'
 _PERIODS: dict[str, list[int]] = {
     'утро': list(range(6, 12)), 'утром': list(range(6, 12)),
     'день': list(range(12, 18)), 'днем': list(range(12, 18)), 'днём': list(range(12, 18)),
@@ -106,8 +109,9 @@ def get_forecast(city: str | None, date_offset: int) -> tuple[bool, str]:
             if t_max >= 28: result_text += 'Днём будет очень жарко, не забудьте воду.'
 
         return (True, result_text)
-    except Exception as e:
-        return (False, f'Помилка при отриманні прогнозу: {str(e)}' if lang == 'uk' else f'Ошибка при получении прогноза: {str(e)}')
+    except Exception:
+        _swallow()
+        return (False, _FORECAST_ERROR_UK if lang == 'uk' else _FORECAST_ERROR_RU)
 
 
 def get_weather_period(city: str | None, period: str) -> tuple[bool, str]:
@@ -156,5 +160,6 @@ def get_weather_period(city: str | None, period: str) -> tuple[bool, str]:
             if max_precip >= 40:
                 text += f' Вероятность осадков до {int(max_precip)} процентов, возьмите зонт.'
         return (True, text)
-    except Exception as e:
-        return (False, f'Помилка при отриманні прогнозу: {str(e)}' if lang == 'uk' else f'Ошибка при получении прогноза: {str(e)}')
+    except Exception:
+        _swallow()
+        return (False, _FORECAST_ERROR_UK if lang == 'uk' else _FORECAST_ERROR_RU)

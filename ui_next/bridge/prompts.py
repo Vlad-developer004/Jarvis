@@ -81,11 +81,12 @@ def open_prompt(kind: str, data: dict, ctx: dict, done, *, timeout: float | None
         except Exception:
             _log.debug('voice prompt not registered', exc_info=True)
     _emit('prompt', {'id': prompt['id'], 'kind': kind, 'open': True, 'data': data, 'timeout': timeout or 0})
-    try:
-        from ui_next import host
-        host.command('show')            # a question must not wait in a window hidden in the tray
-    except Exception:
-        pass
+    if kind != 'notice':                # a notice appears in the pop-up window over any program; a question needs the main window in front
+        try:
+            from ui_next import host
+            host.command('show')        # a question must not wait in a window hidden in the tray
+        except Exception:
+            pass
     return True
 
 
