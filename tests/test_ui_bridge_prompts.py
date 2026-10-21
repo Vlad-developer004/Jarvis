@@ -59,7 +59,8 @@ def test_required_text_cannot_be_empty(pr):
     assert answer('ok', {'text': 'fix'})['ok'] and (t.join(2) or True) and box['r'] == 'fix'
 
 
-def test_folder_and_name_and_type(pr, tmp_path):
+def test_folder_and_name_and_type(pr, tmp_path, monkeypatch):
+    monkeypatch.setattr('actions.programming_extensions.get_programming_extensions', lambda: ['py'])   # the list comes from the user's settings file; CI has none
     box, t = run_bg(dialogs.ask_text, **{**TEXT, 'initial_path': str(tmp_path), 'show_extension_field': True, 'default_extension': 'py'})
     d = opened(pr)['data']
     assert d['with_ext'] and d['ext'] == 'py' and 'docx' in [e['ext'] for e in d['exts']]
