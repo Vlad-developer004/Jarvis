@@ -3,7 +3,16 @@ added for the local-LLM function-calling fallback (core/speech/llm_chat.py)
 to narrow the ~270-intent action space down to a short, embedding-relevant
 list instead of pasting every intent name into one prompt.
 """
+import os
+
+import pytest
+
 from core.nlp.semantic import top_k_candidates
+
+_DATA = os.path.join(os.path.dirname(__file__), '..', 'data')
+# the encoder is git-ignored (it is large and fetched separately), so a fresh checkout such as CI has none
+pytestmark = pytest.mark.skipif(not any(os.path.isdir(os.path.join(_DATA, d)) for d in ('intent_model_onnx_quant', 'intent_model_onnx')),
+                                reason='no ONNX intent encoder in data/')
 
 
 def test_top_k_returns_requested_count():

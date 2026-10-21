@@ -88,7 +88,7 @@ def test_several_roots_are_walked_together(native_files, tree, tmp_path_factory)
     assert {'a.pdf', 'z.pdf'} <= names
 
 
-def test_walk_wrapper_calls_the_native_walker_and_normalises_its_arguments(tree):
+def test_walk_wrapper_calls_the_native_walker_and_normalises_its_arguments(native_files, tree):
     got = file_walk.walk([str(tree)], 3, exts=['.PDF', '.docx'], skip_dirs=['Node_Modules'])
     want = _reference_walk([str(tree)], 3, 'files', {'.pdf', '.docx'}, set(), {'node_modules'}, True)
     assert [(p, n) for p, n, _ in got] == [(p, n) for p, n, _ in want] and got
@@ -104,7 +104,7 @@ def test_walk_wrapper_raises_when_the_module_is_missing(tree, monkeypatch):
         file_walk.walk([str(tree)], 3)
 
 
-def test_search_and_recent_use_the_native_walk(tree, monkeypatch):
+def test_search_and_recent_use_the_native_walk(native_files, tree, monkeypatch):
     from actions import recent
     monkeypatch.setattr(recent, 'SCAN_DIRS', [str(tree)])
     opened = []

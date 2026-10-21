@@ -39,7 +39,7 @@ def clean(text: str, is_html: bool = False) -> str:
         text = _html.unescape(text)
     lines = [ln for ln in text.replace('\r', '').split('\n') if not ln.lstrip().startswith('>')]
     text = _BAR.sub(' ', _URLS.sub(' ', ' '.join(lines)))
-    text = re.sub(r'[​-‏⁠­﻿͏]', '', text)
+    text = re.sub(r'[\u200b-\u200f\u2060\u00ad\ufeff\u034f]', '', text)
     text = ' '.join(text.split())
     return text if len(text) <= PREVIEW_CHARS else text[:PREVIEW_CHARS - 1].rstrip() + '…'
 

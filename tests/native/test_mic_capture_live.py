@@ -19,6 +19,15 @@ def mic():
     m.close()
 
 
+@pytest.fixture
+def has_mic():
+    """Skips the tests that need an input device (a CI runner has none) without holding the device open during the test."""
+    try:
+        native_audio.open_mic(16000, 512).close()
+    except OSError as e:
+        pytest.skip(f'no usable microphone: {e}')
+
+
 def test_chunks_are_exact_and_arrive_at_the_chunk_rate(mic):
     stamps, sizes = [], set()
     for _ in range(64):   # about two seconds
@@ -35,7 +44,7 @@ def test_the_signal_is_real_audio_not_zeros_or_garbage(mic):
     assert np.isfinite(data).all() and data.std() > 0.0 and abs(data.mean()) < 2000
 
 
-def test_a_named_device_that_does_not_exist_falls_back_to_the_default():
+def test_a_named_device_that_does_not_exist_falls_back_to_the_default(has_mic):
     m = native_audio.open_mic(16000, 512, 'definitely not a microphone name')
     try:
         assert m.device and len(m.read(512)) == 1024
@@ -43,7 +52,7 @@ def test_a_named_device_that_does_not_exist_falls_back_to_the_default():
         m.close()
 
 
-def test_the_device_listing_has_the_default_marked():
+def test_the_device_listing_has_the_default_marked(has_mic):
     found = native_audio.list_devices()
     assert found and found['inputs'] and any(d['default'] for d in found['inputs'])
     assert all(d['name'] for d in found['inputs'] + found['outputs'])

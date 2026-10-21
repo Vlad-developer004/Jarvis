@@ -30,6 +30,7 @@ module imports the moved names, so `from core.speech.tts import normalize_for_tt
 | `actions/calendar_hub.py` | 610 | one more helper module (the DAV read cache, 520-594) would bring it under the limit |
 | `core/speech/llm_chat.py` | 661 | model loading and validation / prompt formatting / generation |
 | `core/handler/interactive.py` (656), `core/nlp/commands.py` (659) | | per interactive flow / the normalization step vs the matching step |
+| `actions/weather.py` | 610 | the yesterday/today temperature history (`_load_yesterday_temp`, `_save_today_temp`, `_yesterday_compare_text`) and the location cache (`_load_last_location`, `_save_last_location`) as a helper module; the budget entry is temporary |
 | `actions/dev_projects.py` (636), `actions/youtube.py` (614), `core/engine/ets2_commands.py` (613), `features/ets2/phrases_job.py` (608) | | each is within 5-10 percent of the limit; one extracted helper module is enough |
 
 Order: `llm_chat`, `commands.py`, `interactive.py`, the four small ones; `TTSManager` last.

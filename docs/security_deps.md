@@ -7,7 +7,7 @@
 |---------|--------|----------|------|
 | requests | 2.34.2 (was 2.32.5) | 2.33.0 | bumped 2026-10-20 |
 | python-dotenv | 1.2.4 (was 1.1.1) | 1.2.2 | bumped 2026-10-20 |
-| pillow | 12.3.0 (was 12.1.1) | 12.3.0 | bumped 2026-10-20 |
+| pillow | 13.0.0 (was 12.3.0) | 13.0.0 | bumped 2026-10-21 (12.3.0 was flagged again) |
 | anyio | 4.3.0 | 4.14.2 | pinned on purpose: shazamio 0.6.0 needs `anyio==4.3.0` |
 | torch | 2.11.0 | 2.13.0 | pinned with numpy 1.26.4 and sherpa-onnx |
 
